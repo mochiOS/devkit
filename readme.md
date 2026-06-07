@@ -1,4 +1,4 @@
-# mochiOS developer tools
+# mochiOS developer kit
 このリポジトリにはmochiOSのアプリ開発に必要なツールが含まれています。
 
 - msign: アプリの署名ツール

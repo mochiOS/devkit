@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "buildtools"
+name = "mochios-devkit"
 version = "0.1.0"

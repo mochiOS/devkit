@@ -1,5 +1,5 @@
 [package]
-name = "buildtools"
+name = "mochios-devkit"
 version = "0.1.0"
 edition = "2024"
 
