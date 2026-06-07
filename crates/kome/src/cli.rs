@@ -15,7 +15,30 @@ pub enum Command {
     New(NewArgs),
     Build(BuildArgs),
     Pack(PackArgs),
+    Keygen(KeygenArgs),
     Sign(SignArgs),
+    Verify(VerifyArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct KeygenArgs {
+    #[arg(long, default_value = "application.key")]
+    pub private_key: PathBuf,
+
+    #[arg(long, default_value = "application.pub")]
+    pub public_key: PathBuf,
+}
+
+#[derive(Debug, Args)]
+pub struct VerifyArgs {
+    #[arg(default_value = ".")]
+    pub project_dir: PathBuf,
+
+    #[arg(short, long)]
+    pub package: Option<PathBuf>,
+
+    #[arg(long)]
+    pub pubkey: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]

@@ -16,5 +16,7 @@ fn main() -> Result<()> {
         Command::Build(args) => commands::build::run(args),
         Command::Pack(args) => commands::pack::run(args),
         Command::Sign(args) => commands::sign::run(args),
+        Command::Keygen(args) => commands::keygen::run(args),
+        Command::Verify(args) => commands::verify::run(args),
     }
 }
