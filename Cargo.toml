@@ -3,5 +3,6 @@ members = [
     "crates/core",
     "crates/msign",
     "crates/mpack",
+    "xtask",
 ]
 resolver = "2"
