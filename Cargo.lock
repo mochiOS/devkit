@@ -3,5 +3,13 @@
 version = 4
 
 [[package]]
-name = "mochios-devkit"
+name = "core"
+version = "0.1.0"
+
+[[package]]
+name = "mapp"
+version = "0.1.0"
+
+[[package]]
+name = "msign"
 version = "0.1.0"
