@@ -3,6 +3,7 @@ members = [
     "crates/core",
     "crates/msign",
     "crates/mpack",
-    "xtask", "crates/kome",
+    "xtask",
+    "crates/kome",
 ]
 resolver = "2"
