@@ -75,15 +75,14 @@ pub struct PackArgs {
 
 #[derive(Debug, Args)]
 pub struct SignArgs {
-    #[arg(default_value = ".")]
-    pub project_dir: PathBuf,
+    pub package: Option<PathBuf>,
 
-    #[arg(long)]
+    #[arg(long, default_value = ".")]
+    pub project: PathBuf,
+
+    #[arg(long, default_value = "application.key")]
     pub key: PathBuf,
 
-    #[arg(long)]
+    #[arg(long, default_value = "application")]
     pub key_id: String,
-
-    #[arg(short, long)]
-    pub package: Option<PathBuf>,
 }

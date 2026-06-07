@@ -7,7 +7,7 @@ use crate::{cli::SignArgs, project};
 pub fn run(args: SignArgs) -> Result<()> {
     let package = match args.package {
         Some(package) => package,
-        None => default_package_path(&args.project_dir)?,
+        None => default_package_path(&args.project)?,
     };
 
     let status = Command::new("msign")
