@@ -4,7 +4,7 @@ use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(name = "kome")]
-#[command(about = "mochiOS project manager")]
+#[command(about = "Kome project manager")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
