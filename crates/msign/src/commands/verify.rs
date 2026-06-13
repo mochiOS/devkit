@@ -70,7 +70,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     if args.local {
         println!("mode: local");
     } else {
-        println!("mode: From signature store");
+        println!("mode: From signature server");
     }
 
     Ok(())
