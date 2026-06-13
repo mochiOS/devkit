@@ -65,11 +65,12 @@ pub fn run(args: VerifyArgs) -> Result<()> {
 
     println!("verified: {}", args.package.display());
     println!("key_id: {}", signature.key_id);
+    println!("public_key: {:?}", signature.public_key);
 
     if args.local {
         println!("mode: local");
     } else {
-        println!("mode: api");
+        println!("mode: From signature store");
     }
 
     Ok(())
