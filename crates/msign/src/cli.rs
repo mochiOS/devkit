@@ -52,7 +52,4 @@ pub struct VerifyArgs {
 
     #[arg(long)]
     pub api_base: Option<String>,
-
-    #[arg(long)]
-    pub session: Option<String>,
 }

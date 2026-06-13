@@ -31,14 +31,19 @@ pub struct KeygenArgs {
 
 #[derive(Debug, Args)]
 pub struct VerifyArgs {
-    #[arg(default_value = ".")]
+    #[arg(long)]
     pub project_dir: PathBuf,
 
-    #[arg(short, long)]
     pub package: Option<PathBuf>,
 
     #[arg(long)]
     pub pubkey: Option<PathBuf>,
+
+    #[arg(short = 'l', long)]
+    pub local: bool,
+
+    #[arg(long)]
+    pub api_base: Option<String>,
 }
 
 #[derive(Debug, Args)]

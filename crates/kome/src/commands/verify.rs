@@ -18,6 +18,14 @@ pub fn run(args: VerifyArgs) -> Result<()> {
         command.arg("--pubkey").arg(pubkey);
     }
 
+    if args.local {
+        command.arg("--local");
+    }
+
+    if let Some(api_base) = args.api_base {
+        command.arg("--api-base").arg(api_base);
+    }
+
     let status = command
         .status()
         .context("failed to execute msign. is msign installed?")?;
