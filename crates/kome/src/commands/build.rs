@@ -2,7 +2,7 @@ use std::{
     fs::{self, File},
     io::Write,
 };
-
+use std::io::Error;
 use anyhow::{bail, Context, Result};
 
 use crate::{cli::BuildArgs, project};
@@ -42,37 +42,6 @@ fn write_mock_elf(path: &std::path::Path, app_name: &str) -> Result<()> {
 
     file.write_all(format!("mock executable for {}\n", app_name).as_bytes())
         .context("failed to write mock ELF body")?;
-
-    Ok(())
-}
-
-// TODO: 今はまだ一つ一つを別のバイナリにするのでリンクとか作る
-fn compile(path: &std::path::Path, app_name: &str) -> Result<()> {
-    for entry in fs::read_dir(path)? {
-        let entry = entry?;
-        let file_name = entry.path();
-        
-        let is_source = match file_path.extension() {
-            Some(ext) => ext == "kome",
-            None  => false,
-    };
-
-    if !is_source {
-        continue;
-    }
-    
-    println!("Building {}", file_path.display());
-
-    let status = Command::new("komec")
-        .arg(&file_path)
-        .status()?;
-
-    let !status.success() {
-        return Err(Error::other(format!(
-            "failed to build: {}",
-            file_path.display()
-        )));
-    }
 
     Ok(())
 }
