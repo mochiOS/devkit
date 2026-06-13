@@ -31,9 +31,6 @@ pub struct KeygenArgs {
 
 #[derive(Debug, Args)]
 pub struct VerifyArgs {
-    #[arg(long)]
-    pub project_dir: PathBuf,
-
     pub package: Option<PathBuf>,
 
     #[arg(long)]

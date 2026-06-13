@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::Command};
+use std::{env, path::PathBuf, process::Command};
 
 use anyhow::{bail, Context, Result};
 
@@ -7,7 +7,7 @@ use crate::{cli::VerifyArgs, project};
 pub fn run(args: VerifyArgs) -> Result<()> {
     let package = match args.package {
         Some(package) => package,
-        None => default_package_path(&args.project_dir)?,
+        None => default_package_path()?,
     };
 
     let mut command = Command::new("msign");
@@ -37,8 +37,9 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     Ok(())
 }
 
-fn default_package_path(project_dir: &std::path::Path) -> Result<PathBuf> {
-    let manifest = project::read_manifest(project_dir)?;
+fn default_package_path() -> Result<PathBuf> {
+    let project_dir = env::current_dir().context("failed to get current directory")?;
+    let manifest = project::read_manifest(&project_dir)?;
 
     Ok(project_dir
         .join("target/package")
