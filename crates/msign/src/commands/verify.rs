@@ -115,7 +115,7 @@ fn fetch_registered_public_key(
 
     if !status.is_success() {
         let body = response.text().unwrap_or_default();
-        bail!("failed to fetch public key: HTTP {}: {}", status, body);
+        bail!("This signature doesn't match any registered public keys. Response body: {}", body);
     }
 
     let body: PublicKeyResponse = response
