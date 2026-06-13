@@ -46,4 +46,13 @@ pub struct VerifyArgs {
 
     #[arg(long)]
     pub pubkey: Option<PathBuf>,
+
+    #[arg(short = 'l', long)]
+    pub local: bool,
+
+    #[arg(long)]
+    pub api_base: Option<String>,
+
+    #[arg(long)]
+    pub session: Option<String>,
 }

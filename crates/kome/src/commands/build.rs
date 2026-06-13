@@ -2,7 +2,6 @@ use std::{
     fs::{self, File},
     io::Write,
 };
-use std::io::Error;
 use anyhow::{bail, Context, Result};
 
 use crate::{cli::BuildArgs, project};
