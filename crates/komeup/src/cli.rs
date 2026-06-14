@@ -1,19 +1,39 @@
-use std::path::PathBuf;
+use clap::{Parser, Subcommand};
 
-use clap::{Args, Parser, Subcommand};
-
-#[derive(Debug, Parser)]
-#[command(name = "kome")]
-#[command(about = "Kome project manager")]
+#[derive(Parser)]
+#[command(name = "komeup")]
+#[command(version)]
+#[command(about = "Kome toolchain installer")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Subcommand)]
 pub enum Command {
-    Install(InstallArgs)
-}
+    Install {
+        #[arg(long, default_value = "stable")]
+        channel: String,
 
-#[derive(Debug, Args)]
-pub struct InstallArgs;
+        #[arg(long)]
+        force: bool,
+    },
+
+    Update {
+        #[arg(long, default_value = "stable")]
+        channel: String,
+    },
+
+    Status,
+
+    Doctor,
+
+    Default {
+        toolchain: String,
+    },
+
+    Uninstall {
+        #[arg(long)]
+        yes: bool,
+    },
+}
