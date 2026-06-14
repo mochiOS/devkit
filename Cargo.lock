@@ -920,6 +920,12 @@ dependencies = [
 [[package]]
 name = "komeup"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "toml 1.1.2+spec-1.1.0",
+]
 
 [[package]]
 name = "leb128fmt"
