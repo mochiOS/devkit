@@ -8,7 +8,7 @@ use reqwest::blocking::Client;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Cursor;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tar::Archive;
 
