@@ -1,0 +1,417 @@
+use std::collections::BTreeSet;
+use std::fs;
+use std::io::{Cursor, Read, Write};
+use std::path::Path;
+
+use anyhow::{anyhow, bail, Context, Result};
+use ed25519_dalek::{Signature, Signer, VerifyingKey};
+use mochios_certificate::{DeveloperCertificate, SIGNATURE_LEN};
+use sha2::{Digest, Sha256};
+use tar::{Archive, Builder, EntryType, Header};
+use tempfile::NamedTempFile;
+
+use crate::cli::{PackageSignArgs, PackageVerifyArgs};
+use crate::crypto;
+
+const MPKG_MAGIC: &[u8; 4] = b"MPKG";
+const MPKG_HEADER_LEN: usize = 32;
+const MANIFEST_PATH: &str = "manifest.toml";
+const CERTIFICATE_PATH: &str = "signatures/developer.cert";
+const MANIFEST_SIGNATURE_PATH: &str = "signatures/manifest.sig";
+const MANIFEST_DOMAIN: &[u8] = b"mochios-mpkg-manifest-v1\0";
+
+#[derive(Clone)]
+struct MpkgEntry {
+    path: String,
+    data: Vec<u8>,
+    mode: u32,
+}
+
+pub fn sign(args: PackageSignArgs) -> Result<()> {
+    let mut entries = read_mpkg(&args.package)?;
+    reject_chain_and_unknown_signatures(&entries)?;
+    let manifest = entry(&entries, MANIFEST_PATH)?.data.clone();
+    let certificate_bytes = fs::read(&args.certificate)
+        .with_context(|| format!("failed to read {}", args.certificate.display()))?;
+    let certificate =
+        DeveloperCertificate::decode(&certificate_bytes).map_err(|error| anyhow!(error))?;
+    let developer_key = crypto::read_private_key(&args.key)?;
+    if developer_key.verifying_key().to_bytes() != certificate.subject_public_key {
+        bail!("developer private key does not match certificate subject public key");
+    }
+    let signature = developer_key
+        .sign(&manifest_signing_message(&manifest))
+        .to_bytes();
+
+    entries.retain(|entry| entry.path != CERTIFICATE_PATH && entry.path != MANIFEST_SIGNATURE_PATH);
+    entries.push(MpkgEntry {
+        path: CERTIFICATE_PATH.to_string(),
+        data: certificate_bytes,
+        mode: 0o644,
+    });
+    entries.push(MpkgEntry {
+        path: MANIFEST_SIGNATURE_PATH.to_string(),
+        data: signature.to_vec(),
+        mode: 0o644,
+    });
+    entries.sort_by(|left, right| left.path.cmp(&right.path));
+    let output = args.output.unwrap_or_else(|| args.package.clone());
+    write_mpkg(&output, &entries)?;
+    println!("signed: {}", output.display());
+    println!("developer_id: {}", certificate.developer_id);
+    println!("certificate_serial: {}", certificate.serial_number);
+    Ok(())
+}
+
+pub fn verify(args: PackageVerifyArgs) -> Result<()> {
+    let package_bytes = fs::read(&args.package)
+        .with_context(|| format!("failed to read {}", args.package.display()))?;
+    let entries = parse_mpkg(&package_bytes)?;
+    reject_chain_and_unknown_signatures(&entries)?;
+    let manifest = &entry(&entries, MANIFEST_PATH)?.data;
+    let manifest_text = std::str::from_utf8(manifest).context("manifest is not UTF-8")?;
+    let manifest_value: toml::Value =
+        toml::from_str(manifest_text).context("manifest is not valid TOML")?;
+    let package_id = package_id(&manifest_value)?;
+    let certificate = DeveloperCertificate::decode(&entry(&entries, CERTIFICATE_PATH)?.data)
+        .map_err(|error| anyhow!(error))?;
+    let root_public_key = crypto::read_public_key(&args.root_public_key)?.to_bytes();
+    certificate
+        .verify(&root_public_key, args.unix_time, package_id)
+        .map_err(|error| anyhow!(error))?;
+    verify_manifest_signature(&certificate, manifest, &entries)?;
+    verify_payload(&manifest_value, &entries)?;
+
+    println!("verified: {}", args.package.display());
+    println!("verified_package_id: {package_id}");
+    println!("developer_id: {}", certificate.developer_id);
+    println!("certificate_serial: {}", certificate.serial_number);
+    println!("subject_key_id: {}", hex(&certificate.subject_key_id));
+    println!("manifest_digest: {}", hex(&Sha256::digest(manifest)));
+    println!("package_digest: {}", hex(&Sha256::digest(&package_bytes)));
+    for capability in certificate.allowed_capabilities {
+        println!("allowed_capability: {capability}");
+    }
+    Ok(())
+}
+
+fn read_mpkg(path: &Path) -> Result<Vec<MpkgEntry>> {
+    let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
+    parse_mpkg(&bytes)
+}
+
+fn parse_mpkg(bytes: &[u8]) -> Result<Vec<MpkgEntry>> {
+    if bytes.len() < MPKG_HEADER_LEN || &bytes[..4] != MPKG_MAGIC {
+        bail!("invalid MPKG header");
+    }
+    if read_u16(bytes, 4) != 1 {
+        bail!("unsupported MPKG major version");
+    }
+    if read_u16(bytes, 6) != 0 {
+        bail!("unsupported MPKG minor version");
+    }
+    if usize::from(read_u16(bytes, 8)) != MPKG_HEADER_LEN {
+        bail!("invalid MPKG header length");
+    }
+    if bytes[10] != 0 {
+        bail!("compressed MPKG is not supported");
+    }
+    if bytes[11] != 0 || bytes[20..32].iter().any(|byte| *byte != 0) {
+        bail!("unknown MPKG flags or non-zero reserved field");
+    }
+    let expanded_size = read_u64(bytes, 12) as usize;
+    let tar_bytes = &bytes[MPKG_HEADER_LEN..];
+    if tar_bytes.len() != expanded_size {
+        bail!("MPKG expanded size does not match payload length");
+    }
+
+    let mut archive = Archive::new(Cursor::new(tar_bytes));
+    let mut paths = BTreeSet::new();
+    let mut result = Vec::new();
+    for item in archive
+        .entries()
+        .context("failed to parse MPKG tar stream")?
+    {
+        let mut item = item.context("failed to read MPKG entry")?;
+        let entry_type = item.header().entry_type();
+        if entry_type == EntryType::Directory {
+            continue;
+        }
+        if !entry_type.is_file() {
+            bail!("MPKG contains unsupported tar entry type");
+        }
+        let path = normalize_path(&item.path().context("invalid MPKG entry path")?)?;
+        if path != MANIFEST_PATH
+            && !path.starts_with("signatures/")
+            && !path.starts_with("payload/")
+        {
+            bail!("MPKG contains entry outside allowed roots: {path}");
+        }
+        if !paths.insert(path.clone()) {
+            bail!("MPKG contains duplicate entry: {path}");
+        }
+        let mode = item.header().mode().unwrap_or(0o644);
+        let mut data = Vec::new();
+        item.read_to_end(&mut data)
+            .context("failed to read MPKG entry data")?;
+        result.push(MpkgEntry { path, data, mode });
+    }
+    Ok(result)
+}
+
+fn write_mpkg(path: &Path, entries: &[MpkgEntry]) -> Result<()> {
+    let mut tar_bytes = Vec::new();
+    {
+        let mut builder = Builder::new(&mut tar_bytes);
+        for entry in entries {
+            let mut header = Header::new_ustar();
+            header.set_size(entry.data.len() as u64);
+            header.set_mode(entry.mode);
+            header.set_uid(0);
+            header.set_gid(0);
+            header.set_mtime(0);
+            header.set_entry_type(EntryType::Regular);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, &entry.path, Cursor::new(&entry.data))
+                .with_context(|| format!("failed to append {}", entry.path))?;
+        }
+        builder
+            .finish()
+            .context("failed to finish MPKG tar stream")?;
+    }
+    let expanded_size = u64::try_from(tar_bytes.len()).context("MPKG is too large")?;
+    let mut header = [0u8; MPKG_HEADER_LEN];
+    header[..4].copy_from_slice(MPKG_MAGIC);
+    header[4..6].copy_from_slice(&1u16.to_le_bytes());
+    header[8..10].copy_from_slice(&(MPKG_HEADER_LEN as u16).to_le_bytes());
+    header[12..20].copy_from_slice(&expanded_size.to_le_bytes());
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    let mut temporary = NamedTempFile::new_in(path.parent().unwrap_or_else(|| Path::new(".")))
+        .context("failed to create temporary MPKG")?;
+    temporary
+        .write_all(&header)
+        .and_then(|_| temporary.write_all(&tar_bytes))
+        .context("failed to write temporary MPKG")?;
+    temporary
+        .flush()
+        .context("failed to flush temporary MPKG")?;
+    temporary
+        .persist(path)
+        .map_err(|error| error.error)
+        .with_context(|| format!("failed to replace {}", path.display()))?;
+    Ok(())
+}
+
+fn reject_chain_and_unknown_signatures(entries: &[MpkgEntry]) -> Result<()> {
+    for entry in entries {
+        if entry.path.starts_with("signatures/chain/") {
+            bail!("MPKG v1 does not support intermediate certificate chains");
+        }
+        if entry.path.starts_with("signatures/")
+            && entry.path != CERTIFICATE_PATH
+            && entry.path != MANIFEST_SIGNATURE_PATH
+        {
+            bail!("unknown MPKG signature entry: {}", entry.path);
+        }
+    }
+    Ok(())
+}
+
+fn verify_manifest_signature(
+    certificate: &DeveloperCertificate,
+    manifest: &[u8],
+    entries: &[MpkgEntry],
+) -> Result<()> {
+    let signature_bytes: [u8; SIGNATURE_LEN] = entry(entries, MANIFEST_SIGNATURE_PATH)?
+        .data
+        .as_slice()
+        .try_into()
+        .map_err(|_| anyhow!("manifest.sig must contain exactly 64 bytes"))?;
+    let verifier = VerifyingKey::from_bytes(&certificate.subject_public_key)
+        .context("certificate contains invalid subject public key")?;
+    verifier
+        .verify_strict(
+            &manifest_signing_message(manifest),
+            &Signature::from_bytes(&signature_bytes),
+        )
+        .context("manifest signature verification failed")
+}
+
+fn verify_payload(manifest: &toml::Value, entries: &[MpkgEntry]) -> Result<()> {
+    let package_kind = manifest
+        .get("package")
+        .and_then(|package| package.get("kind"))
+        .and_then(toml::Value::as_str);
+    if !matches!(package_kind, None | Some("binary") | Some("application")) {
+        bail!("unsupported package kind");
+    }
+    let files = manifest
+        .get("file")
+        .and_then(toml::Value::as_array)
+        .ok_or_else(|| anyhow!("manifest must contain at least one [[file]]"))?;
+    if files.is_empty() {
+        bail!("manifest must contain at least one [[file]]");
+    }
+    let mut expected_paths = BTreeSet::new();
+    for file in files {
+        let path = file
+            .get("path")
+            .and_then(toml::Value::as_str)
+            .ok_or_else(|| anyhow!("file.path is missing"))?;
+        let payload_path = manifest_payload_path(package_kind, path)?;
+        if !expected_paths.insert(payload_path.clone()) {
+            bail!("manifest contains duplicate payload path: {payload_path}");
+        }
+        let payload = entry(entries, &payload_path)?;
+        let size = file
+            .get("size")
+            .and_then(toml::Value::as_integer)
+            .and_then(|value| u64::try_from(value).ok())
+            .ok_or_else(|| anyhow!("file.size is invalid"))?;
+        if payload.data.len() as u64 != size {
+            bail!("payload size mismatch: {payload_path}");
+        }
+        let digest = file
+            .get("digest")
+            .and_then(toml::Value::as_str)
+            .ok_or_else(|| anyhow!("file.digest is missing"))?;
+        let expected_digest = decode_sha256(digest)?;
+        if Sha256::digest(&payload.data).as_slice() != expected_digest {
+            bail!("payload digest mismatch: {payload_path}");
+        }
+    }
+    for payload in entries
+        .iter()
+        .filter(|entry| entry.path.starts_with("payload/"))
+    {
+        if !expected_paths.contains(&payload.path) {
+            bail!("manifest does not declare payload: {}", payload.path);
+        }
+    }
+    Ok(())
+}
+
+fn manifest_payload_path(package_kind: Option<&str>, path: &str) -> Result<String> {
+    if path.starts_with('/') {
+        return Ok(format!("payload/root{path}"));
+    }
+    let relative = path
+        .strip_prefix("$/")
+        .ok_or_else(|| anyhow!("file.path must be absolute or start with $/"))?;
+    match package_kind {
+        Some("application") => Ok(format!("payload/bundle/{relative}")),
+        None | Some("binary") => Ok(format!("payload/root/bin/{relative}")),
+        _ => bail!("unsupported package kind"),
+    }
+}
+
+fn package_id(manifest: &toml::Value) -> Result<&str> {
+    manifest
+        .get("package")
+        .and_then(|package| package.get("id"))
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| anyhow!("manifest is missing package.id"))
+}
+
+fn entry<'a>(entries: &'a [MpkgEntry], path: &str) -> Result<&'a MpkgEntry> {
+    entries
+        .iter()
+        .find(|entry| entry.path == path)
+        .ok_or_else(|| anyhow!("MPKG is missing {path}"))
+}
+
+fn manifest_signing_message(manifest: &[u8]) -> Vec<u8> {
+    let digest = Sha256::digest(manifest);
+    let mut message = Vec::with_capacity(MANIFEST_DOMAIN.len() + digest.len());
+    message.extend_from_slice(MANIFEST_DOMAIN);
+    message.extend_from_slice(&digest);
+    message
+}
+
+fn decode_sha256(value: &str) -> Result<[u8; 32]> {
+    let hex = value
+        .strip_prefix("sha256:")
+        .ok_or_else(|| anyhow!("file.digest must use sha256:"))?;
+    if hex.len() != 64 {
+        bail!("SHA-256 digest must contain 64 hexadecimal characters");
+    }
+    let mut output = [0u8; 32];
+    for (index, byte) in output.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16)
+            .context("SHA-256 digest contains non-hexadecimal characters")?;
+    }
+    Ok(output)
+}
+
+fn normalize_path(path: &Path) -> Result<String> {
+    let value = path
+        .to_str()
+        .ok_or_else(|| anyhow!("MPKG path is not UTF-8"))?
+        .trim_start_matches("./");
+    if value.is_empty()
+        || value.starts_with('/')
+        || value.contains("//")
+        || value.contains('\\')
+        || value
+            .split('/')
+            .any(|segment| segment == "." || segment == "..")
+    {
+        bail!("invalid MPKG path: {value}");
+    }
+    Ok(value.to_string())
+}
+
+fn read_u16(bytes: &[u8], offset: usize) -> u16 {
+    u16::from_le_bytes([bytes[offset], bytes[offset + 1]])
+}
+
+fn read_u64(bytes: &[u8], offset: usize) -> u64 {
+    u64::from_le_bytes([
+        bytes[offset],
+        bytes[offset + 1],
+        bytes[offset + 2],
+        bytes[offset + 3],
+        bytes[offset + 4],
+        bytes[offset + 5],
+        bytes[offset + 6],
+        bytes[offset + 7],
+    ])
+}
+
+fn hex(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        output.push(TABLE[(byte >> 4) as usize] as char);
+        output.push(TABLE[(byte & 0x0f) as usize] as char);
+    }
+    output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manifest_path_mapping_matches_mpkg_v1() {
+        assert_eq!(
+            manifest_payload_path(Some("binary"), "/bin/example").unwrap(),
+            "payload/root/bin/example"
+        );
+        assert_eq!(
+            manifest_payload_path(Some("application"), "$/entry.elf").unwrap(),
+            "payload/bundle/entry.elf"
+        );
+    }
+
+    #[test]
+    fn rejects_glob_like_and_parent_paths() {
+        assert!(normalize_path(Path::new("payload/../manifest.toml")).is_err());
+        assert!(normalize_path(Path::new("/manifest.toml")).is_err());
+    }
+}

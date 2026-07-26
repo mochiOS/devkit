@@ -16,3 +16,4 @@ tar = "0.4"
 flate2 = "1"
 tempfile = "3"
 reqwest = { version = "0.13.4", features = ["blocking", "json", "rustls"] }
+mochios-certificate = { path = "../../../../user/crates/certificate" }

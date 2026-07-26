@@ -1031,6 +1031,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mochios-certificate"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "sha2",
+]
+
+[[package]]
 name = "mpack"
 version = "0.1.0"
 dependencies = [
@@ -1052,6 +1060,7 @@ dependencies = [
  "clap",
  "ed25519-dalek",
  "flate2",
+ "mochios-certificate",
  "rand_core 0.6.4",
  "reqwest",
  "serde",
