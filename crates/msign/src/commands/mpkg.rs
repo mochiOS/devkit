@@ -544,35 +544,23 @@ mod tests {
 
         let (root_key, root_public) = crypto::generate_keypair();
         let (developer_key, developer_public) = crypto::generate_keypair();
-        let root_key_path = temporary.path().join("root.key");
         let root_public_path = temporary.path().join("root.pub");
         let developer_key_path = temporary.path().join("application.key");
         let certificate_path = temporary.path().join("developer.cert");
-        crypto::write_private_key(&root_key_path, &root_key).unwrap();
         crypto::write_public_key(&root_public_path, &root_public).unwrap();
         crypto::write_private_key(&developer_key_path, &developer_key).unwrap();
-
-        let root_public_bytes = root_public.to_bytes();
-        let developer_public_bytes = developer_public.to_bytes();
-        let mut certificate = DeveloperCertificate {
-            serial_number: 1,
-            issuer_key_id: key_id(&root_public_bytes),
-            developer_id: "org.example.developer".to_string(),
-            subject_key_id: key_id(&developer_public_bytes),
-            subject_public_key: developer_public_bytes,
-            not_before: 1_700_000_000,
-            not_after: 1_900_000_000,
-            key_usage: KEY_USAGE_PACKAGE_SIGNING,
-            package_id_scopes: vec![PackageIdScope::exact("org.example.application")],
-            allowed_capabilities: vec!["window.create".to_string()],
-            signature: [0; SIGNATURE_LEN],
-        };
-        certificate.signature = root_key
-            .sign(&certificate.signing_message().unwrap())
-            .to_bytes();
-        let mut certificate_bytes = vec![0; certificate.encoded_len().unwrap()];
-        certificate.encode(&mut certificate_bytes).unwrap();
-        fs::write(&certificate_path, certificate_bytes).unwrap();
+        write_test_certificate(
+            &certificate_path,
+            &root_key,
+            TestCertificateSpec {
+                root_public_bytes: &root_public.to_bytes(),
+                developer_public_bytes: &developer_public.to_bytes(),
+                package_id_scopes: vec![PackageIdScope::exact("org.example.application")],
+                allowed_capabilities: vec!["window.create".to_string()],
+                not_before: 1_700_000_000,
+                not_after: 1_900_000_000,
+            },
+        );
 
         let signed = temporary.path().join("signed.mpkg");
         sign(PackageSignArgs {
@@ -614,6 +602,216 @@ mod tests {
             unix_time: 1_800_000_000,
         })
         .is_err());
+
+        let mut undeclared_entries = read_mpkg(&signed).unwrap();
+        undeclared_entries.push(MpkgEntry {
+            path: "payload/bundle/extra.dat".to_string(),
+            data: b"extra".to_vec(),
+            mode: 0o644,
+        });
+        let undeclared = temporary.path().join("undeclared.mpkg");
+        write_mpkg(&undeclared, &undeclared_entries).unwrap();
+        assert!(verify(PackageVerifyArgs {
+            package: undeclared,
+            root_public_key: temporary.path().join("root.pub"),
+            unix_time: 1_800_000_000,
+        })
+        .is_err());
+    }
+
+    #[test]
+    fn signing_rejects_key_scope_capability_and_time_mismatches() {
+        let temporary = tempfile::tempdir().unwrap();
+        let unsigned = write_test_unsigned_package(temporary.path(), &["window.create"]);
+        let (root_key, root_public) = crypto::generate_keypair();
+        let (developer_key, developer_public) = crypto::generate_keypair();
+        let (other_key, other_public) = crypto::generate_keypair();
+        let developer_key_path = temporary.path().join("application.key");
+        let other_key_path = temporary.path().join("other.key");
+        crypto::write_private_key(&developer_key_path, &developer_key).unwrap();
+        crypto::write_private_key(&other_key_path, &other_key).unwrap();
+
+        let valid_certificate = temporary.path().join("valid.cert");
+        write_test_certificate(
+            &valid_certificate,
+            &root_key,
+            TestCertificateSpec {
+                root_public_bytes: &root_public.to_bytes(),
+                developer_public_bytes: &developer_public.to_bytes(),
+                package_id_scopes: vec![PackageIdScope::exact("org.example.application")],
+                allowed_capabilities: vec!["window.create".to_string()],
+                not_before: 1_700_000_000,
+                not_after: 1_900_000_000,
+            },
+        );
+        assert!(sign(PackageSignArgs {
+            package: unsigned.clone(),
+            certificate: valid_certificate,
+            key: other_key_path,
+            output: Some(temporary.path().join("key-mismatch.mpkg")),
+            unix_time: Some(1_800_000_000),
+            replace_signature: false,
+        })
+        .is_err());
+
+        let scope_certificate = temporary.path().join("scope.cert");
+        write_test_certificate(
+            &scope_certificate,
+            &root_key,
+            TestCertificateSpec {
+                root_public_bytes: &root_public.to_bytes(),
+                developer_public_bytes: &developer_public.to_bytes(),
+                package_id_scopes: vec![PackageIdScope::exact("org.example.other")],
+                allowed_capabilities: vec!["window.create".to_string()],
+                not_before: 1_700_000_000,
+                not_after: 1_900_000_000,
+            },
+        );
+        assert!(sign(PackageSignArgs {
+            package: unsigned.clone(),
+            certificate: scope_certificate,
+            key: developer_key_path.clone(),
+            output: Some(temporary.path().join("scope-mismatch.mpkg")),
+            unix_time: Some(1_800_000_000),
+            replace_signature: false,
+        })
+        .is_err());
+
+        let capability_certificate = temporary.path().join("capability.cert");
+        write_test_certificate(
+            &capability_certificate,
+            &root_key,
+            TestCertificateSpec {
+                root_public_bytes: &root_public.to_bytes(),
+                developer_public_bytes: &developer_public.to_bytes(),
+                package_id_scopes: vec![PackageIdScope::exact("org.example.application")],
+                allowed_capabilities: Vec::new(),
+                not_before: 1_700_000_000,
+                not_after: 1_900_000_000,
+            },
+        );
+        assert!(sign(PackageSignArgs {
+            package: unsigned.clone(),
+            certificate: capability_certificate,
+            key: developer_key_path.clone(),
+            output: Some(temporary.path().join("capability-mismatch.mpkg")),
+            unix_time: Some(1_800_000_000),
+            replace_signature: false,
+        })
+        .is_err());
+
+        let expired_certificate = temporary.path().join("expired.cert");
+        write_test_certificate(
+            &expired_certificate,
+            &root_key,
+            TestCertificateSpec {
+                root_public_bytes: &root_public.to_bytes(),
+                developer_public_bytes: &developer_public.to_bytes(),
+                package_id_scopes: vec![PackageIdScope::exact("org.example.application")],
+                allowed_capabilities: vec!["window.create".to_string()],
+                not_before: 1_700_000_000,
+                not_after: 1_750_000_000,
+            },
+        );
+        assert!(sign(PackageSignArgs {
+            package: unsigned,
+            certificate: expired_certificate,
+            key: developer_key_path,
+            output: Some(temporary.path().join("expired.mpkg")),
+            unix_time: Some(1_800_000_000),
+            replace_signature: false,
+        })
+        .is_err());
+
+        assert_ne!(developer_public.to_bytes(), other_public.to_bytes());
+    }
+
+    #[test]
+    fn parser_rejects_unknown_top_level_entries() {
+        let temporary = tempfile::tempdir().unwrap();
+        let invalid = temporary.path().join("invalid.mpkg");
+        write_mpkg(
+            &invalid,
+            &[
+                MpkgEntry {
+                    path: MANIFEST_PATH.to_string(),
+                    data: b"format = 1\n".to_vec(),
+                    mode: 0o644,
+                },
+                MpkgEntry {
+                    path: "metadata/extra.toml".to_string(),
+                    data: b"extra".to_vec(),
+                    mode: 0o644,
+                },
+            ],
+        )
+        .unwrap();
+
+        assert!(read_mpkg(&invalid).is_err());
+    }
+
+    #[test]
+    fn parser_rejects_duplicate_entries() {
+        let temporary = tempfile::tempdir().unwrap();
+        let invalid = temporary.path().join("duplicate.mpkg");
+        write_mpkg(
+            &invalid,
+            &[
+                MpkgEntry {
+                    path: MANIFEST_PATH.to_string(),
+                    data: b"format = 1\n".to_vec(),
+                    mode: 0o644,
+                },
+                MpkgEntry {
+                    path: "payload/bundle/entry.elf".to_string(),
+                    data: b"first".to_vec(),
+                    mode: 0o644,
+                },
+                MpkgEntry {
+                    path: "payload/bundle/entry.elf".to_string(),
+                    data: b"second".to_vec(),
+                    mode: 0o644,
+                },
+            ],
+        )
+        .unwrap();
+
+        assert!(read_mpkg(&invalid).is_err());
+    }
+
+    struct TestCertificateSpec<'a> {
+        root_public_bytes: &'a [u8; 32],
+        developer_public_bytes: &'a [u8; 32],
+        package_id_scopes: Vec<PackageIdScope>,
+        allowed_capabilities: Vec<String>,
+        not_before: u64,
+        not_after: u64,
+    }
+
+    fn write_test_certificate(
+        path: &Path,
+        root_key: &ed25519_dalek::SigningKey,
+        spec: TestCertificateSpec<'_>,
+    ) {
+        let mut certificate = DeveloperCertificate {
+            serial_number: 1,
+            issuer_key_id: key_id(spec.root_public_bytes),
+            developer_id: "org.example.developer".to_string(),
+            subject_key_id: key_id(spec.developer_public_bytes),
+            subject_public_key: *spec.developer_public_bytes,
+            not_before: spec.not_before,
+            not_after: spec.not_after,
+            key_usage: KEY_USAGE_PACKAGE_SIGNING,
+            package_id_scopes: spec.package_id_scopes,
+            allowed_capabilities: spec.allowed_capabilities,
+            signature: [0; SIGNATURE_LEN],
+        };
+        certificate.signature = root_key
+            .sign(&certificate.signing_message().unwrap())
+            .to_bytes();
+        let mut certificate_bytes = vec![0; certificate.encoded_len().unwrap()];
+        certificate.encode(&mut certificate_bytes).unwrap();
+        fs::write(path, certificate_bytes).unwrap();
     }
 
     fn write_test_unsigned_package(directory: &Path, capabilities: &[&str]) -> std::path::PathBuf {

@@ -254,10 +254,52 @@ mod tests {
     }
 
     #[test]
+    fn generated_tar_entries_are_in_stable_order() {
+        let temporary = tempfile::tempdir().unwrap();
+        let payload = temporary.path().join("payload");
+        fs::create_dir_all(payload.join("bundle")).unwrap();
+        fs::write(payload.join("bundle/z.txt"), b"z").unwrap();
+        fs::write(payload.join("bundle/a.txt"), b"a").unwrap();
+        let output = temporary.path().join("app.mpkg");
+
+        write_mpkg(
+            &output,
+            b"format = 1\n",
+            &collect_payload_entries(&payload).unwrap(),
+        )
+        .unwrap();
+
+        let bytes = fs::read(output).unwrap();
+        let mut archive = tar::Archive::new(Cursor::new(&bytes[MPKG_HEADER_LEN..]));
+        let paths = archive
+            .entries()
+            .unwrap()
+            .map(|entry| {
+                entry
+                    .unwrap()
+                    .path()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            paths,
+            vec![
+                "manifest.toml".to_string(),
+                "payload/bundle/a.txt".to_string(),
+                "payload/bundle/z.txt".to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn rejects_forbidden_payload_paths() {
         assert!(validate_mpkg_path("payload/../manifest.toml").is_err());
         assert!(validate_mpkg_path("payload\\bundle\\entry.elf").is_err());
         assert!(validate_mpkg_path("signatures/manifest.sig").is_err());
+        assert!(validate_mpkg_path("metadata/extra.toml").is_err());
     }
 
     #[cfg(unix)]

@@ -339,7 +339,8 @@ mod tests {
 
     #[test]
     fn obtain_request_contains_only_public_certificate_inputs() {
-        let (api_base, received, server) = serve_once(200, r#"{"certificate_base64":"AA=="}"#);
+        let (api_base, received, server) =
+            serve_once(200, r#"{"certificate_base64":"AA=="}"#.to_string());
         let request = CertificateRequest {
             developer_id: "org.example.developer".to_string(),
             subject_public_key: "PUBLIC_KEY".to_string(),
@@ -366,7 +367,8 @@ mod tests {
 
     #[test]
     fn certificate_api_error_is_not_success() {
-        let (api_base, _received, server) = serve_once(403, "Developer is not verified");
+        let (api_base, _received, server) =
+            serve_once(403, "Developer is not verified".to_string());
         let request = CertificateRequest {
             developer_id: "org.example.developer".to_string(),
             subject_public_key: "PUBLIC_KEY".to_string(),
@@ -383,9 +385,28 @@ mod tests {
         assert!(error.contains("Developer is not verified"));
     }
 
+    #[test]
+    fn certificate_response_size_is_limited() {
+        let oversized = "x".repeat(MAX_CERTIFICATE_RESPONSE_BYTES as usize + 1);
+        let (api_base, _received, server) = serve_once(200, oversized);
+        let request = CertificateRequest {
+            developer_id: "org.example.developer".to_string(),
+            subject_public_key: "PUBLIC_KEY".to_string(),
+            package_id: "org.example.application".to_string(),
+            capabilities: Vec::new(),
+        };
+
+        let error = request_certificate(&api_base, None, &request)
+            .unwrap_err()
+            .to_string();
+        server.join().unwrap();
+
+        assert!(error.contains("certificate response is too large"));
+    }
+
     fn serve_once(
         status: u16,
-        response_body: &'static str,
+        response_body: String,
     ) -> (String, mpsc::Receiver<String>, thread::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let api_base = format!("http://{}", listener.local_addr().unwrap());
