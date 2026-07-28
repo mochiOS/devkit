@@ -2,11 +2,7 @@ use std::fs;
 
 use anyhow::{bail, Context, Result};
 
-use crate::{
-    cli::NewArgs,
-    manifest::KomeManifest,
-    project,
-};
+use crate::{cli::NewArgs, manifest::KomeManifest, project};
 
 pub fn run(args: NewArgs) -> Result<()> {
     let project_dir = std::env::current_dir()?.join(&args.name);
@@ -29,9 +25,15 @@ pub fn run(args: NewArgs) -> Result<()> {
 
     fs::write(
         project_dir.join("src/main.kome"),
-        include_str!("../templates/main.kome")
+        include_str!("../templates/main.kome"),
     )
-        .context("failed to write src/main.kome")?;
+    .context("failed to write src/main.kome")?;
+
+    fs::write(
+        project_dir.join(".gitignore"),
+        "target/\ndist/\nkeys/*.key\n",
+    )
+    .context("failed to write .gitignore")?;
 
     println!("created project: {}", project_dir.display());
 
