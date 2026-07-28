@@ -1033,6 +1033,7 @@ dependencies = [
 [[package]]
 name = "mochios-certificate"
 version = "0.1.0"
+source = "git+https://github.com/mochiOS/syscalls#970731c7f53f1b250cd5a59e6bf559e2da85bbbb"
 dependencies = [
  "ed25519-dalek",
  "sha2",
