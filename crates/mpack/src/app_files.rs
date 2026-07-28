@@ -68,7 +68,10 @@ fn validate_manifest_paths(project_dir: &Path, manifest: &KomeManifest) -> Resul
 
         let path = project_dir.join(resource);
         if path.is_dir() {
-            bail!("resource directories are not supported yet: {}", path.display());
+            bail!(
+                "resource directories are not supported yet: {}",
+                path.display()
+            );
         }
     }
 

@@ -3,12 +3,7 @@ use anyhow::{bail, Result};
 use std::env;
 use std::path::{Path, PathBuf};
 
-const BINARIES: &[&str] = &[
-    "kome",
-    "komec",
-    "msign",
-    "mpack",
-];
+const BINARIES: &[&str] = &["kome", "komec", "msign", "mpack"];
 
 pub fn run() -> Result<()> {
     let home = kome_home()?;

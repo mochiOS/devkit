@@ -20,6 +20,6 @@ impl PackageSignature {
             "mochios-package-signature-v1\npackage_hash={}\nkey_id={}\npublic_key={}\n",
             package_hash, key_id, public_key
         )
-            .into_bytes()
+        .into_bytes()
     }
 }

@@ -5,8 +5,7 @@ use serde::Deserialize;
 
 use crate::{
     cli::VerifyArgs,
-    crypto,
-    package,
+    crypto, package,
     signature::{PackageSignature, SIGNATURE_ALGORITHM, SIGNATURE_VERSION},
 };
 
@@ -76,10 +75,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     Ok(())
 }
 
-fn verify_registered_public_key(
-    public_key: &str,
-    api_base: Option<String>,
-) -> Result<()> {
+fn verify_registered_public_key(public_key: &str, api_base: Option<String>) -> Result<()> {
     let key = fetch_registered_public_key(public_key, api_base)?;
 
     if public_key_to_path_segment(&key.public_key) != public_key_to_path_segment(public_key) {
@@ -93,10 +89,7 @@ fn verify_registered_public_key(
     Ok(())
 }
 
-fn fetch_registered_public_key(
-    public_key: &str,
-    api_base: Option<String>,
-) -> Result<ApiPublicKey> {
+fn fetch_registered_public_key(public_key: &str, api_base: Option<String>) -> Result<ApiPublicKey> {
     let api_base = api_base.unwrap_or_else(|| DEFAULT_API_BASE.to_string());
     let public_key_path = public_key_to_path_segment(public_key);
 
@@ -116,7 +109,10 @@ fn fetch_registered_public_key(
 
     if !status.is_success() {
         let body = response.text().unwrap_or_default();
-        bail!("This signature doesn't match any registered public keys. Response body: {}", body);
+        bail!(
+            "This signature doesn't match any registered public keys. Response body: {}",
+            body
+        );
     }
 
     let body: PublicKeyResponse = response
@@ -127,10 +123,7 @@ fn fetch_registered_public_key(
 }
 
 fn normalize_base64(value: &str) -> String {
-    value
-        .chars()
-        .filter(|c| !c.is_ascii_whitespace())
-        .collect()
+    value.chars().filter(|c| !c.is_ascii_whitespace()).collect()
 }
 
 fn public_key_to_path_segment(public_key: &str) -> String {

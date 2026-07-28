@@ -29,12 +29,7 @@ const DEVKIT_ASSETS: &[(&str, &str)] = &[
     ("mpack", "x86_64-linux-mpack-stable"),
 ];
 
-const SHIM_BINARIES: &[&str] = &[
-    "kome",
-    "komec",
-    "msign",
-    "mpack",
-];
+const SHIM_BINARIES: &[&str] = &["kome", "komec", "msign", "mpack"];
 
 pub fn run(channel: &str, force: bool) -> Result<()> {
     ensure_supported_channel(channel)?;
@@ -66,26 +61,11 @@ pub fn run(channel: &str, force: bool) -> Result<()> {
 
     let mut components = BTreeMap::new();
 
-    install_komec(
-        &client,
-        &komec_release,
-        &bin_dir,
-        &mut components,
-    )?;
+    install_komec(&client, &komec_release, &bin_dir, &mut components)?;
 
-    install_std(
-        &client,
-        &std_release,
-        &std_dir,
-        &mut components,
-    )?;
+    install_std(&client, &std_release, &std_dir, &mut components)?;
 
-    install_devkit(
-        &client,
-        &devkit_release,
-        &bin_dir,
-        &mut components,
-    )?;
+    install_devkit(&client, &devkit_release, &bin_dir, &mut components)?;
 
     let mut config = load_or_create_config(&home)?;
     config.default_toolchain = channel.to_string();
@@ -234,8 +214,7 @@ fn refresh_shims(home: &Path, channel: &str) -> Result<()> {
         let dst = shim_dir.join(binary);
 
         if dst.exists() || dst.is_symlink() {
-            fs::remove_file(&dst)
-                .with_context(|| format!("failed to remove {}", dst.display()))?;
+            fs::remove_file(&dst).with_context(|| format!("failed to remove {}", dst.display()))?;
         }
 
         create_symlink(&src, &dst)?;
@@ -246,8 +225,13 @@ fn refresh_shims(home: &Path, channel: &str) -> Result<()> {
 
 #[cfg(unix)]
 fn create_symlink(src: &Path, dst: &Path) -> Result<()> {
-    symlink(src, dst)
-        .with_context(|| format!("failed to create symlink {} -> {}", dst.display(), src.display()))?;
+    symlink(src, dst).with_context(|| {
+        format!(
+            "failed to create symlink {} -> {}",
+            dst.display(),
+            src.display()
+        )
+    })?;
 
     Ok(())
 }
@@ -278,7 +262,10 @@ fn make_executable(_path: &Path) -> Result<()> {
 
 fn ensure_supported_channel(channel: &str) -> Result<()> {
     if channel != CHANNEL_STABLE {
-        bail!("unsupported channel '{}'. currently only 'stable' is supported", channel);
+        bail!(
+            "unsupported channel '{}'. currently only 'stable' is supported",
+            channel
+        );
     }
 
     Ok(())

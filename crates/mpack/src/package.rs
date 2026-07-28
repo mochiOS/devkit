@@ -72,8 +72,7 @@ fn write_package(
     let temp = NamedTempFile::new().context("failed to create temporary package")?;
 
     {
-        let file = File::create(temp.path())
-            .context("failed to create temporary package file")?;
+        let file = File::create(temp.path()).context("failed to create temporary package file")?;
 
         let encoder = GzEncoder::new(file, Compression::default());
         let mut builder = Builder::new(encoder);
@@ -109,8 +108,7 @@ fn write_package(
 }
 
 fn append_file<W: Write>(builder: &mut Builder<W>, src: &Path, dest: &Path) -> Result<()> {
-    let data = fs::read(src)
-        .with_context(|| format!("failed to read {}", src.display()))?;
+    let data = fs::read(src).with_context(|| format!("failed to read {}", src.display()))?;
 
     append_bytes(builder, dest, &data, file_mode(src)?)
 }
@@ -137,8 +135,8 @@ fn append_bytes<W: Write>(
 fn file_mode(path: &Path) -> Result<u32> {
     use std::os::unix::fs::PermissionsExt;
 
-    let metadata = fs::metadata(path)
-        .with_context(|| format!("failed to stat {}", path.display()))?;
+    let metadata =
+        fs::metadata(path).with_context(|| format!("failed to stat {}", path.display()))?;
 
     Ok(metadata.permissions().mode() & 0o777)
 }

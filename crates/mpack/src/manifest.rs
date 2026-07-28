@@ -71,11 +71,10 @@ pub struct RuntimeCapabilities {
 pub fn read_kome_manifest(project_dir: &Path) -> Result<KomeManifest> {
     let path = project_dir.join("Kome.toml");
 
-    let text = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let text =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
 
-    toml::from_str(&text)
-        .with_context(|| format!("failed to parse {}", path.display()))
+    toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))
 }
 
 pub fn make_about_toml(manifest: &KomeManifest) -> AboutToml {
@@ -98,8 +97,7 @@ pub fn make_runtime_manifest(manifest: &KomeManifest) -> RuntimeManifestToml {
             name: manifest.package.name.clone(),
             entry: format!(
                 "/applications/{}.app/{}",
-                manifest.package.name,
-                manifest.app.entry
+                manifest.package.name, manifest.app.entry
             ),
         },
         capabilities: RuntimeCapabilities {

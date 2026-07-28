@@ -2,8 +2,7 @@ use anyhow::{Context, Result};
 
 use crate::{
     cli::SignArgs,
-    crypto,
-    package,
+    crypto, package,
     signature::{PackageSignature, SIGNATURE_ALGORITHM, SIGNATURE_VERSION},
 };
 
@@ -14,8 +13,7 @@ pub fn run(args: SignArgs) -> Result<()> {
 
     let package_hash = package::calculate_package_hash(&args.package)?;
 
-    let message =
-        PackageSignature::signing_message(&package_hash, &args.key_id, &public_key_b64);
+    let message = PackageSignature::signing_message(&package_hash, &args.key_id, &public_key_b64);
 
     let signature_b64 = crypto::sign(&signing_key, &message);
 

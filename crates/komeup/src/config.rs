@@ -62,8 +62,8 @@ pub fn config_path(home: &Path) -> PathBuf {
 pub fn load_config(home: &Path) -> Result<KomeupConfig> {
     let path = config_path(home);
 
-    let text = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let text =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
 
     let config = toml::from_str::<KomeupConfig>(&text)
         .with_context(|| format!("failed to parse {}", path.display()))?;
@@ -82,16 +82,13 @@ pub fn load_or_create_config(home: &Path) -> Result<KomeupConfig> {
 }
 
 pub fn save_config(home: &Path, config: &KomeupConfig) -> Result<()> {
-    fs::create_dir_all(home)
-        .with_context(|| format!("failed to create {}", home.display()))?;
+    fs::create_dir_all(home).with_context(|| format!("failed to create {}", home.display()))?;
 
     let path = config_path(home);
 
-    let text = toml::to_string_pretty(config)
-        .context("failed to serialize komeup config")?;
+    let text = toml::to_string_pretty(config).context("failed to serialize komeup config")?;
 
-    fs::write(&path, text)
-        .with_context(|| format!("failed to write {}", path.display()))?;
+    fs::write(&path, text).with_context(|| format!("failed to write {}", path.display()))?;
 
     Ok(())
 }

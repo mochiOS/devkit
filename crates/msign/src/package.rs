@@ -59,7 +59,10 @@ pub fn read_signature(package: &Path) -> Result<PackageSignature> {
     let decoder = GzDecoder::new(file);
     let mut archive = Archive::new(decoder);
 
-    for entry in archive.entries().context("failed to read package entries")? {
+    for entry in archive
+        .entries()
+        .context("failed to read package entries")?
+    {
         let mut entry = entry.context("failed to read package entry")?;
         let path = entry.path().context("failed to read package entry path")?;
 
@@ -121,7 +124,10 @@ fn read_entries_without_signature(package: &Path) -> Result<Vec<PackageEntry>> {
 
     let mut entries = Vec::new();
 
-    for entry in archive.entries().context("failed to read package entries")? {
+    for entry in archive
+        .entries()
+        .context("failed to read package entries")?
+    {
         let mut entry = entry.context("failed to read package entry")?;
 
         if !entry.header().entry_type().is_file() {

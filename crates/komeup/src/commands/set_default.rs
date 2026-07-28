@@ -1,5 +1,5 @@
-use crate::config::{kome_home, load_config, save_config};
 use crate::commands::install;
+use crate::config::{kome_home, load_config, save_config};
 use anyhow::{bail, Result};
 
 pub fn run(toolchain: &str) -> Result<()> {

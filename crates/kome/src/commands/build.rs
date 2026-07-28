@@ -1,8 +1,8 @@
+use anyhow::{bail, Context, Result};
 use std::{
     fs::{self, File},
     io::Write,
 };
-use anyhow::{bail, Context, Result};
 
 use crate::{cli::BuildArgs, project};
 
@@ -30,14 +30,13 @@ pub fn run(args: BuildArgs) -> Result<()> {
 }
 
 fn write_mock_elf(path: &std::path::Path, app_name: &str) -> Result<()> {
-    let mut file = File::create(path)
-        .with_context(|| format!("failed to create {}", path.display()))?;
+    let mut file =
+        File::create(path).with_context(|| format!("failed to create {}", path.display()))?;
 
     file.write_all(b"\x7fELF")
         .context("failed to write ELF magic")?;
 
-    file.write_all(b"\n")
-        .context("failed to write mock ELF")?;
+    file.write_all(b"\n").context("failed to write mock ELF")?;
 
     file.write_all(format!("mock executable for {}\n", app_name).as_bytes())
         .context("failed to write mock ELF body")?;

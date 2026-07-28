@@ -52,8 +52,7 @@ pub fn find_asset_exact(release: &GithubRelease, name: &str) -> Result<GithubAss
         .with_context(|| {
             format!(
                 "asset '{}' was not found in release {}",
-                name,
-                release.tag_name
+                name, release.tag_name
             )
         })
 }
@@ -62,11 +61,19 @@ pub fn find_std_asset(release: &GithubRelease) -> Result<GithubAsset> {
     let expected_with_v = format!("{}.tar.gz", release.tag_name);
     let expected_without_v = format!("{}.tar.gz", release.tag_name.trim_start_matches('v'));
 
-    if let Some(asset) = release.assets.iter().find(|asset| asset.name == expected_with_v) {
+    if let Some(asset) = release
+        .assets
+        .iter()
+        .find(|asset| asset.name == expected_with_v)
+    {
         return Ok(asset.clone());
     }
 
-    if let Some(asset) = release.assets.iter().find(|asset| asset.name == expected_without_v) {
+    if let Some(asset) = release
+        .assets
+        .iter()
+        .find(|asset| asset.name == expected_without_v)
+    {
         return Ok(asset.clone());
     }
 
@@ -75,12 +82,7 @@ pub fn find_std_asset(release: &GithubRelease) -> Result<GithubAsset> {
         .iter()
         .find(|asset| asset.name.ends_with(".tar.gz"))
         .cloned()
-        .with_context(|| {
-            format!(
-                "std archive was not found in release {}",
-                release.tag_name
-            )
-        })
+        .with_context(|| format!("std archive was not found in release {}", release.tag_name))
 }
 
 pub fn download_bytes(client: &Client, url: &str) -> Result<Vec<u8>> {

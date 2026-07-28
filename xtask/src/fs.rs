@@ -4,12 +4,10 @@ use anyhow::{Context, Result};
 
 pub fn recreate_dir(path: &Path) -> Result<()> {
     if path.exists() {
-        fs::remove_dir_all(path)
-            .with_context(|| format!("failed to remove {}", path.display()))?;
+        fs::remove_dir_all(path).with_context(|| format!("failed to remove {}", path.display()))?;
     }
 
-    fs::create_dir_all(path)
-        .with_context(|| format!("failed to create {}", path.display()))?;
+    fs::create_dir_all(path).with_context(|| format!("failed to create {}", path.display()))?;
 
     Ok(())
 }
