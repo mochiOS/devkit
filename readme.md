@@ -69,6 +69,16 @@ kome verify dist/Example.mpkg \
 
 成功したsigned MPKGはGitHub Releaseへassetとして配置できます。
 
+## Guides
+
+- [Kome package guide](docs/kome-packaging.md)
+- [MPKG v1 guide](docs/mpkg-v1.md)
+- [Developer key management](docs/developer-key-management.md)
+- [Certificate obtain guide](docs/certificate-obtain.md)
+- [Package signing guide](docs/package-signing.md)
+- [AppStore publish guide](docs/appstore-publish.md)
+- [legacy .pkg migration guide](docs/legacy-pkg-migration.md)
+
 ## Generated Files
 
 `kome new`:
