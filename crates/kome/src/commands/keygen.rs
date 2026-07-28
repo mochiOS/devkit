@@ -6,7 +6,8 @@ use crate::cli::KeygenArgs;
 
 pub fn run(args: KeygenArgs) -> Result<()> {
     let status = Command::new("msign")
-        .arg("keygen")
+        .arg("key")
+        .arg("generate")
         .arg("--private-key")
         .arg(&args.private_key)
         .arg("--public-key")

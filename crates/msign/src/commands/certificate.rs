@@ -319,6 +319,76 @@ mod tests {
     }
 
     #[test]
+    fn issue_rejects_invalid_subject_public_key_file() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root_key_path = temporary.path().join("root.key");
+        let developer_public_path = temporary.path().join("application.pub");
+        let certificate_path = temporary.path().join("developer.cert");
+        let (root_key, _) = crypto::generate_keypair();
+        crypto::write_private_key(&root_key_path, &root_key).unwrap();
+        fs::write(&developer_public_path, "not-base64").unwrap();
+
+        assert!(issue(CertificateIssueArgs {
+            root_key: None,
+            issuer_key: Some(root_key_path),
+            developer_key: None,
+            subject_public_key: Some(developer_public_path),
+            output: certificate_path,
+            serial: 7,
+            developer_id: "org.example.developer".to_string(),
+            not_before: 1_700_000_000,
+            not_after: 1_900_000_000,
+            scopes: vec!["exact:org.example.application".to_string()],
+            capabilities: vec!["window.create".to_string()],
+        })
+        .is_err());
+    }
+
+    #[test]
+    fn issue_writes_canonical_scope_and_capability_order() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root_key_path = temporary.path().join("root.key");
+        let developer_public_path = temporary.path().join("application.pub");
+        let certificate_path = temporary.path().join("developer.cert");
+        let (root_key, _) = crypto::generate_keypair();
+        let (_, developer_public) = crypto::generate_keypair();
+        crypto::write_private_key(&root_key_path, &root_key).unwrap();
+        crypto::write_public_key(&developer_public_path, &developer_public).unwrap();
+
+        issue(CertificateIssueArgs {
+            root_key: None,
+            issuer_key: Some(root_key_path),
+            developer_key: None,
+            subject_public_key: Some(developer_public_path),
+            output: certificate_path.clone(),
+            serial: 7,
+            developer_id: "org.example.developer".to_string(),
+            not_before: 1_700_000_000,
+            not_after: 1_900_000_000,
+            scopes: vec![
+                "prefix:org.example".to_string(),
+                "exact:org.example.application".to_string(),
+            ],
+            capabilities: vec!["window.create".to_string(), "process.spawn".to_string()],
+        })
+        .unwrap();
+
+        let bytes = fs::read(certificate_path).unwrap();
+        let certificate = DeveloperCertificate::decode(&bytes).unwrap();
+        assert_eq!(
+            certificate.package_id_scopes,
+            vec![
+                PackageIdScope::exact("org.example.application"),
+                PackageIdScope::prefix("org.example"),
+            ]
+        );
+        assert_eq!(
+            certificate.allowed_capabilities,
+            vec!["process.spawn".to_string(), "window.create".to_string()]
+        );
+    }
+
+    #[test]
     fn obtained_certificate_must_match_requested_public_key() {
         let (_, requested_public) = crypto::generate_keypair();
         let (_, other_public) = crypto::generate_keypair();
