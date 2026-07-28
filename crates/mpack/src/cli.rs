@@ -13,6 +13,7 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     Pack(PackArgs),
+    Create(CreateArgs),
 }
 
 #[derive(Debug, Args)]
@@ -25,6 +26,21 @@ pub struct PackArgs {
 
     #[arg(long)]
     pub release: bool,
+
+    #[arg(long)]
+    pub force: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct CreateArgs {
+    #[arg(long)]
+    pub manifest: PathBuf,
+
+    #[arg(long)]
+    pub payload: PathBuf,
+
+    #[arg(short, long)]
+    pub output: PathBuf,
 
     #[arg(long)]
     pub force: bool,
