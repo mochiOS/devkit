@@ -30,6 +30,8 @@ dist/Example-unsigned.mpkg
 
 生成されるMPKGは32 byte headerと無圧縮ustar streamで構成されます。
 `signatures/`は署名前には存在しなくても構いません。
+`msign package verify`と`msign certificate obtain`は、mochiOS上の
+`signature.service`と同じ256MiB上限を事前に適用します。
 
 Developer CertificateはCloud ConsoleまたはDeveloperCA APIから取得します。
 初期実装ではConsole併用が有効な運用です。
@@ -226,6 +228,7 @@ msign package verify app.mpkg --issuer-public-key root.pub --unix-time 175000000
 - package scope外、Capability外、期限外のCertificateでは署名しない
 - 既に署名済みのMPKGは既定で再署名しない
 - path traversal、symlink、hard link、device、FIFO、PAX/GNU拡張を拒否する
+- OS側の検証転送上限に合わせ、256MiBを超えるMPKGを拒否する
 
 ## Install
 

@@ -25,6 +25,7 @@ msign package sign \
 
 ```text
 inputがMPKG v1
+MPKGがsignature.serviceの256MiB上限内
 manifest.tomlが一意
 developer.certがMCER v1
 application.key由来の公開鍵とcertificate Subject公開鍵の一致
@@ -57,3 +58,6 @@ kome verify dist/Example.mpkg \
   --issuer-public-key root.pub \
   --unix-time 1750000000
 ```
+
+ローカル検証でも256MiBを超えるMPKGは拒否します。これはmochiOS上の
+`signature.service`が受け付けるpackage転送上限と同じです。

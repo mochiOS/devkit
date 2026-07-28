@@ -35,3 +35,6 @@ payload/bundle/...
 mtime、mode、tar header種別を固定します。symlink、hard link、device、FIFO、
 PAX/GNU拡張、絶対path、`.`、`..`、backslash、NUL、重複path、
 未知top-level entryは拒否対象です。
+
+`signature.service`の検証転送上限に合わせ、`msign package verify`と
+`msign certificate obtain`は256MiBを超えるMPKGを拒否します。
