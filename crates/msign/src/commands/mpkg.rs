@@ -163,6 +163,7 @@ fn parse_mpkg(bytes: &[u8]) -> Result<Vec<MpkgEntry>> {
     if tar_bytes.len() != expanded_size {
         bail!("MPKG expanded size does not match payload length");
     }
+    validate_ustar_stream(tar_bytes)?;
 
     let mut archive = Archive::new(Cursor::new(tar_bytes));
     let mut paths = BTreeSet::new();
@@ -196,6 +197,97 @@ fn parse_mpkg(bytes: &[u8]) -> Result<Vec<MpkgEntry>> {
         result.push(MpkgEntry { path, data, mode });
     }
     Ok(result)
+}
+
+fn validate_ustar_stream(bytes: &[u8]) -> Result<()> {
+    let mut paths = BTreeSet::new();
+    let mut offset = 0usize;
+    while offset + 512 <= bytes.len() {
+        let block = &bytes[offset..offset + 512];
+        if block.iter().all(|byte| *byte == 0) {
+            if bytes[offset..].iter().any(|byte| *byte != 0) {
+                bail!("MPKG tar stream contains data after terminator");
+            }
+            return Ok(());
+        }
+        if &block[257..263] != b"ustar\0" || &block[263..265] != b"00" {
+            bail!("MPKG tar entry is not ustar");
+        }
+        let kind = block[156];
+        if kind != b'0' && kind != 0 && kind != b'5' {
+            bail!("MPKG contains unsupported tar entry type");
+        }
+        let name = tar_cstr(&block[0..100])?;
+        let prefix = tar_cstr(&block[345..500])?;
+        let path = if prefix.is_empty() {
+            name
+        } else {
+            format!("{prefix}/{name}")
+        };
+        normalize_path(Path::new(&path))?;
+        if path != MANIFEST_PATH
+            && !path.starts_with("signatures/")
+            && !path.starts_with("payload/")
+        {
+            bail!("MPKG contains entry outside allowed roots: {path}");
+        }
+        if !paths.insert(path.clone()) {
+            bail!("MPKG contains duplicate entry: {path}");
+        }
+        let size = parse_tar_octal(&block[124..136])?;
+        let payload_start = offset
+            .checked_add(512)
+            .ok_or_else(|| anyhow!("MPKG tar stream is too large"))?;
+        let payload_end = payload_start
+            .checked_add(size)
+            .ok_or_else(|| anyhow!("MPKG tar stream is too large"))?;
+        if payload_end > bytes.len() {
+            bail!("MPKG tar entry payload exceeds stream length");
+        }
+        let padded_size = size
+            .checked_add(511)
+            .map(|value| value / 512 * 512)
+            .ok_or_else(|| anyhow!("MPKG tar entry is too large"))?;
+        offset = payload_start
+            .checked_add(padded_size)
+            .ok_or_else(|| anyhow!("MPKG tar stream is too large"))?;
+    }
+    if offset != bytes.len() && bytes[offset..].iter().any(|byte| *byte != 0) {
+        bail!("MPKG tar stream has trailing partial block");
+    }
+    Ok(())
+}
+
+fn tar_cstr(bytes: &[u8]) -> Result<String> {
+    let len = match bytes.iter().position(|byte| *byte == 0) {
+        Some(index) => index,
+        None => bytes.len(),
+    };
+    std::str::from_utf8(&bytes[..len])
+        .context("MPKG tar path is not UTF-8")
+        .map(str::to_string)
+}
+
+fn parse_tar_octal(bytes: &[u8]) -> Result<usize> {
+    let mut value = 0usize;
+    let mut seen = false;
+    for byte in bytes {
+        if *byte == 0 || *byte == b' ' {
+            break;
+        }
+        if !(b'0'..=b'7').contains(byte) {
+            bail!("MPKG tar entry has invalid size");
+        }
+        seen = true;
+        value = value
+            .checked_mul(8)
+            .and_then(|current| current.checked_add(usize::from(*byte - b'0')))
+            .ok_or_else(|| anyhow!("MPKG tar entry is too large"))?;
+    }
+    if !seen {
+        return Ok(0);
+    }
+    Ok(value)
 }
 
 fn write_mpkg(path: &Path, entries: &[MpkgEntry]) -> Result<()> {
@@ -779,6 +871,72 @@ mod tests {
         assert!(read_mpkg(&invalid).is_err());
     }
 
+    #[test]
+    fn parser_rejects_pax_and_gnu_extension_entries() {
+        let temporary = tempfile::tempdir().unwrap();
+        let pax = temporary.path().join("pax.mpkg");
+        write_raw_mpkg(
+            &pax,
+            &[
+                RawTarEntry {
+                    path: "pax-header",
+                    kind: b'x',
+                    data: b"14 path=manifest.toml\n",
+                    magic: b"ustar\0",
+                    version: b"00",
+                },
+                RawTarEntry {
+                    path: MANIFEST_PATH,
+                    kind: b'0',
+                    data: b"format = 1\n",
+                    magic: b"ustar\0",
+                    version: b"00",
+                },
+            ],
+        );
+        assert!(read_mpkg(&pax).is_err());
+
+        let gnu_long = temporary.path().join("gnu-long.mpkg");
+        write_raw_mpkg(
+            &gnu_long,
+            &[
+                RawTarEntry {
+                    path: "././@LongLink",
+                    kind: b'L',
+                    data: b"manifest.toml\0",
+                    magic: b"ustar\0",
+                    version: b"00",
+                },
+                RawTarEntry {
+                    path: MANIFEST_PATH,
+                    kind: b'0',
+                    data: b"format = 1\n",
+                    magic: b"ustar\0",
+                    version: b"00",
+                },
+            ],
+        );
+        assert!(read_mpkg(&gnu_long).is_err());
+    }
+
+    #[test]
+    fn parser_rejects_gnu_tar_headers() {
+        let temporary = tempfile::tempdir().unwrap();
+        let invalid = temporary.path().join("gnu.mpkg");
+        write_raw_mpkg(
+            &invalid,
+            &[RawTarEntry {
+                path: MANIFEST_PATH,
+                kind: b'0',
+                data: b"format = 1\n",
+                magic: b"ustar ",
+                version: b" \0",
+            }],
+        );
+
+        assert!(read_mpkg(&invalid).is_err());
+    }
+
     struct TestCertificateSpec<'a> {
         root_public_bytes: &'a [u8; 32],
         developer_public_bytes: &'a [u8; 32],
@@ -852,5 +1010,57 @@ mod tests {
             .iter_mut()
             .find(|entry| entry.path == path)
             .ok_or_else(|| anyhow!("MPKG is missing {path}"))
+    }
+
+    struct RawTarEntry<'a> {
+        path: &'a str,
+        kind: u8,
+        data: &'a [u8],
+        magic: &'a [u8; 6],
+        version: &'a [u8; 2],
+    }
+
+    fn write_raw_mpkg(path: &Path, entries: &[RawTarEntry<'_>]) {
+        let mut tar_bytes = Vec::new();
+        for entry in entries {
+            append_raw_tar_entry(&mut tar_bytes, entry);
+        }
+        tar_bytes.extend_from_slice(&[0; 1024]);
+
+        let mut header = [0u8; MPKG_HEADER_LEN];
+        header[..4].copy_from_slice(MPKG_MAGIC);
+        header[4..6].copy_from_slice(&1u16.to_le_bytes());
+        header[8..10].copy_from_slice(&(MPKG_HEADER_LEN as u16).to_le_bytes());
+        header[12..20].copy_from_slice(&(tar_bytes.len() as u64).to_le_bytes());
+        let mut bytes = Vec::from(header);
+        bytes.extend_from_slice(&tar_bytes);
+        fs::write(path, bytes).unwrap();
+    }
+
+    fn append_raw_tar_entry(output: &mut Vec<u8>, entry: &RawTarEntry<'_>) {
+        let mut header = [0u8; 512];
+        let path = entry.path.as_bytes();
+        header[..path.len()].copy_from_slice(path);
+        write_octal_field(&mut header[100..108], 0o644);
+        write_octal_field(&mut header[108..116], 0);
+        write_octal_field(&mut header[116..124], 0);
+        write_octal_field(&mut header[124..136], entry.data.len() as u64);
+        write_octal_field(&mut header[136..148], 0);
+        header[148..156].fill(b' ');
+        header[156] = entry.kind;
+        header[257..263].copy_from_slice(entry.magic);
+        header[263..265].copy_from_slice(entry.version);
+        let checksum = header.iter().map(|byte| u64::from(*byte)).sum::<u64>();
+        write_octal_field(&mut header[148..156], checksum);
+        output.extend_from_slice(&header);
+        output.extend_from_slice(entry.data);
+        let padding = (512 - entry.data.len() % 512) % 512;
+        output.resize(output.len() + padding, 0);
+    }
+
+    fn write_octal_field(field: &mut [u8], value: u64) {
+        field.fill(0);
+        let digits = format!("{:0width$o}", value, width = field.len() - 1);
+        field[..digits.len()].copy_from_slice(digits.as_bytes());
     }
 }
