@@ -50,10 +50,18 @@ msign certificate issue \
   --not-before 1700000000 \
   --not-after 1900000000 \
   --scope exact:org.example.application \
+  --capability window.create \
   --output keys/developer.cert >/dev/null
 
 kome sign --unix-time 1800000000 >/dev/null
-kome verify --issuer-public-key root.pub --unix-time 1800000000 >/dev/null
+kome verify --issuer-public-key root.pub --unix-time 1800000000 > verify.out
+grep -Fx "verified_package_id: org.example.application" verify.out >/dev/null
+grep -Fx "developer_id: org.example.developer" verify.out >/dev/null
+grep -Fx "certificate_serial: 1" verify.out >/dev/null
+grep -E "^subject_key_id: [0-9a-f]{64}$" verify.out >/dev/null
+grep -E "^manifest_digest: [0-9a-f]{64}$" verify.out >/dev/null
+grep -E "^package_digest: [0-9a-f]{64}$" verify.out >/dev/null
+grep -Fx "allowed_capability: window.create" verify.out >/dev/null
 
 test -f dist/Example.mpkg
 tail -c +33 dist/Example.mpkg | tar -tf - > signed.entries

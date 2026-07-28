@@ -124,4 +124,19 @@ mod tests {
         assert!(write_private_key(&private_path, &private_key).is_err());
         assert!(write_public_key(&public_path, &public_key).is_err());
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_key_is_written_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temporary = tempfile::tempdir().unwrap();
+        let private_path = temporary.path().join("application.key");
+        let (private_key, _) = generate_keypair();
+
+        write_private_key(&private_path, &private_key).unwrap();
+
+        let mode = fs::metadata(&private_path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
 }
