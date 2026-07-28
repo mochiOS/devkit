@@ -161,6 +161,12 @@ fn append_bytes<W: Write>(
     header.set_mode(mode & 0o777);
     header.set_uid(0);
     header.set_gid(0);
+    header
+        .set_username("root")
+        .context("failed to set MPKG tar username")?;
+    header
+        .set_groupname("root")
+        .context("failed to set MPKG tar groupname")?;
     header.set_mtime(0);
     header.set_entry_type(EntryType::Regular);
     header.set_cksum();
@@ -292,6 +298,34 @@ mod tests {
                 "payload/bundle/z.txt".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn generated_tar_identity_is_stable() {
+        let temporary = tempfile::tempdir().unwrap();
+        let payload = temporary.path().join("payload");
+        fs::create_dir_all(payload.join("bundle")).unwrap();
+        fs::write(payload.join("bundle/entry.elf"), b"elf").unwrap();
+        let output = temporary.path().join("app.mpkg");
+
+        write_mpkg(
+            &output,
+            b"format = 1\n",
+            &collect_payload_entries(&payload).unwrap(),
+        )
+        .unwrap();
+
+        let bytes = fs::read(output).unwrap();
+        let mut archive = tar::Archive::new(Cursor::new(&bytes[MPKG_HEADER_LEN..]));
+        for entry in archive.entries().unwrap() {
+            let entry = entry.unwrap();
+            let header = entry.header();
+            assert_eq!(header.uid().unwrap(), 0);
+            assert_eq!(header.gid().unwrap(), 0);
+            assert_eq!(header.username().unwrap(), Some("root"));
+            assert_eq!(header.groupname().unwrap(), Some("root"));
+            assert_eq!(header.mtime().unwrap(), 0);
+        }
     }
 
     #[test]

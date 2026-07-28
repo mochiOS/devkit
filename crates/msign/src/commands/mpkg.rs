@@ -303,6 +303,12 @@ fn write_mpkg(path: &Path, entries: &[MpkgEntry]) -> Result<()> {
             header.set_mode(entry.mode);
             header.set_uid(0);
             header.set_gid(0);
+            header
+                .set_username("root")
+                .context("failed to set MPKG tar username")?;
+            header
+                .set_groupname("root")
+                .context("failed to set MPKG tar groupname")?;
             header.set_mtime(0);
             header.set_entry_type(EntryType::Regular);
             header.set_cksum();
