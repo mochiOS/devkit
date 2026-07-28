@@ -22,6 +22,9 @@ fn main() -> Result<()> {
         Command::Certificate {
             command: CertificateCommand::Inspect(args),
         } => commands::certificate::inspect(args),
+        Command::Certificate {
+            command: CertificateCommand::Obtain(args),
+        } => commands::certificate::obtain(args),
         Command::Package {
             command: PackageCommand::Sign(args),
         } => commands::mpkg::sign(args),

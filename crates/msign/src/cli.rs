@@ -41,6 +41,7 @@ pub enum KeyCommand {
 pub enum CertificateCommand {
     Issue(CertificateIssueArgs),
     Inspect(CertificateInspectArgs),
+    Obtain(CertificateObtainArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -89,10 +90,16 @@ pub struct VerifyArgs {
 #[derive(Debug, Args)]
 pub struct CertificateIssueArgs {
     #[arg(long)]
-    pub root_key: PathBuf,
+    pub root_key: Option<PathBuf>,
 
     #[arg(long)]
-    pub developer_key: PathBuf,
+    pub issuer_key: Option<PathBuf>,
+
+    #[arg(long)]
+    pub developer_key: Option<PathBuf>,
+
+    #[arg(long)]
+    pub subject_public_key: Option<PathBuf>,
 
     #[arg(long)]
     pub output: PathBuf,
@@ -122,6 +129,27 @@ pub struct CertificateInspectArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct CertificateObtainArgs {
+    #[arg(long)]
+    pub developer: String,
+
+    #[arg(long)]
+    pub public_key: PathBuf,
+
+    #[arg(long)]
+    pub package: PathBuf,
+
+    #[arg(long)]
+    pub output: PathBuf,
+
+    #[arg(long, default_value = "https://api.mochios.org/v1")]
+    pub api_base: String,
+
+    #[arg(long)]
+    pub bearer_token: Option<String>,
+}
+
+#[derive(Debug, Args)]
 pub struct PackageSignArgs {
     pub package: PathBuf,
 
@@ -133,13 +161,19 @@ pub struct PackageSignArgs {
 
     #[arg(short, long)]
     pub output: Option<PathBuf>,
+
+    #[arg(long)]
+    pub unix_time: Option<u64>,
+
+    #[arg(long)]
+    pub replace_signature: bool,
 }
 
 #[derive(Debug, Args)]
 pub struct PackageVerifyArgs {
     pub package: PathBuf,
 
-    #[arg(long)]
+    #[arg(long, alias = "issuer-public-key")]
     pub root_public_key: PathBuf,
 
     #[arg(long)]

@@ -1,19 +1,34 @@
 use std::fs;
 
 use anyhow::{anyhow, bail, Context, Result};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use ed25519_dalek::Signer;
 use mochios_certificate::{
     key_id, DeveloperCertificate, PackageIdScope, KEY_USAGE_PACKAGE_SIGNING, SIGNATURE_LEN,
 };
+use reqwest::blocking::Client;
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+use serde::{Deserialize, Serialize};
 
-use crate::cli::{CertificateInspectArgs, CertificateIssueArgs};
+use crate::cli::{CertificateInspectArgs, CertificateIssueArgs, CertificateObtainArgs};
+use crate::commands::mpkg;
 use crate::crypto;
 
 pub fn issue(args: CertificateIssueArgs) -> Result<()> {
-    let root_key = crypto::read_private_key(&args.root_key)?;
-    let developer_key = crypto::read_private_key(&args.developer_key)?;
-    let root_public_key = root_key.verifying_key().to_bytes();
-    let subject_public_key = developer_key.verifying_key().to_bytes();
+    let issuer_key_path = args
+        .issuer_key
+        .or(args.root_key)
+        .ok_or_else(|| anyhow!("--issuer-key is required"))?;
+    let issuer_key = crypto::read_private_key(&issuer_key_path)?;
+    let root_public_key = issuer_key.verifying_key().to_bytes();
+    let subject_public_key = match (args.subject_public_key, args.developer_key) {
+        (Some(path), _) => crypto::read_public_key(&path)?.to_bytes(),
+        (None, Some(path)) => {
+            eprintln!("warning: --developer-key for certificate issue is deprecated; use --subject-public-key");
+            crypto::read_private_key(&path)?.verifying_key().to_bytes()
+        }
+        (None, None) => bail!("--subject-public-key is required"),
+    };
     let mut package_id_scopes = args
         .scopes
         .iter()
@@ -40,7 +55,7 @@ pub fn issue(args: CertificateIssueArgs) -> Result<()> {
     let message = certificate
         .signing_message()
         .map_err(|error| anyhow!(error))?;
-    certificate.signature = root_key.sign(&message).to_bytes();
+    certificate.signature = issuer_key.sign(&message).to_bytes();
     let length = certificate.encoded_len().map_err(|error| anyhow!(error))?;
     let mut encoded = vec![0; length];
     certificate
@@ -56,6 +71,129 @@ pub fn issue(args: CertificateIssueArgs) -> Result<()> {
     println!("developer_id: {}", certificate.developer_id);
     println!("serial_number: {}", certificate.serial_number);
     println!("subject_key_id: {}", hex(&certificate.subject_key_id));
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+struct ObtainRequest {
+    developer_id: String,
+    subject_public_key: String,
+    package_id: String,
+    capabilities: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ObtainResponse {
+    certificate: Option<String>,
+    certificate_base64: Option<String>,
+}
+
+pub fn obtain(args: CertificateObtainArgs) -> Result<()> {
+    let public_key = crypto::read_public_key(&args.public_key)?;
+    let request = mpkg::certificate_request(&args.package, &args.developer, &public_key)?;
+    let response = request_certificate(&args.api_base, args.bearer_token.as_deref(), &request)?;
+    let certificate_bytes = decode_certificate_response(&response)?;
+    let certificate =
+        DeveloperCertificate::decode(&certificate_bytes).map_err(|error| anyhow!(error))?;
+
+    validate_obtained_certificate(&certificate, &public_key.to_bytes(), &request)?;
+    if let Some(parent) = args.output.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    fs::write(&args.output, certificate_bytes)
+        .with_context(|| format!("failed to write {}", args.output.display()))?;
+
+    println!("obtained: {}", args.output.display());
+    println!("developer_id: {}", certificate.developer_id);
+    println!("serial_number: {}", certificate.serial_number);
+    println!("subject_key_id: {}", hex(&certificate.subject_key_id));
+
+    Ok(())
+}
+
+pub(crate) struct CertificateRequest {
+    pub developer_id: String,
+    pub subject_public_key: String,
+    pub package_id: String,
+    pub capabilities: Vec<String>,
+}
+
+fn request_certificate(
+    api_base: &str,
+    bearer_token: Option<&str>,
+    request: &CertificateRequest,
+) -> Result<ObtainResponse> {
+    let url = format!("{}/developer-certificates", api_base.trim_end_matches('/'));
+    let body = ObtainRequest {
+        developer_id: request.developer_id.clone(),
+        subject_public_key: request.subject_public_key.clone(),
+        package_id: request.package_id.clone(),
+        capabilities: request.capabilities.clone(),
+    };
+    let client = Client::new();
+    let mut http = client
+        .post(&url)
+        .header(ACCEPT, "application/json")
+        .header(CONTENT_TYPE, "application/json")
+        .json(&body);
+    if let Some(token) = bearer_token {
+        http = http.header(AUTHORIZATION, format!("Bearer {token}"));
+    }
+    let response = http
+        .send()
+        .with_context(|| format!("failed to request certificate from {url}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        let text = response.text().unwrap_or_default();
+        bail!("certificate issuance failed: HTTP {status}: {text}");
+    }
+    response
+        .json()
+        .context("failed to parse certificate response")
+}
+
+fn decode_certificate_response(response: &ObtainResponse) -> Result<Vec<u8>> {
+    let encoded = response
+        .certificate_base64
+        .as_deref()
+        .or(response.certificate.as_deref())
+        .ok_or_else(|| anyhow!("certificate response is missing certificate bytes"))?;
+    STANDARD
+        .decode(encoded.trim())
+        .context("certificate response is not valid base64")
+}
+
+fn validate_obtained_certificate(
+    certificate: &DeveloperCertificate,
+    public_key: &[u8; 32],
+    request: &CertificateRequest,
+) -> Result<()> {
+    if &certificate.subject_public_key != public_key {
+        bail!("certificate subject public key does not match requested public key");
+    }
+    if certificate.subject_key_id != key_id(public_key) {
+        bail!("certificate subject key id does not match requested public key");
+    }
+    if certificate.developer_id != request.developer_id {
+        bail!("certificate developer id does not match request");
+    }
+    if !certificate
+        .package_id_scopes
+        .iter()
+        .any(|scope| scope.matches(&request.package_id))
+    {
+        bail!("certificate package scope does not cover requested package");
+    }
+    for capability in &request.capabilities {
+        if !certificate
+            .allowed_capabilities
+            .iter()
+            .any(|allowed| allowed == capability)
+        {
+            bail!("certificate does not allow requested capability: {capability}");
+        }
+    }
     Ok(())
 }
 
@@ -103,4 +241,77 @@ fn hex(bytes: &[u8]) -> String {
         output.push(TABLE[(byte & 0x0f) as usize] as char);
     }
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn issue_accepts_subject_public_key_without_developer_private_key() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root_key_path = temporary.path().join("root.key");
+        let developer_public_path = temporary.path().join("application.pub");
+        let certificate_path = temporary.path().join("developer.cert");
+        let (root_key, _) = crypto::generate_keypair();
+        let (_, developer_public) = crypto::generate_keypair();
+        crypto::write_private_key(&root_key_path, &root_key).unwrap();
+        crypto::write_public_key(&developer_public_path, &developer_public).unwrap();
+
+        issue(CertificateIssueArgs {
+            root_key: None,
+            issuer_key: Some(root_key_path),
+            developer_key: None,
+            subject_public_key: Some(developer_public_path),
+            output: certificate_path.clone(),
+            serial: 7,
+            developer_id: "org.example.developer".to_string(),
+            not_before: 1_700_000_000,
+            not_after: 1_900_000_000,
+            scopes: vec!["exact:org.example.application".to_string()],
+            capabilities: vec!["window.create".to_string()],
+        })
+        .unwrap();
+
+        let bytes = fs::read(certificate_path).unwrap();
+        let certificate = DeveloperCertificate::decode(&bytes).unwrap();
+        assert_eq!(certificate.subject_public_key, developer_public.to_bytes());
+        assert_eq!(
+            certificate.subject_key_id,
+            key_id(&developer_public.to_bytes())
+        );
+    }
+
+    #[test]
+    fn obtained_certificate_must_match_requested_public_key() {
+        let (_, requested_public) = crypto::generate_keypair();
+        let (_, other_public) = crypto::generate_keypair();
+        let request = CertificateRequest {
+            developer_id: "org.example.developer".to_string(),
+            subject_public_key: crypto::public_key_to_base64(&requested_public),
+            package_id: "org.example.application".to_string(),
+            capabilities: vec!["window.create".to_string()],
+        };
+        let other_public_bytes = other_public.to_bytes();
+        let certificate = DeveloperCertificate {
+            serial_number: 1,
+            issuer_key_id: [0; 32],
+            developer_id: "org.example.developer".to_string(),
+            subject_key_id: key_id(&other_public_bytes),
+            subject_public_key: other_public_bytes,
+            not_before: 1_700_000_000,
+            not_after: 1_900_000_000,
+            key_usage: KEY_USAGE_PACKAGE_SIGNING,
+            package_id_scopes: vec![PackageIdScope::exact("org.example.application")],
+            allowed_capabilities: vec!["window.create".to_string()],
+            signature: [0; SIGNATURE_LEN],
+        };
+
+        assert!(validate_obtained_certificate(
+            &certificate,
+            &requested_public.to_bytes(),
+            &request
+        )
+        .is_err());
+    }
 }

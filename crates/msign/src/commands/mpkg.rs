@@ -11,6 +11,7 @@ use tar::{Archive, Builder, EntryType, Header};
 use tempfile::NamedTempFile;
 
 use crate::cli::{PackageSignArgs, PackageVerifyArgs};
+use crate::commands::certificate::CertificateRequest;
 use crate::crypto;
 
 const MPKG_MAGIC: &[u8; 4] = b"MPKG";
@@ -30,7 +31,19 @@ struct MpkgEntry {
 pub fn sign(args: PackageSignArgs) -> Result<()> {
     let mut entries = read_mpkg(&args.package)?;
     reject_chain_and_unknown_signatures(&entries)?;
+    if !args.replace_signature
+        && (entries.iter().any(|entry| entry.path == CERTIFICATE_PATH)
+            || entries
+                .iter()
+                .any(|entry| entry.path == MANIFEST_SIGNATURE_PATH))
+    {
+        bail!("MPKG is already signed; use --replace-signature to replace signatures");
+    }
     let manifest = entry(&entries, MANIFEST_PATH)?.data.clone();
+    let manifest_text = std::str::from_utf8(&manifest).context("manifest is not UTF-8")?;
+    let manifest_value: toml::Value =
+        toml::from_str(manifest_text).context("manifest is not valid TOML")?;
+    let package_id = package_id(&manifest_value)?;
     let certificate_bytes = fs::read(&args.certificate)
         .with_context(|| format!("failed to read {}", args.certificate.display()))?;
     let certificate =
@@ -39,6 +52,7 @@ pub fn sign(args: PackageSignArgs) -> Result<()> {
     if developer_key.verifying_key().to_bytes() != certificate.subject_public_key {
         bail!("developer private key does not match certificate subject public key");
     }
+    validate_certificate_for_manifest(&certificate, &manifest_value, package_id, args.unix_time)?;
     let signature = developer_key
         .sign(&manifest_signing_message(&manifest))
         .to_bytes();
@@ -61,6 +75,31 @@ pub fn sign(args: PackageSignArgs) -> Result<()> {
     println!("developer_id: {}", certificate.developer_id);
     println!("certificate_serial: {}", certificate.serial_number);
     Ok(())
+}
+
+pub(crate) fn certificate_request(
+    package: &Path,
+    developer_id: &str,
+    public_key: &VerifyingKey,
+) -> Result<CertificateRequest> {
+    let package_bytes =
+        fs::read(package).with_context(|| format!("failed to read {}", package.display()))?;
+    let entries = parse_mpkg(&package_bytes)?;
+    reject_chain_and_unknown_signatures(&entries)?;
+    let manifest = &entry(&entries, MANIFEST_PATH)?.data;
+    let manifest_text = std::str::from_utf8(manifest).context("manifest is not UTF-8")?;
+    let manifest_value: toml::Value =
+        toml::from_str(manifest_text).context("manifest is not valid TOML")?;
+    let package_id = package_id(&manifest_value)?;
+    let mut capabilities = required_capabilities(&manifest_value)?;
+    capabilities.sort();
+    capabilities.dedup();
+    Ok(CertificateRequest {
+        developer_id: developer_id.to_string(),
+        subject_public_key: crypto::public_key_to_base64(public_key),
+        package_id: package_id.to_string(),
+        capabilities,
+    })
 }
 
 pub fn verify(args: PackageVerifyArgs) -> Result<()> {
@@ -296,6 +335,64 @@ fn verify_payload(manifest: &toml::Value, entries: &[MpkgEntry]) -> Result<()> {
     Ok(())
 }
 
+fn validate_certificate_for_manifest(
+    certificate: &DeveloperCertificate,
+    manifest: &toml::Value,
+    package_id: &str,
+    unix_time: Option<u64>,
+) -> Result<()> {
+    if !certificate
+        .package_id_scopes
+        .iter()
+        .any(|scope| scope.matches(package_id))
+    {
+        bail!("Package ID is outside Certificate scope");
+    }
+    for capability in required_capabilities(manifest)? {
+        if !certificate
+            .allowed_capabilities
+            .iter()
+            .any(|allowed| allowed == &capability)
+        {
+            bail!("Capability is not allowed by Certificate: {capability}");
+        }
+    }
+    let now = match unix_time {
+        Some(value) => value,
+        None => current_unix_time()?,
+    };
+    if now < certificate.not_before || now >= certificate.not_after {
+        bail!("Certificate is expired or not yet valid");
+    }
+    Ok(())
+}
+
+fn required_capabilities(manifest: &toml::Value) -> Result<Vec<String>> {
+    let mut capabilities = Vec::new();
+    let Some(binaries) = manifest.get("binary").and_then(toml::Value::as_array) else {
+        return Ok(capabilities);
+    };
+    for binary in binaries {
+        let Some(requires) = binary.get("requires").and_then(toml::Value::as_array) else {
+            continue;
+        };
+        for capability in requires {
+            let value = capability
+                .as_str()
+                .ok_or_else(|| anyhow!("binary.requires must contain strings"))?;
+            capabilities.push(value.to_string());
+        }
+    }
+    Ok(capabilities)
+}
+
+fn current_unix_time() -> Result<u64> {
+    Ok(std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .context("system time is before UNIX_EPOCH")?
+        .as_secs())
+}
+
 fn manifest_payload_path(package_kind: Option<&str>, path: &str) -> Result<String> {
     if path.starts_with('/') {
         return Ok(format!("payload/root{path}"));
@@ -396,6 +493,7 @@ fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mochios_certificate::{key_id, PackageIdScope, KEY_USAGE_PACKAGE_SIGNING, SIGNATURE_LEN};
 
     #[test]
     fn manifest_path_mapping_matches_mpkg_v1() {
@@ -413,5 +511,148 @@ mod tests {
     fn rejects_glob_like_and_parent_paths() {
         assert!(normalize_path(Path::new("payload/../manifest.toml")).is_err());
         assert!(normalize_path(Path::new("/manifest.toml")).is_err());
+    }
+
+    #[test]
+    fn certificate_request_extracts_package_and_capability_union() {
+        let temporary = tempfile::tempdir().unwrap();
+        let (_, developer_public) = crypto::generate_keypair();
+        let unsigned = write_test_unsigned_package(
+            temporary.path(),
+            &["window.create", "process.spawn", "window.create"],
+        );
+
+        let request =
+            certificate_request(&unsigned, "org.example.developer", &developer_public).unwrap();
+
+        assert_eq!(request.developer_id, "org.example.developer");
+        assert_eq!(request.package_id, "org.example.application");
+        assert_eq!(
+            request.subject_public_key,
+            crypto::public_key_to_base64(&developer_public)
+        );
+        assert_eq!(
+            request.capabilities,
+            vec!["process.spawn".to_string(), "window.create".to_string()]
+        );
+    }
+
+    #[test]
+    fn signs_and_verifies_mpkg_manifest_with_certificate() {
+        let temporary = tempfile::tempdir().unwrap();
+        let unsigned = write_test_unsigned_package(temporary.path(), &["window.create"]);
+
+        let (root_key, root_public) = crypto::generate_keypair();
+        let (developer_key, developer_public) = crypto::generate_keypair();
+        let root_key_path = temporary.path().join("root.key");
+        let root_public_path = temporary.path().join("root.pub");
+        let developer_key_path = temporary.path().join("application.key");
+        let certificate_path = temporary.path().join("developer.cert");
+        crypto::write_private_key(&root_key_path, &root_key).unwrap();
+        crypto::write_public_key(&root_public_path, &root_public).unwrap();
+        crypto::write_private_key(&developer_key_path, &developer_key).unwrap();
+
+        let root_public_bytes = root_public.to_bytes();
+        let developer_public_bytes = developer_public.to_bytes();
+        let mut certificate = DeveloperCertificate {
+            serial_number: 1,
+            issuer_key_id: key_id(&root_public_bytes),
+            developer_id: "org.example.developer".to_string(),
+            subject_key_id: key_id(&developer_public_bytes),
+            subject_public_key: developer_public_bytes,
+            not_before: 1_700_000_000,
+            not_after: 1_900_000_000,
+            key_usage: KEY_USAGE_PACKAGE_SIGNING,
+            package_id_scopes: vec![PackageIdScope::exact("org.example.application")],
+            allowed_capabilities: vec!["window.create".to_string()],
+            signature: [0; SIGNATURE_LEN],
+        };
+        certificate.signature = root_key
+            .sign(&certificate.signing_message().unwrap())
+            .to_bytes();
+        let mut certificate_bytes = vec![0; certificate.encoded_len().unwrap()];
+        certificate.encode(&mut certificate_bytes).unwrap();
+        fs::write(&certificate_path, certificate_bytes).unwrap();
+
+        let signed = temporary.path().join("signed.mpkg");
+        sign(PackageSignArgs {
+            package: unsigned.clone(),
+            certificate: certificate_path.clone(),
+            key: developer_key_path.clone(),
+            output: Some(signed.clone()),
+            unix_time: Some(1_800_000_000),
+            replace_signature: false,
+        })
+        .unwrap();
+
+        assert!(sign(PackageSignArgs {
+            package: signed.clone(),
+            certificate: certificate_path,
+            key: developer_key_path,
+            output: Some(temporary.path().join("resigned.mpkg")),
+            unix_time: Some(1_800_000_000),
+            replace_signature: false,
+        })
+        .is_err());
+
+        verify(PackageVerifyArgs {
+            package: signed.clone(),
+            root_public_key: root_public_path,
+            unix_time: 1_800_000_000,
+        })
+        .unwrap();
+
+        let mut tampered_entries = read_mpkg(&signed).unwrap();
+        entry_mut(&mut tampered_entries, "payload/bundle/entry.elf")
+            .unwrap()
+            .data = b"tampered".to_vec();
+        let tampered = temporary.path().join("tampered.mpkg");
+        write_mpkg(&tampered, &tampered_entries).unwrap();
+        assert!(verify(PackageVerifyArgs {
+            package: tampered,
+            root_public_key: temporary.path().join("root.pub"),
+            unix_time: 1_800_000_000,
+        })
+        .is_err());
+    }
+
+    fn write_test_unsigned_package(directory: &Path, capabilities: &[&str]) -> std::path::PathBuf {
+        let payload = b"elf";
+        let requires = capabilities
+            .iter()
+            .map(|capability| format!("\"{capability}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let manifest = format!(
+            "format = 1\n\n[package]\nid = \"org.example.application\"\nname = \"Example\"\nversion = \"0.1.0\"\nkind = \"application\"\n\n[[file]]\nid = \"entry\"\npath = \"$/entry.elf\"\ndigest = \"sha256:{}\"\nsize = {}\nmode = \"0755\"\n\n[[binary]]\npath = \"/applications/Example.app/entry.elf\"\nfile = \"entry\"\nkind = \"application\"\nrequires = [{}]\n",
+            hex(&Sha256::digest(payload)),
+            payload.len(),
+            requires
+        );
+        let unsigned = directory.join("unsigned.mpkg");
+        write_mpkg(
+            &unsigned,
+            &[
+                MpkgEntry {
+                    path: MANIFEST_PATH.to_string(),
+                    data: manifest.into_bytes(),
+                    mode: 0o644,
+                },
+                MpkgEntry {
+                    path: "payload/bundle/entry.elf".to_string(),
+                    data: payload.to_vec(),
+                    mode: 0o644,
+                },
+            ],
+        )
+        .unwrap();
+        unsigned
+    }
+
+    fn entry_mut<'a>(entries: &'a mut [MpkgEntry], path: &str) -> Result<&'a mut MpkgEntry> {
+        entries
+            .iter_mut()
+            .find(|entry| entry.path == path)
+            .ok_or_else(|| anyhow!("MPKG is missing {path}"))
     }
 }
