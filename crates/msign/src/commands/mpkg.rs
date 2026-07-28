@@ -486,6 +486,7 @@ fn validate_manifest_shape(manifest: &toml::Value) -> Result<()> {
 
     validate_manifest_binaries(manifest)?;
     validate_manifest_files(manifest)?;
+    validate_install_targets(manifest)?;
     Ok(())
 }
 
@@ -535,8 +536,39 @@ fn validate_manifest_files(manifest: &toml::Value) -> Result<()> {
             bail!("manifest contains duplicate file path: {path}");
         }
         required_non_empty_string(table, "digest", "file.digest")?;
-        if !is_non_zero_mode(table.get("mode")) {
-            bail!("file.mode is invalid");
+        manifest_file_mode(table)?;
+    }
+    Ok(())
+}
+
+fn validate_install_targets(manifest: &toml::Value) -> Result<()> {
+    let package_kind = manifest
+        .get("package")
+        .and_then(|package| package.get("kind"))
+        .and_then(toml::Value::as_str);
+    let package_name = manifest
+        .get("package")
+        .and_then(|package| package.get("name"))
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| anyhow!("package.name is missing"))?;
+    let Some(files) = manifest.get("file").and_then(toml::Value::as_array) else {
+        return Ok(());
+    };
+    for file in files {
+        let table = file
+            .as_table()
+            .ok_or_else(|| anyhow!("file entry must be a table"))?;
+        let path = required_non_empty_string(table, "path", "file.path")?;
+        let target = manifest_target_path(package_kind, package_name, path)?;
+        if !is_valid_abs_path(&target) {
+            bail!("file target path is invalid: {target}");
+        }
+        if !is_allowed_install_target(package_kind, &target) {
+            bail!("file target path is outside installable roots: {target}");
+        }
+        let mode = manifest_file_mode(table)?;
+        if mode & !0o777 != 0 {
+            bail!("file.mode exceeds installable permission bits");
         }
     }
     Ok(())
@@ -562,14 +594,24 @@ fn is_valid_package_id(id: &str) -> bool {
         .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'.' | b'-'))
 }
 
-fn is_non_zero_mode(value: Option<&toml::Value>) -> bool {
-    match value {
+fn manifest_file_mode(table: &toml::map::Map<String, toml::Value>) -> Result<u32> {
+    manifest_file_mode_value(table.get("mode"))
+}
+
+fn manifest_file_mode_value(value: Option<&toml::Value>) -> Result<u32> {
+    let mode = match value {
         Some(toml::Value::String(value)) if !value.is_empty() && value.len() <= 4 => {
-            u32::from_str_radix(value, 8).is_ok_and(|mode| mode != 0)
+            u32::from_str_radix(value, 8).context("file.mode is invalid")?
         }
-        Some(toml::Value::Integer(value)) => u32::try_from(*value).is_ok_and(|mode| mode != 0),
-        _ => false,
+        Some(toml::Value::Integer(value)) => {
+            u32::try_from(*value).context("file.mode is invalid")?
+        }
+        _ => bail!("file.mode is invalid"),
+    };
+    if mode == 0 {
+        bail!("file.mode is invalid");
     }
+    Ok(mode)
 }
 
 fn validate_certificate_for_manifest(
@@ -642,6 +684,61 @@ fn manifest_payload_path(package_kind: Option<&str>, path: &str) -> Result<Strin
         None | Some("binary") => Ok(format!("payload/root/bin/{relative}")),
         _ => bail!("unsupported package kind"),
     }
+}
+
+fn manifest_target_path(
+    package_kind: Option<&str>,
+    package_name: &str,
+    path: &str,
+) -> Result<String> {
+    if path.starts_with('/') {
+        return Ok(path.to_string());
+    }
+    let relative = path
+        .strip_prefix("$/")
+        .ok_or_else(|| anyhow!("file.path must be absolute or start with $/"))?;
+    match package_kind {
+        Some("application") => Ok(join_path(
+            &format!("/applications/{package_name}.app"),
+            relative,
+        )),
+        None | Some("binary") => Ok(join_path("/bin", relative)),
+        _ => bail!("unsupported package kind"),
+    }
+}
+
+fn join_path(prefix: &str, suffix: &str) -> String {
+    if prefix.is_empty() {
+        return suffix.to_string();
+    }
+    if suffix.is_empty() {
+        return prefix.to_string();
+    }
+    format!(
+        "{}/{}",
+        prefix.trim_end_matches('/'),
+        suffix.trim_start_matches('/')
+    )
+}
+
+fn is_valid_abs_path(path: &str) -> bool {
+    path.starts_with('/')
+        && !path.contains('\\')
+        && !path.contains('\0')
+        && !path.contains("//")
+        && !path.ends_with('/')
+        && path[1..]
+            .split('/')
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
+}
+
+fn is_allowed_install_target(package_kind: Option<&str>, target: &str) -> bool {
+    target.starts_with("/bin/")
+        || target.starts_with("/libraries/")
+        || target.starts_with("/binary/services/")
+        || target.starts_with("/binary/resources/")
+        || target.starts_with("/system/services/")
+        || (target.starts_with("/applications/") && package_kind == Some("application"))
 }
 
 fn package_id(manifest: &toml::Value) -> Result<&str> {
@@ -825,6 +922,60 @@ mod tests {
         )
         .unwrap();
         assert!(validate_manifest_shape(&empty_binary_path).is_err());
+
+        let disallowed_application_target = toml::from_str(
+            r#"
+            [package]
+            id = "org.example.application"
+            name = "Example"
+            version = "0.1.0"
+            kind = "application"
+
+            [[file]]
+            id = "entry"
+            path = "/etc/entry.elf"
+            digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            mode = "0755"
+            "#,
+        )
+        .unwrap();
+        assert!(validate_manifest_shape(&disallowed_application_target).is_err());
+
+        let invalid_application_target = toml::from_str(
+            r#"
+            [package]
+            id = "org.example.application"
+            name = "Example"
+            version = "0.1.0"
+            kind = "application"
+
+            [[file]]
+            id = "entry"
+            path = "$/../entry.elf"
+            digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            mode = "0755"
+            "#,
+        )
+        .unwrap();
+        assert!(validate_manifest_shape(&invalid_application_target).is_err());
+
+        let invalid_mode_bits = toml::from_str(
+            r#"
+            [package]
+            id = "org.example.application"
+            name = "Example"
+            version = "0.1.0"
+            kind = "application"
+
+            [[file]]
+            id = "entry"
+            path = "$/entry.elf"
+            digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            mode = "1777"
+            "#,
+        )
+        .unwrap();
+        assert!(validate_manifest_shape(&invalid_mode_bits).is_err());
     }
 
     #[test]
