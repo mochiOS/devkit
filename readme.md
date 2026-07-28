@@ -130,7 +130,7 @@ keys/developer.cert
 ```
 
 保存前にMCER decode、Subject公開鍵、Subject Key ID、Package ID scope、
-Capability許可を確認します。`application.key`、MPKG payload、Kome sourceは
+Capability許可、有効期間を確認します。`application.key`、MPKG payload、Kome sourceは
 Cloudへ送信しません。
 
 `kome sign`:

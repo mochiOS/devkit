@@ -201,6 +201,13 @@ fn validate_obtained_certificate(
     {
         bail!("certificate package scope does not cover requested package");
     }
+    let now = current_unix_time()?;
+    if now < certificate.not_before {
+        bail!("certificate is not yet valid");
+    }
+    if now >= certificate.not_after {
+        bail!("certificate is expired");
+    }
     for capability in &request.capabilities {
         if !certificate
             .allowed_capabilities
@@ -211,6 +218,13 @@ fn validate_obtained_certificate(
         }
     }
     Ok(())
+}
+
+fn current_unix_time() -> Result<u64> {
+    Ok(std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .context("system time is before UNIX_EPOCH")?
+        .as_secs())
 }
 
 pub fn inspect(args: CertificateInspectArgs) -> Result<()> {
@@ -335,6 +349,37 @@ mod tests {
             &request
         )
         .is_err());
+    }
+
+    #[test]
+    fn obtained_certificate_must_be_currently_valid() {
+        let (_, requested_public) = crypto::generate_keypair();
+        let request = CertificateRequest {
+            developer_id: "org.example.developer".to_string(),
+            subject_public_key: crypto::public_key_to_base64(&requested_public),
+            package_id: "org.example.application".to_string(),
+            capabilities: Vec::new(),
+        };
+        let public_key = requested_public.to_bytes();
+        let mut certificate = DeveloperCertificate {
+            serial_number: 1,
+            issuer_key_id: [0; 32],
+            developer_id: "org.example.developer".to_string(),
+            subject_key_id: key_id(&public_key),
+            subject_public_key: public_key,
+            not_before: 1,
+            not_after: 2,
+            key_usage: KEY_USAGE_PACKAGE_SIGNING,
+            package_id_scopes: vec![PackageIdScope::exact("org.example.application")],
+            allowed_capabilities: Vec::new(),
+            signature: [0; SIGNATURE_LEN],
+        };
+        assert!(validate_obtained_certificate(&certificate, &public_key, &request).is_err());
+
+        let now = current_unix_time().unwrap();
+        certificate.not_before = now + 60;
+        certificate.not_after = now + 120;
+        assert!(validate_obtained_certificate(&certificate, &public_key, &request).is_err());
     }
 
     #[test]

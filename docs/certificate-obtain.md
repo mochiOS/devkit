@@ -51,6 +51,7 @@ Subject Key ID一致
 Developer ID一致
 Package ID scope
 Capability許可
+現在時刻でのnot_before / not_after
 ```
 
 Subject公開鍵が`application.pub`と一致しないcertificateは保存しません。
