@@ -276,11 +276,15 @@ fn hex(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use std::{
+        io::Cursor,
         io::{Read, Write},
         net::TcpListener,
         sync::mpsc,
         thread,
     };
+
+    use sha2::{Digest, Sha256};
+    use tar::{Builder, EntryType, Header};
 
     #[test]
     fn issue_accepts_subject_public_key_without_developer_private_key() {
@@ -480,6 +484,59 @@ mod tests {
     }
 
     #[test]
+    fn obtain_writes_valid_certificate_wire_bytes() {
+        let temporary = tempfile::tempdir().unwrap();
+        let package_path = temporary.path().join("Example-unsigned.mpkg");
+        let public_key_path = temporary.path().join("application.pub");
+        let certificate_path = temporary.path().join("developer.cert");
+        let (root_key, _) = crypto::generate_keypair();
+        let (_, developer_public) = crypto::generate_keypair();
+        crypto::write_public_key(&public_key_path, &developer_public).unwrap();
+        write_test_unsigned_mpkg(&package_path);
+        let public_key = developer_public.to_bytes();
+        let now = current_unix_time().unwrap();
+        let mut certificate = DeveloperCertificate {
+            serial_number: 1,
+            issuer_key_id: key_id(&root_key.verifying_key().to_bytes()),
+            developer_id: "org.example.developer".to_string(),
+            subject_key_id: key_id(&public_key),
+            subject_public_key: public_key,
+            not_before: now - 60,
+            not_after: now + 3600,
+            key_usage: KEY_USAGE_PACKAGE_SIGNING,
+            package_id_scopes: vec![PackageIdScope::exact("org.example.application")],
+            allowed_capabilities: vec!["window.create".to_string()],
+            signature: [0; SIGNATURE_LEN],
+        };
+        certificate.signature = root_key
+            .sign(&certificate.signing_message().unwrap())
+            .to_bytes();
+        let mut certificate_bytes = vec![0; certificate.encoded_len().unwrap()];
+        certificate.encode(&mut certificate_bytes).unwrap();
+        let response = format!(
+            r#"{{"certificate_base64":"{}"}}"#,
+            STANDARD.encode(&certificate_bytes)
+        );
+        let (api_base, received, server) = serve_once(200, response);
+
+        obtain(CertificateObtainArgs {
+            developer: "org.example.developer".to_string(),
+            public_key: public_key_path,
+            package: package_path,
+            output: certificate_path.clone(),
+            api_base,
+            bearer_token: None,
+        })
+        .unwrap();
+        server.join().unwrap();
+        let http = received.recv().unwrap();
+
+        assert!(http.contains(r#""package_id":"org.example.application""#));
+        assert!(http.contains(r#""capabilities":["window.create"]"#));
+        assert_eq!(fs::read(certificate_path).unwrap(), certificate_bytes);
+    }
+
+    #[test]
     fn certificate_api_error_is_not_success() {
         let (api_base, _received, server) =
             serve_once(403, "Developer is not verified".to_string());
@@ -573,5 +630,46 @@ mod tests {
 
     fn find_header_end(bytes: &[u8]) -> Option<usize> {
         bytes.windows(4).position(|window| window == b"\r\n\r\n")
+    }
+
+    fn write_test_unsigned_mpkg(path: &std::path::Path) {
+        let payload = b"elf";
+        let digest = Sha256::digest(payload);
+        let manifest = format!(
+            "format = 1\n\n[package]\nid = \"org.example.application\"\nname = \"Example\"\nversion = \"0.1.0\"\nkind = \"application\"\n\n[[file]]\nid = \"entry\"\npath = \"$/entry.elf\"\ndigest = \"sha256:{}\"\nsize = {}\nmode = \"0755\"\n\n[[binary]]\npath = \"/applications/Example.app/entry.elf\"\nfile = \"entry\"\nkind = \"application\"\nrequires = [\"window.create\"]\n",
+            hex(&digest),
+            payload.len()
+        );
+        let mut tar_bytes = Vec::new();
+        {
+            let mut builder = Builder::new(&mut tar_bytes);
+            append_test_tar_file(&mut builder, "manifest.toml", manifest.as_bytes());
+            append_test_tar_file(&mut builder, "payload/bundle/entry.elf", payload);
+            builder.finish().unwrap();
+        }
+        let mut header = [0u8; 32];
+        header[..4].copy_from_slice(b"MPKG");
+        header[4..6].copy_from_slice(&1u16.to_le_bytes());
+        header[8..10].copy_from_slice(&32u16.to_le_bytes());
+        header[12..20].copy_from_slice(&(tar_bytes.len() as u64).to_le_bytes());
+        let mut bytes = header.to_vec();
+        bytes.extend_from_slice(&tar_bytes);
+        fs::write(path, bytes).unwrap();
+    }
+
+    fn append_test_tar_file(builder: &mut Builder<&mut Vec<u8>>, path: &str, data: &[u8]) {
+        let mut header = Header::new_ustar();
+        header.set_size(data.len() as u64);
+        header.set_mode(0o644);
+        header.set_uid(0);
+        header.set_gid(0);
+        header.set_username("root").unwrap();
+        header.set_groupname("root").unwrap();
+        header.set_mtime(0);
+        header.set_entry_type(EntryType::Regular);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, path, Cursor::new(data))
+            .unwrap();
     }
 }
