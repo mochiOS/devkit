@@ -16,6 +16,7 @@ use crate::crypto;
 
 const MPKG_MAGIC: &[u8; 4] = b"MPKG";
 const MPKG_HEADER_LEN: usize = 32;
+const MAX_PACKAGE_LEN: u64 = 256 * 1024 * 1024;
 const MANIFEST_PATH: &str = "manifest.toml";
 const CERTIFICATE_PATH: &str = "signatures/developer.cert";
 const MANIFEST_SIGNATURE_PATH: &str = "signatures/manifest.sig";
@@ -82,8 +83,7 @@ pub(crate) fn certificate_request(
     developer_id: &str,
     public_key: &VerifyingKey,
 ) -> Result<CertificateRequest> {
-    let package_bytes =
-        fs::read(package).with_context(|| format!("failed to read {}", package.display()))?;
+    let package_bytes = read_package_bytes(package)?;
     let entries = parse_mpkg(&package_bytes)?;
     reject_chain_and_unknown_signatures(&entries)?;
     let manifest = &entry(&entries, MANIFEST_PATH)?.data;
@@ -104,8 +104,7 @@ pub(crate) fn certificate_request(
 }
 
 pub fn verify(args: PackageVerifyArgs) -> Result<()> {
-    let package_bytes = fs::read(&args.package)
-        .with_context(|| format!("failed to read {}", args.package.display()))?;
+    let package_bytes = read_package_bytes(&args.package)?;
     let entries = parse_mpkg(&package_bytes)?;
     reject_chain_and_unknown_signatures(&entries)?;
     let manifest = &entry(&entries, MANIFEST_PATH)?.data;
@@ -137,8 +136,18 @@ pub fn verify(args: PackageVerifyArgs) -> Result<()> {
 }
 
 fn read_mpkg(path: &Path) -> Result<Vec<MpkgEntry>> {
-    let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let bytes = read_package_bytes(path)?;
     parse_mpkg(&bytes)
+}
+
+fn read_package_bytes(path: &Path) -> Result<Vec<u8>> {
+    let length = fs::metadata(path)
+        .with_context(|| format!("failed to stat {}", path.display()))?
+        .len();
+    if length > MAX_PACKAGE_LEN {
+        bail!("MPKG exceeds signature.service package size limit");
+    }
+    fs::read(path).with_context(|| format!("failed to read {}", path.display()))
 }
 
 fn parse_mpkg(bytes: &[u8]) -> Result<Vec<MpkgEntry>> {
@@ -1189,6 +1198,28 @@ mod tests {
         .unwrap();
 
         assert!(read_mpkg(&invalid).is_err());
+    }
+
+    #[test]
+    fn package_read_rejects_signature_service_size_limit() {
+        let temporary = tempfile::tempdir().unwrap();
+        let oversized = temporary.path().join("oversized.mpkg");
+        fs::File::create(&oversized)
+            .unwrap()
+            .set_len(MAX_PACKAGE_LEN + 1)
+            .unwrap();
+
+        assert!(read_mpkg(&oversized).is_err());
+        let (_, developer_public) = crypto::generate_keypair();
+        assert!(
+            certificate_request(&oversized, "org.example.developer", &developer_public).is_err()
+        );
+        assert!(verify(PackageVerifyArgs {
+            package: oversized,
+            root_public_key: temporary.path().join("root.pub"),
+            unix_time: 1_800_000_000,
+        })
+        .is_err());
     }
 
     #[test]
