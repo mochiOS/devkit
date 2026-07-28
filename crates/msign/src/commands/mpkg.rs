@@ -686,7 +686,7 @@ fn normalize_path(path: &Path) -> Result<String> {
     let value = path
         .to_str()
         .ok_or_else(|| anyhow!("MPKG path is not UTF-8"))?
-        .trim_start_matches("./");
+        .to_string();
     if value.is_empty()
         || value.starts_with('/')
         || value.contains("//")
@@ -697,7 +697,7 @@ fn normalize_path(path: &Path) -> Result<String> {
     {
         bail!("invalid MPKG path: {value}");
     }
-    Ok(value.to_string())
+    Ok(value)
 }
 
 fn read_u16(bytes: &[u8], offset: usize) -> u16 {
@@ -748,6 +748,7 @@ mod tests {
     fn rejects_glob_like_and_parent_paths() {
         assert!(normalize_path(Path::new("payload/../manifest.toml")).is_err());
         assert!(normalize_path(Path::new("/manifest.toml")).is_err());
+        assert!(normalize_path(Path::new("./manifest.toml")).is_err());
     }
 
     #[test]
@@ -1035,6 +1036,24 @@ mod tests {
             ],
         )
         .unwrap();
+
+        assert!(read_mpkg(&invalid).is_err());
+    }
+
+    #[test]
+    fn parser_rejects_dot_segment_entries() {
+        let temporary = tempfile::tempdir().unwrap();
+        let invalid = temporary.path().join("dot-segment.mpkg");
+        write_raw_mpkg(
+            &invalid,
+            &[RawTarEntry {
+                path: "./manifest.toml",
+                kind: b'0',
+                data: b"format = 1\n",
+                magic: b"ustar\0",
+                version: b"00",
+            }],
+        );
 
         assert!(read_mpkg(&invalid).is_err());
     }
