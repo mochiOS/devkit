@@ -936,6 +936,7 @@ dependencies = [
  "clap",
  "serde",
  "sha2",
+ "tempfile",
  "toml 1.1.2+spec-1.1.0",
 ]
 
