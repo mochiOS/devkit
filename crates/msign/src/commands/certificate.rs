@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, io::Read};
 
 use anyhow::{anyhow, bail, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -6,13 +6,16 @@ use ed25519_dalek::Signer;
 use mochios_certificate::{
     key_id, DeveloperCertificate, PackageIdScope, KEY_USAGE_PACKAGE_SIGNING, SIGNATURE_LEN,
 };
-use reqwest::blocking::Client;
+use reqwest::blocking::{Client, Response};
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 
 use crate::cli::{CertificateInspectArgs, CertificateIssueArgs, CertificateObtainArgs};
 use crate::commands::mpkg;
 use crate::crypto;
+
+const MAX_CERTIFICATE_RESPONSE_BYTES: u64 = 1024 * 1024;
+const MAX_ERROR_BODY_BYTES: u64 = 8 * 1024;
 
 pub fn issue(args: CertificateIssueArgs) -> Result<()> {
     let issuer_key_path = args
@@ -145,12 +148,25 @@ fn request_certificate(
         .with_context(|| format!("failed to request certificate from {url}"))?;
     let status = response.status();
     if !status.is_success() {
-        let text = response.text().unwrap_or_default();
+        let text = read_response_body_limited(response, MAX_ERROR_BODY_BYTES)
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+            .unwrap_or_default();
         bail!("certificate issuance failed: HTTP {status}: {text}");
     }
+    let body = read_response_body_limited(response, MAX_CERTIFICATE_RESPONSE_BYTES)?;
+    serde_json::from_slice(&body).context("failed to parse certificate response")
+}
+
+fn read_response_body_limited(response: Response, limit: u64) -> Result<Vec<u8>> {
+    let mut body = Vec::new();
     response
-        .json()
-        .context("failed to parse certificate response")
+        .take(limit + 1)
+        .read_to_end(&mut body)
+        .context("failed to read certificate response")?;
+    if body.len() > usize::try_from(limit).unwrap_or(usize::MAX) {
+        bail!("certificate response is too large");
+    }
+    Ok(body)
 }
 
 fn decode_certificate_response(response: &ObtainResponse) -> Result<Vec<u8>> {
@@ -246,6 +262,12 @@ fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        sync::mpsc,
+        thread,
+    };
 
     #[test]
     fn issue_accepts_subject_public_key_without_developer_private_key() {
@@ -313,5 +335,108 @@ mod tests {
             &request
         )
         .is_err());
+    }
+
+    #[test]
+    fn obtain_request_contains_only_public_certificate_inputs() {
+        let (api_base, received, server) = serve_once(200, r#"{"certificate_base64":"AA=="}"#);
+        let request = CertificateRequest {
+            developer_id: "org.example.developer".to_string(),
+            subject_public_key: "PUBLIC_KEY".to_string(),
+            package_id: "org.example.application".to_string(),
+            capabilities: vec!["window.create".to_string(), "process.spawn".to_string()],
+        };
+
+        let response = request_certificate(&api_base, Some("test-token"), &request).unwrap();
+        server.join().unwrap();
+        let http = received.recv().unwrap();
+
+        assert_eq!(response.certificate_base64.as_deref(), Some("AA=="));
+        assert!(http.starts_with("POST /developer-certificates HTTP/1.1"));
+        assert!(http.contains("authorization: Bearer test-token"));
+        assert!(http.contains(r#""developer_id":"org.example.developer""#));
+        assert!(http.contains(r#""subject_public_key":"PUBLIC_KEY""#));
+        assert!(http.contains(r#""package_id":"org.example.application""#));
+        assert!(http.contains(r#""capabilities":["window.create","process.spawn"]"#));
+        assert!(!http.contains("application.key"));
+        assert!(!http.contains("PRIVATE"));
+        assert!(!http.contains("entry.elf"));
+        assert!(!http.contains("payload"));
+    }
+
+    #[test]
+    fn certificate_api_error_is_not_success() {
+        let (api_base, _received, server) = serve_once(403, "Developer is not verified");
+        let request = CertificateRequest {
+            developer_id: "org.example.developer".to_string(),
+            subject_public_key: "PUBLIC_KEY".to_string(),
+            package_id: "org.example.application".to_string(),
+            capabilities: Vec::new(),
+        };
+
+        let error = request_certificate(&api_base, None, &request)
+            .unwrap_err()
+            .to_string();
+        server.join().unwrap();
+
+        assert!(error.contains("certificate issuance failed: HTTP 403"));
+        assert!(error.contains("Developer is not verified"));
+    }
+
+    fn serve_once(
+        status: u16,
+        response_body: &'static str,
+    ) -> (String, mpsc::Receiver<String>, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let api_base = format!("http://{}", listener.local_addr().unwrap());
+        let (sender, receiver) = mpsc::channel();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request = read_http_request(&mut stream);
+            sender.send(request).unwrap();
+            let status_text = match status {
+                200 => "OK",
+                403 => "Forbidden",
+                _ => "Error",
+            };
+            let response = format!(
+                "HTTP/1.1 {status} {status_text}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                response_body.len(),
+                response_body
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        (api_base, receiver, handle)
+    }
+
+    fn read_http_request(stream: &mut std::net::TcpStream) -> String {
+        let mut bytes = Vec::new();
+        let mut buffer = [0u8; 1024];
+        let mut content_length = None;
+        loop {
+            let count = stream.read(&mut buffer).unwrap();
+            if count == 0 {
+                break;
+            }
+            bytes.extend_from_slice(&buffer[..count]);
+            if let Some(header_end) = find_header_end(&bytes) {
+                if content_length.is_none() {
+                    let headers = String::from_utf8_lossy(&bytes[..header_end]);
+                    content_length = headers
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length: "))
+                        .and_then(|value| value.trim().parse::<usize>().ok());
+                }
+                let expected = header_end + 4 + content_length.unwrap_or(0);
+                if bytes.len() >= expected {
+                    break;
+                }
+            }
+        }
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    fn find_header_end(bytes: &[u8]) -> Option<usize> {
+        bytes.windows(4).position(|window| window == b"\r\n\r\n")
     }
 }
