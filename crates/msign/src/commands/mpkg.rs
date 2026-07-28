@@ -43,6 +43,7 @@ pub fn sign(args: PackageSignArgs) -> Result<()> {
     let manifest_text = std::str::from_utf8(&manifest).context("manifest is not UTF-8")?;
     let manifest_value: toml::Value =
         toml::from_str(manifest_text).context("manifest is not valid TOML")?;
+    validate_manifest_shape(&manifest_value)?;
     let package_id = package_id(&manifest_value)?;
     let certificate_bytes = fs::read(&args.certificate)
         .with_context(|| format!("failed to read {}", args.certificate.display()))?;
@@ -90,6 +91,7 @@ pub(crate) fn certificate_request(
     let manifest_text = std::str::from_utf8(manifest).context("manifest is not UTF-8")?;
     let manifest_value: toml::Value =
         toml::from_str(manifest_text).context("manifest is not valid TOML")?;
+    validate_manifest_shape(&manifest_value)?;
     let package_id = package_id(&manifest_value)?;
     let mut capabilities = required_capabilities(&manifest_value)?;
     capabilities.sort();
@@ -111,6 +113,7 @@ pub fn verify(args: PackageVerifyArgs) -> Result<()> {
     let manifest_text = std::str::from_utf8(manifest).context("manifest is not UTF-8")?;
     let manifest_value: toml::Value =
         toml::from_str(manifest_text).context("manifest is not valid TOML")?;
+    validate_manifest_shape(&manifest_value)?;
     let package_id = package_id(&manifest_value)?;
     let certificate = DeveloperCertificate::decode(&entry(&entries, CERTIFICATE_PATH)?.data)
         .map_err(|error| anyhow!(error))?;
@@ -427,6 +430,112 @@ fn verify_payload(manifest: &toml::Value, entries: &[MpkgEntry]) -> Result<()> {
     Ok(())
 }
 
+fn validate_manifest_shape(manifest: &toml::Value) -> Result<()> {
+    let package = manifest
+        .get("package")
+        .and_then(toml::Value::as_table)
+        .ok_or_else(|| anyhow!("manifest is missing [package]"))?;
+    let package_id = required_non_empty_string(package, "id", "package.id")?;
+    if !is_valid_package_id(package_id) {
+        bail!("package.id contains invalid characters");
+    }
+    required_non_empty_string(package, "name", "package.name")?;
+    required_non_empty_string(package, "version", "package.version")?;
+
+    if let Some(kind) = package.get("kind").and_then(toml::Value::as_str) {
+        if !matches!(kind, "binary" | "application") {
+            bail!("unsupported package kind");
+        }
+    }
+
+    validate_manifest_binaries(manifest)?;
+    validate_manifest_files(manifest)?;
+    Ok(())
+}
+
+fn validate_manifest_binaries(manifest: &toml::Value) -> Result<()> {
+    let Some(binaries) = manifest.get("binary").and_then(toml::Value::as_array) else {
+        return Ok(());
+    };
+    let mut paths = BTreeSet::new();
+    for binary in binaries {
+        let table = binary
+            .as_table()
+            .ok_or_else(|| anyhow!("binary entry must be a table"))?;
+        let path = required_non_empty_string(table, "path", "binary.path")?;
+        if !paths.insert(path.to_string()) {
+            bail!("manifest contains duplicate binary path: {path}");
+        }
+        if let Some(requires) = table.get("requires") {
+            let requires = requires
+                .as_array()
+                .ok_or_else(|| anyhow!("binary.requires must be an array"))?;
+            for capability in requires {
+                if capability.as_str().is_none() {
+                    bail!("binary.requires must contain strings");
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_manifest_files(manifest: &toml::Value) -> Result<()> {
+    let Some(files) = manifest.get("file").and_then(toml::Value::as_array) else {
+        return Ok(());
+    };
+    let mut ids = BTreeSet::new();
+    let mut paths = BTreeSet::new();
+    for file in files {
+        let table = file
+            .as_table()
+            .ok_or_else(|| anyhow!("file entry must be a table"))?;
+        let id = required_non_empty_string(table, "id", "file.id")?;
+        if !ids.insert(id.to_string()) {
+            bail!("manifest contains duplicate file id: {id}");
+        }
+        let path = required_non_empty_string(table, "path", "file.path")?;
+        if !paths.insert(path.to_string()) {
+            bail!("manifest contains duplicate file path: {path}");
+        }
+        required_non_empty_string(table, "digest", "file.digest")?;
+        if !is_non_zero_mode(table.get("mode")) {
+            bail!("file.mode is invalid");
+        }
+    }
+    Ok(())
+}
+
+fn required_non_empty_string<'a>(
+    table: &'a toml::map::Map<String, toml::Value>,
+    key: &str,
+    name: &str,
+) -> Result<&'a str> {
+    let value = table
+        .get(key)
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| anyhow!("{name} is missing"))?;
+    if value.is_empty() {
+        bail!("{name} is empty");
+    }
+    Ok(value)
+}
+
+fn is_valid_package_id(id: &str) -> bool {
+    id.bytes()
+        .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'.' | b'-'))
+}
+
+fn is_non_zero_mode(value: Option<&toml::Value>) -> bool {
+    match value {
+        Some(toml::Value::String(value)) if !value.is_empty() && value.len() <= 4 => {
+            u32::from_str_radix(value, 8).is_ok_and(|mode| mode != 0)
+        }
+        Some(toml::Value::Integer(value)) => u32::try_from(*value).is_ok_and(|mode| mode != 0),
+        _ => false,
+    }
+}
+
 fn validate_certificate_for_manifest(
     certificate: &DeveloperCertificate,
     manifest: &toml::Value,
@@ -627,6 +736,58 @@ mod tests {
             request.capabilities,
             vec!["process.spawn".to_string(), "window.create".to_string()]
         );
+    }
+
+    #[test]
+    fn manifest_shape_rejects_signature_service_incompatible_metadata() {
+        let invalid_package_id = toml::from_str(
+            r#"
+            [package]
+            id = "Org.Example.Application"
+            name = "Example"
+            version = "0.1.0"
+            "#,
+        )
+        .unwrap();
+        assert!(validate_manifest_shape(&invalid_package_id).is_err());
+
+        let duplicate_file_id = toml::from_str(
+            r#"
+            [package]
+            id = "org.example.application"
+            name = "Example"
+            version = "0.1.0"
+
+            [[file]]
+            id = "entry"
+            path = "$/entry.elf"
+            digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            mode = "0755"
+
+            [[file]]
+            id = "entry"
+            path = "$/other.elf"
+            digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            mode = "0755"
+            "#,
+        )
+        .unwrap();
+        assert!(validate_manifest_shape(&duplicate_file_id).is_err());
+
+        let empty_binary_path = toml::from_str(
+            r#"
+            [package]
+            id = "org.example.application"
+            name = "Example"
+            version = "0.1.0"
+
+            [[binary]]
+            path = ""
+            requires = []
+            "#,
+        )
+        .unwrap();
+        assert!(validate_manifest_shape(&empty_binary_path).is_err());
     }
 
     #[test]
