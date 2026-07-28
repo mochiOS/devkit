@@ -380,7 +380,7 @@ fn reject_chain_and_unknown_signatures(entries: &[MpkgEntry]) -> Result<()> {
     Ok(())
 }
 
-fn decode_canonical_certificate(bytes: &[u8]) -> Result<DeveloperCertificate> {
+pub(crate) fn decode_canonical_certificate(bytes: &[u8]) -> Result<DeveloperCertificate> {
     let certificate = DeveloperCertificate::decode(bytes).map_err(|error| anyhow!(error))?;
     let mut encoded = vec![0; certificate.encoded_len().map_err(|error| anyhow!(error))?];
     certificate

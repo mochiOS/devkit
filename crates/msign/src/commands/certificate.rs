@@ -96,8 +96,7 @@ pub fn obtain(args: CertificateObtainArgs) -> Result<()> {
     let request = mpkg::certificate_request(&args.package, &args.developer, &public_key)?;
     let response = request_certificate(&args.api_base, args.bearer_token.as_deref(), &request)?;
     let certificate_bytes = decode_certificate_response(&response)?;
-    let certificate =
-        DeveloperCertificate::decode(&certificate_bytes).map_err(|error| anyhow!(error))?;
+    let certificate = mpkg::decode_canonical_certificate(&certificate_bytes)?;
 
     validate_obtained_certificate(&certificate, &public_key.to_bytes(), &request)?;
     if let Some(parent) = args.output.parent() {
