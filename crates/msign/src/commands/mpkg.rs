@@ -47,8 +47,7 @@ pub fn sign(args: PackageSignArgs) -> Result<()> {
     let package_id = package_id(&manifest_value)?;
     let certificate_bytes = fs::read(&args.certificate)
         .with_context(|| format!("failed to read {}", args.certificate.display()))?;
-    let certificate =
-        DeveloperCertificate::decode(&certificate_bytes).map_err(|error| anyhow!(error))?;
+    let certificate = decode_canonical_certificate(&certificate_bytes)?;
     let developer_key = crypto::read_private_key(&args.key)?;
     if developer_key.verifying_key().to_bytes() != certificate.subject_public_key {
         bail!("developer private key does not match certificate subject public key");
@@ -115,8 +114,8 @@ pub fn verify(args: PackageVerifyArgs) -> Result<()> {
         toml::from_str(manifest_text).context("manifest is not valid TOML")?;
     validate_manifest_shape(&manifest_value)?;
     let package_id = package_id(&manifest_value)?;
-    let certificate = DeveloperCertificate::decode(&entry(&entries, CERTIFICATE_PATH)?.data)
-        .map_err(|error| anyhow!(error))?;
+    let certificate_bytes = &entry(&entries, CERTIFICATE_PATH)?.data;
+    let certificate = decode_canonical_certificate(certificate_bytes)?;
     let root_public_key = crypto::read_public_key(&args.root_public_key)?.to_bytes();
     certificate
         .verify(&root_public_key, args.unix_time, package_id)
@@ -216,6 +215,11 @@ fn validate_ustar_stream(bytes: &[u8]) -> Result<()> {
         if &block[257..263] != b"ustar\0" || &block[263..265] != b"00" {
             bail!("MPKG tar entry is not ustar");
         }
+        let expected_checksum = parse_tar_octal(&block[148..156])? as u64;
+        let actual_checksum = tar_header_checksum(block);
+        if expected_checksum != actual_checksum {
+            bail!("MPKG tar entry checksum mismatch");
+        }
         let kind = block[156];
         if kind != b'0' && kind != 0 && kind != b'5' {
             bail!("MPKG contains unsupported tar entry type");
@@ -293,6 +297,20 @@ fn parse_tar_octal(bytes: &[u8]) -> Result<usize> {
     Ok(value)
 }
 
+fn tar_header_checksum(block: &[u8]) -> u64 {
+    block
+        .iter()
+        .enumerate()
+        .map(|(index, byte)| {
+            if (148..156).contains(&index) {
+                u64::from(b' ')
+            } else {
+                u64::from(*byte)
+            }
+        })
+        .sum()
+}
+
 fn write_mpkg(path: &Path, entries: &[MpkgEntry]) -> Result<()> {
     let mut tar_bytes = Vec::new();
     {
@@ -360,6 +378,18 @@ fn reject_chain_and_unknown_signatures(entries: &[MpkgEntry]) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn decode_canonical_certificate(bytes: &[u8]) -> Result<DeveloperCertificate> {
+    let certificate = DeveloperCertificate::decode(bytes).map_err(|error| anyhow!(error))?;
+    let mut encoded = vec![0; certificate.encoded_len().map_err(|error| anyhow!(error))?];
+    certificate
+        .encode(&mut encoded)
+        .map_err(|error| anyhow!(error))?;
+    if encoded != bytes {
+        bail!("developer certificate is not canonical MCER encoding");
+    }
+    Ok(certificate)
 }
 
 fn verify_manifest_signature(
@@ -1100,6 +1130,28 @@ mod tests {
                 version: b" \0",
             }],
         );
+
+        assert!(read_mpkg(&invalid).is_err());
+    }
+
+    #[test]
+    fn parser_rejects_bad_tar_checksum() {
+        let temporary = tempfile::tempdir().unwrap();
+        let invalid = temporary.path().join("bad-checksum.mpkg");
+        write_raw_mpkg(
+            &invalid,
+            &[RawTarEntry {
+                path: MANIFEST_PATH,
+                kind: b'0',
+                data: b"format = 1\n",
+                magic: b"ustar\0",
+                version: b"00",
+            }],
+        );
+
+        let mut bytes = fs::read(&invalid).unwrap();
+        bytes[MPKG_HEADER_LEN] ^= 1;
+        fs::write(&invalid, bytes).unwrap();
 
         assert!(read_mpkg(&invalid).is_err());
     }
