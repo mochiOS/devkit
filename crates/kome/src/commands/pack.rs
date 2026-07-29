@@ -151,7 +151,7 @@ fn stage_application_payload(
             id: manifest.package.id.clone(),
             name: manifest.package.name.clone(),
             version: manifest.package.version.clone(),
-            vendor: manifest.package.developer.clone(),
+            vendor: manifest.package.vendor.clone(),
             kind: "application".to_string(),
             architecture: "x86_64".to_string(),
             abi: "mochios-1".to_string(),

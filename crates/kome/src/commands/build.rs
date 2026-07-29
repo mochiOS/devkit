@@ -15,7 +15,8 @@ pub fn run(args: BuildArgs) -> Result<()> {
         bail!("source file does not exist: {}", source.display());
     }
 
-    let out_dir = project_dir.join("target/debug");
+    let profile = if args.release { "release" } else { "debug" };
+    let out_dir = project_dir.join("target").join(profile);
     fs::create_dir_all(&out_dir)
         .with_context(|| format!("failed to create {}", out_dir.display()))?;
 

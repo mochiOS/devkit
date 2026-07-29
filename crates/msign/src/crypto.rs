@@ -1,8 +1,8 @@
 use std::{fs, path::Path};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand_core::OsRng;
 
 pub fn generate_keypair() -> (SigningKey, VerifyingKey) {
@@ -57,25 +57,6 @@ pub fn public_key_from_base64(text: &str) -> Result<VerifyingKey> {
         .map_err(|_| anyhow::anyhow!("public key must be 32 bytes"))?;
 
     VerifyingKey::from_bytes(&bytes).context("invalid ed25519 public key")
-}
-
-pub fn sign(key: &SigningKey, message: &[u8]) -> String {
-    let sig = key.sign(message);
-    STANDARD.encode(sig.to_bytes())
-}
-
-pub fn verify(key: &VerifyingKey, message: &[u8], signature_b64: &str) -> Result<()> {
-    let bytes = STANDARD
-        .decode(signature_b64.trim())
-        .context("signature is not valid base64")?;
-
-    let sig = Signature::from_slice(&bytes).context("invalid ed25519 signature")?;
-
-    if key.verify(message, &sig).is_err() {
-        bail!("signature verification failed");
-    }
-
-    Ok(())
 }
 
 fn write_new_file(path: &Path, bytes: &[u8], mode: u32) -> Result<()> {

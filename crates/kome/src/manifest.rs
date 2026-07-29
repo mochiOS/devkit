@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KomeManifest {
     pub package: Package,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub developer: Option<Developer>,
     pub app: App,
     pub resources: Resources,
     pub capabilities: Capabilities,
@@ -13,8 +15,13 @@ pub struct Package {
     pub name: String,
     pub id: String,
     pub version: String,
-    pub developer: String,
+    pub vendor: String,
     pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Developer {
+    pub id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,15 +42,16 @@ pub struct Capabilities {
 }
 
 impl KomeManifest {
-    pub fn new_app(name: String, id: String, developer: String) -> Self {
+    pub fn new_app(name: String, id: String, vendor: String) -> Self {
         Self {
             package: Package {
                 name,
                 id,
                 version: "0.1.0".to_string(),
-                developer,
+                vendor,
                 description: String::new(),
             },
+            developer: None,
             app: App {
                 entry: "entry.elf".to_string(),
                 icon: "assets/icon.png".to_string(),

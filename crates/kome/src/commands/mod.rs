@@ -1,6 +1,9 @@
+pub mod account;
 pub mod build;
-pub mod certificate;
+pub mod developer;
 pub mod keygen;
+pub mod login;
+pub mod logout;
 pub mod new;
 pub mod pack;
 pub mod sign;

@@ -5,10 +5,21 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-clap = { version = "4", features = ["derive"] }
+base64 = "0.22"
+clap = { version = "4", features = ["derive", "env"] }
+ctrlc = "3"
+ed25519-dalek = "2"
+keyring = { version = "3.6", features = ["apple-native", "windows-native", "sync-secret-service"] }
+open = "5"
+rand_core = { version = "0.6", features = ["getrandom"] }
+reqwest = { version = "0.13.4", features = ["blocking", "json", "rustls"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 toml = "1.1.2"
 sha2 = "0.10"
+tempfile = "3"
+url = "2"
+zeroize = "1"
+mochios-certificate = { git = "https://github.com/mochiOS/syscalls", rev = "af217f5ca6a585110aabac813eb46dff8ccb7bfc", package = "mochios-certificate" }
 
 [dev-dependencies]
-tempfile = "3"

@@ -1,8 +1,6 @@
 mod cli;
 mod commands;
 mod crypto;
-mod package;
-mod signature;
 
 use anyhow::Result;
 use clap::Parser;
@@ -31,8 +29,5 @@ fn main() -> Result<()> {
         Command::Package {
             command: PackageCommand::Verify(args),
         } => commands::mpkg::verify(args),
-        Command::Keygen(args) => commands::keygen::run(args),
-        Command::Sign(args) => commands::sign::run(args),
-        Command::Verify(args) => commands::verify::run(args),
     }
 }

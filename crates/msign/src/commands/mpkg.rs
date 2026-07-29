@@ -5,7 +5,7 @@ use std::path::Path;
 
 use anyhow::{anyhow, bail, Context, Result};
 use ed25519_dalek::{Signature, Signer, VerifyingKey};
-use mochios_certificate::{DeveloperCertificate, SIGNATURE_LEN};
+use mochios_certificate::{is_valid_package_id, DeveloperCertificate, SIGNATURE_LEN};
 use sha2::{Digest, Sha256};
 use tar::{Archive, Builder, EntryType, Header};
 use tempfile::NamedTempFile;
@@ -625,11 +625,6 @@ fn required_non_empty_string<'a>(
     Ok(value)
 }
 
-fn is_valid_package_id(id: &str) -> bool {
-    id.bytes()
-        .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'.' | b'-'))
-}
-
 fn manifest_file_mode(table: &toml::map::Map<String, toml::Value>) -> Result<u32> {
     manifest_file_mode_value(table.get("mode"))
 }
@@ -905,10 +900,14 @@ mod tests {
             &["window.create", "process.spawn", "window.create"],
         );
 
-        let request =
-            certificate_request(&unsigned, "org.example.developer", &developer_public).unwrap();
+        let request = certificate_request(
+            &unsigned,
+            "019f9e5ac6687902b0e72fe53abfbef1",
+            &developer_public,
+        )
+        .unwrap();
 
-        assert_eq!(request.developer_id, "org.example.developer");
+        assert_eq!(request.developer_id, "019f9e5ac6687902b0e72fe53abfbef1");
         assert_eq!(request.package_id, "org.example.application");
         assert_eq!(
             request.subject_public_key,
@@ -1356,9 +1355,12 @@ mod tests {
 
         assert!(read_mpkg(&oversized).is_err());
         let (_, developer_public) = crypto::generate_keypair();
-        assert!(
-            certificate_request(&oversized, "org.example.developer", &developer_public).is_err()
-        );
+        assert!(certificate_request(
+            &oversized,
+            "019f9e5ac6687902b0e72fe53abfbef1",
+            &developer_public
+        )
+        .is_err());
         assert!(verify(PackageVerifyArgs {
             package: oversized,
             root_public_key: temporary.path().join("root.pub"),
@@ -1555,7 +1557,7 @@ mod tests {
         let mut certificate = DeveloperCertificate {
             serial_number: 1,
             issuer_key_id: key_id(spec.root_public_bytes),
-            developer_id: "org.example.developer".to_string(),
+            developer_id: "019f9e5ac6687902b0e72fe53abfbef1".to_string(),
             subject_key_id: key_id(spec.developer_public_bytes),
             subject_public_key: *spec.developer_public_bytes,
             not_before: spec.not_before,

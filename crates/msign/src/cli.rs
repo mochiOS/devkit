@@ -24,12 +24,6 @@ pub enum Command {
         #[command(subcommand)]
         command: PackageCommand,
     },
-    /// Legacy alias used by Kome.
-    Keygen(KeygenArgs),
-    /// Legacy .pkg signing command used by Kome.
-    Sign(SignArgs),
-    /// Legacy .pkg verification command used by Kome.
-    Verify(VerifyArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -57,34 +51,6 @@ pub struct KeygenArgs {
 
     #[arg(long, default_value = "application.pub")]
     pub public_key: PathBuf,
-}
-
-#[derive(Debug, Args)]
-pub struct SignArgs {
-    pub package: PathBuf,
-
-    #[arg(long)]
-    pub key: PathBuf,
-
-    #[arg(long)]
-    pub key_id: String,
-
-    #[arg(short, long)]
-    pub output: Option<PathBuf>,
-}
-
-#[derive(Debug, Args)]
-pub struct VerifyArgs {
-    pub package: PathBuf,
-
-    #[arg(long)]
-    pub pubkey: Option<PathBuf>,
-
-    #[arg(short = 'l', long)]
-    pub local: bool,
-
-    #[arg(long)]
-    pub api_base: Option<String>,
 }
 
 #[derive(Debug, Args)]

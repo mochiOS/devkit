@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 
+use crate::auth::DEFAULT_ACCOUNTS_API_BASE;
+
 #[derive(Debug, Parser)]
 #[command(name = "kome")]
 #[command(about = "Kome project manager")]
@@ -12,30 +14,75 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Authenticate Kome through the mochiOS Account device flow.
+    Login(LoginArgs),
+    /// Display the active Kome CLI account session.
+    Account(AccountArgs),
+    /// Revoke and remove the active Kome CLI account session.
+    Logout(LogoutArgs),
+    /// List or select Developers available to the authenticated Account.
+    Developer {
+        #[command(subcommand)]
+        command: DeveloperCommand,
+    },
+    /// Create a new Kome application project.
     New(NewArgs),
+    /// Build the current Kome project.
     Build(BuildArgs),
+    /// Generate an unsigned MPKG v1 package.
     Pack(PackArgs),
-    Key {
-        #[command(subcommand)]
-        command: KeyCommand,
-    },
-    Certificate {
-        #[command(subcommand)]
-        command: CertificateCommand,
-    },
+    /// Generate or validate the project's Ed25519 application key pair.
     Keygen(KeygenArgs),
+    /// Build, package, obtain a certificate, sign, and verify the project.
     Sign(SignArgs),
+    /// Verify a signed MPKG with its issuer public key.
     Verify(VerifyArgs),
 }
 
 #[derive(Debug, Subcommand)]
-pub enum KeyCommand {
-    Generate(KeygenArgs),
+pub enum DeveloperCommand {
+    /// List Developer memberships returned by Accounts.
+    List(AccountArgs),
+    /// Select the default Developer used by Kome signing.
+    Use(DeveloperUseArgs),
 }
 
-#[derive(Debug, Subcommand)]
-pub enum CertificateCommand {
-    Obtain(CertificateObtainArgs),
+#[derive(Debug, Args)]
+pub struct LoginArgs {
+    #[arg(
+        long,
+        env = "KOME_ACCOUNTS_API_BASE",
+        default_value = DEFAULT_ACCOUNTS_API_BASE
+    )]
+    pub accounts_api_base: String,
+
+    /// Print the verification URL without opening a browser.
+    #[arg(long)]
+    pub no_browser: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct AccountArgs {
+    #[arg(
+        long,
+        env = "KOME_ACCOUNTS_API_BASE",
+        default_value = DEFAULT_ACCOUNTS_API_BASE
+    )]
+    pub accounts_api_base: String,
+}
+
+pub type LogoutArgs = AccountArgs;
+
+#[derive(Debug, Args)]
+pub struct DeveloperUseArgs {
+    pub developer_id: String,
+
+    #[arg(
+        long,
+        env = "KOME_ACCOUNTS_API_BASE",
+        default_value = DEFAULT_ACCOUNTS_API_BASE
+    )]
+    pub accounts_api_base: String,
 }
 
 #[derive(Debug, Args)]
@@ -69,13 +116,16 @@ pub struct NewArgs {
     pub id: Option<String>,
 
     #[arg(long, default_value = "mochi from around the world")]
-    pub developer: String,
+    pub vendor: String,
 }
 
 #[derive(Debug, Args)]
 pub struct BuildArgs {
     #[arg(default_value = ".")]
     pub project_dir: PathBuf,
+
+    #[arg(long)]
+    pub release: bool,
 }
 
 #[derive(Debug, Args)]
@@ -95,6 +145,7 @@ pub struct PackArgs {
 
 #[derive(Debug, Args)]
 pub struct SignArgs {
+    /// Unsigned MPKG input; defaults to dist/<name>-unsigned.mpkg.
     pub package: Option<PathBuf>,
 
     #[arg(long, default_value = ".")]
@@ -103,39 +154,40 @@ pub struct SignArgs {
     #[arg(long, default_value = "keys/application.key")]
     pub key: PathBuf,
 
+    #[arg(long, default_value = "keys/application.pub")]
+    pub public_key: PathBuf,
+
     #[arg(long, default_value = "keys/developer.cert")]
     pub certificate: PathBuf,
 
+    #[arg(long, default_value = "keys/developer.issuer.pub")]
+    pub issuer_public_key: PathBuf,
+
     #[arg(short, long)]
+    /// Signed MPKG output; defaults to dist/<name>.mpkg.
     pub output: Option<PathBuf>,
 
     #[arg(long)]
     pub unix_time: Option<u64>,
-}
-
-#[derive(Debug, Args)]
-pub struct CertificateObtainArgs {
-    #[arg(long)]
-    pub developer: String,
-
-    #[arg(long, default_value = "keys/application.pub")]
-    pub public_key: PathBuf,
 
     #[arg(long)]
-    pub package: Option<PathBuf>,
+    pub release: bool,
 
-    #[arg(long, default_value = "keys/developer.cert")]
-    pub output: PathBuf,
-
-    #[arg(long, default_value = "https://ca.mochios.org/v1")]
-    pub api_base: String,
-
+    /// Start Account login when no Kome CLI credential is available.
     #[arg(long)]
-    pub bearer_token: Option<String>,
+    pub login: bool,
 
-    #[arg(long)]
-    pub idempotency_key: Option<String>,
+    #[arg(
+        long,
+        env = "KOME_ACCOUNTS_API_BASE",
+        default_value = DEFAULT_ACCOUNTS_API_BASE
+    )]
+    pub accounts_api_base: String,
 
-    #[arg(long, default_value = ".")]
-    pub project: PathBuf,
+    #[arg(
+        long,
+        env = "KOME_DEVELOPER_CA_API_BASE",
+        default_value = crate::certificate_client::DEFAULT_DEVELOPER_CA_API_BASE
+    )]
+    pub developer_ca_api_base: String,
 }

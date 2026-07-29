@@ -17,4 +17,4 @@ tar = "0.4"
 flate2 = "1"
 tempfile = "3"
 reqwest = { version = "0.13.4", features = ["blocking", "json", "rustls"] }
-mochios-certificate = { git = "https://github.com/mochiOS/syscalls", package = "mochios-certificate" }
+mochios-certificate = { git = "https://github.com/mochiOS/syscalls", rev = "af217f5ca6a585110aabac813eb46dff8ccb7bfc", package = "mochios-certificate" }
