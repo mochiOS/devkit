@@ -86,12 +86,45 @@ struct IssueResponse {
     developer_id: String,
 }
 
-#[derive(Deserialize)]
-struct ErrorResponse {
-    #[serde(default)]
-    error: String,
-    #[serde(default, alias = "error_description")]
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum ErrorResponse {
+    General {
+        error: GeneralError,
+    },
+    Legacy {
+        #[serde(default)]
+        error: String,
+        #[serde(default, alias = "error_description")]
+        message: String,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+struct GeneralError {
+    code: String,
     message: String,
+}
+
+impl ErrorResponse {
+    fn message(&self) -> &str {
+        match self {
+            Self::General { error } => {
+                if error.message.is_empty() {
+                    &error.code
+                } else {
+                    &error.message
+                }
+            }
+            Self::Legacy { error, message } => {
+                if message.is_empty() {
+                    error
+                } else {
+                    message
+                }
+            }
+        }
+    }
 }
 
 impl CertificateIssuer for HttpCertificateIssuer {
@@ -120,17 +153,19 @@ impl CertificateIssuer for HttpCertificateIssuer {
             .body(body)
             .send()
             .context("Developer Certificate request failed")?;
-        let successful = response.status().is_success();
+        let status = response.status();
         let response_body = read_limited(response)?;
-        if !successful {
-            let response: ErrorResponse = serde_json::from_slice(&response_body)
-                .context("DeveloperCA returned an invalid error response")?;
-            let message = if response.message.is_empty() {
-                response.error
-            } else {
-                response.message
-            };
-            bail!("Developer Certificateの発行に失敗しました: {message}");
+        if !status.is_success() {
+            let response: ErrorResponse = serde_json::from_slice(&response_body).map_err(|_| {
+                anyhow!(
+                    "DeveloperCA returned HTTP {status} with an invalid error response: {}",
+                    short_body(&response_body)
+                )
+            })?;
+            bail!(
+                "Developer Certificateの発行に失敗しました (HTTP {status}): {}",
+                response.message()
+            );
         }
         let response: IssueResponse = serde_json::from_slice(&response_body)
             .context("DeveloperCA returned an invalid certificate response")?;
@@ -265,6 +300,23 @@ fn is_loopback_http(url: &Url) -> bool {
     url.scheme() == "http" && matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "::1"))
 }
 
+fn short_body(body: &[u8]) -> String {
+    const LIMIT: usize = 256;
+    let end = body.len().min(LIMIT);
+    let mut text = String::from_utf8_lossy(&body[..end])
+        .replace(['\r', '\n', '\t'], " ")
+        .trim()
+        .to_string();
+    if body.len() > LIMIT {
+        text.push_str("...");
+    }
+    if text.is_empty() {
+        "<empty>".to_string()
+    } else {
+        text
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -276,6 +328,7 @@ mod tests {
 
     use ed25519_dalek::{Signer, SigningKey};
     use mochios_certificate::{PackageIdScope, KEY_USAGE_PACKAGE_SIGNING, SIGNATURE_LEN};
+    use reqwest::StatusCode;
 
     use super::*;
 
@@ -376,7 +429,51 @@ mod tests {
         assert!(!body.contains("payload"));
     }
 
+    #[test]
+    fn issue_reports_nested_developer_ca_errors() {
+        let response = serde_json::json!({
+            "error": {
+                "code": "CERTIFICATE_REQUEST_INVALID",
+                "message": "Certificate request is invalid"
+            }
+        })
+        .to_string();
+        let (base, _request, server) = serve_once_with_status(StatusCode::BAD_REQUEST, response);
+        let issuer = HttpCertificateIssuer::new(&base).unwrap();
+        let error = issuer
+            .issue("access-secret", &requirements())
+            .unwrap_err()
+            .to_string();
+        server.join().unwrap();
+
+        assert!(error.contains("HTTP 400 Bad Request"));
+        assert!(error.contains("Certificate request is invalid"));
+        assert!(!error.contains("invalid error response"));
+    }
+
+    #[test]
+    fn issue_reports_non_json_error_status_and_body() {
+        let (base, _request, server) =
+            serve_once_with_status(StatusCode::BAD_GATEWAY, "upstream unavailable".to_string());
+        let issuer = HttpCertificateIssuer::new(&base).unwrap();
+        let error = issuer
+            .issue("access-secret", &requirements())
+            .unwrap_err()
+            .to_string();
+        server.join().unwrap();
+
+        assert!(error.contains("HTTP 502 Bad Gateway"));
+        assert!(error.contains("upstream unavailable"));
+    }
+
     fn serve_once(
+        response_body: String,
+    ) -> (String, mpsc::Receiver<String>, thread::JoinHandle<()>) {
+        serve_once_with_status(StatusCode::OK, response_body)
+    }
+
+    fn serve_once_with_status(
+        status: StatusCode,
         response_body: String,
     ) -> (String, mpsc::Receiver<String>, thread::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -387,7 +484,9 @@ mod tests {
             let request = read_request(&mut stream);
             sender.send(request).unwrap();
             let response = format!(
-                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                "HTTP/1.1 {} {}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("Unknown"),
                 response_body.len(),
                 response_body
             );
