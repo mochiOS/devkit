@@ -33,6 +33,24 @@ if grep '^signatures/' unsigned.entries >/dev/null; then
   echo "unsigned MPKG unexpectedly contains signatures" >&2
   exit 1
 fi
+mkdir unsigned.extract
+tail -c +33 dist/Example-unsigned.mpkg | tar -xf - -C unsigned.extract
+grep -Fx 'format = 1' unsigned.extract/manifest.toml >/dev/null
+grep -Fx 'id = "org.example.application"' unsigned.extract/manifest.toml >/dev/null
+grep -Fx 'name = "Example"' unsigned.extract/manifest.toml >/dev/null
+grep -Fx 'version = "0.1.0"' unsigned.extract/manifest.toml >/dev/null
+grep -Fx 'vendor = "org.example.developer"' unsigned.extract/manifest.toml >/dev/null
+grep -Fx 'kind = "application"' unsigned.extract/manifest.toml >/dev/null
+grep -Fx 'architecture = "x86_64"' unsigned.extract/manifest.toml >/dev/null
+grep -Fx 'abi = "mochios-1"' unsigned.extract/manifest.toml >/dev/null
+grep -Fx 'path = "$/entry.elf"' unsigned.extract/manifest.toml >/dev/null
+grep -Fx 'mode = "0755"' unsigned.extract/manifest.toml >/dev/null
+grep -Fx 'path = "/applications/Example.app/entry.elf"' unsigned.extract/manifest.toml >/dev/null
+grep -Fx 'requires = []' unsigned.extract/manifest.toml >/dev/null
+entry_size="$(wc -c < unsigned.extract/payload/bundle/entry.elf | tr -d ' ')"
+entry_digest="$(sha256sum unsigned.extract/payload/bundle/entry.elf | awk '{print $1}')"
+grep -Fx "size = ${entry_size}" unsigned.extract/manifest.toml >/dev/null
+grep -Fx "digest = \"sha256:${entry_digest}\"" unsigned.extract/manifest.toml >/dev/null
 
 msign key generate --private-key root.key --public-key root.pub >/dev/null
 kome key generate >/dev/null
@@ -67,6 +85,16 @@ test -f dist/Example.mpkg
 tail -c +33 dist/Example.mpkg | tar -tf - > signed.entries
 grep -Fx signatures/developer.cert signed.entries >/dev/null
 grep -Fx signatures/manifest.sig signed.entries >/dev/null
+mkdir signed.extract
+tail -c +33 dist/Example.mpkg | tar -xf - -C signed.extract
+cmp unsigned.extract/manifest.toml signed.extract/manifest.toml
+cmp unsigned.extract/payload/bundle/entry.elf signed.extract/payload/bundle/entry.elf
+cmp keys/developer.cert signed.extract/signatures/developer.cert
+signature_size="$(wc -c < signed.extract/signatures/manifest.sig | tr -d ' ')"
+if [ "$signature_size" != "64" ]; then
+  echo "manifest.sig must be a 64 byte Ed25519 signature" >&2
+  exit 1
+fi
 
 if grep -aF "$(cat keys/application.key)" dist/Example.mpkg >/dev/null; then
   echo "signed MPKG contains the developer private key" >&2
