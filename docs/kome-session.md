@@ -6,8 +6,8 @@
 kome account
 ```
 
-Komeは保存済みrefresh tokenで短時間のaccess tokenを取得し、refresh response内のAccount
-情報を表示します。
+Komeは保存済みrefresh tokenで短時間のaccess tokenを取得し、初回login時にcredential storeへ
+保存したAccount情報を表示します。refresh responseにはAccount情報を要求しません。
 access tokenはmemory内だけで扱い、永続保存しません。
 
 Developer membership:

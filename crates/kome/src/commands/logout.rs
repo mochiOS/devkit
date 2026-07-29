@@ -34,7 +34,7 @@ fn revoke_and_delete(
     stored: &crate::credential::StoredCredential,
 ) -> Result<()> {
     let revoke_result = (|| -> Result<()> {
-        let (session, _) = api.refresh(&stored.refresh_token)?;
+        let session = api.refresh(&stored.refresh_token)?;
         api.revoke(session.access_token.expose())
     })();
     store.delete_credential()?;
@@ -49,7 +49,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        auth::{AccessSession, AccountMetadata, DeviceAuthorization, PollResult, Secret},
+        auth::{AccessSession, DeviceAuthorization, PollResult, Secret},
         credential::StoredCredential,
     };
 
@@ -72,18 +72,11 @@ mod tests {
             unreachable!()
         }
 
-        fn refresh(&self, _refresh_token: &str) -> Result<(AccessSession, AccountMetadata)> {
-            Ok((
-                AccessSession {
-                    access_token: Secret::new("access".to_string()),
-                    refresh_token: Secret::new("refresh".to_string()),
-                },
-                AccountMetadata {
-                    account_id: "account".to_string(),
-                    account_name: "jine".to_string(),
-                    device_name: "Kome CLI".to_string(),
-                },
-            ))
+        fn refresh(&self, _refresh_token: &str) -> Result<AccessSession> {
+            Ok(AccessSession {
+                access_token: Secret::new("access".to_string()),
+                refresh_token: Secret::new("refresh".to_string()),
+            })
         }
 
         fn revoke(&self, _access_token: &str) -> Result<()> {

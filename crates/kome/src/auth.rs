@@ -144,7 +144,7 @@ pub struct AuthenticatedAccount {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum PollResult {
-    Granted(TokenGrant),
+    Granted(DeviceTokenGrant),
     AuthorizationPending,
     SlowDown,
     AccessDenied,
@@ -153,7 +153,7 @@ pub enum PollResult {
 }
 
 #[derive(Deserialize, PartialEq, Eq)]
-pub struct TokenGrant {
+pub struct DeviceTokenGrant {
     token_type: String,
     access_token: String,
     expires_in: u64,
@@ -161,10 +161,10 @@ pub struct TokenGrant {
     account: AccountMetadata,
 }
 
-impl std::fmt::Debug for TokenGrant {
+impl std::fmt::Debug for DeviceTokenGrant {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
-            .debug_struct("TokenGrant")
+            .debug_struct("DeviceTokenGrant")
             .field("token_type", &self.token_type)
             .field("access_token", &"[REDACTED]")
             .field("expires_in", &self.expires_in)
@@ -174,25 +174,69 @@ impl std::fmt::Debug for TokenGrant {
     }
 }
 
-impl TokenGrant {
+impl DeviceTokenGrant {
     fn into_session(mut self) -> Result<(AccessSession, AccountMetadata)> {
-        if self.token_type != "Bearer"
-            || self.access_token.is_empty()
-            || self.expires_in == 0
-            || self.refresh_token.is_empty()
-            || self.account.account_id.is_empty()
-            || self.account.account_name.is_empty()
-        {
+        if self.account.account_id.is_empty() || self.account.account_name.is_empty() {
             bail!("Accounts returned an incomplete CLI session");
         }
-        Ok((
-            AccessSession {
-                access_token: Secret::new(std::mem::take(&mut self.access_token)),
-                refresh_token: Secret::new(std::mem::take(&mut self.refresh_token)),
-            },
-            self.account,
-        ))
+        let session = access_session(
+            &self.token_type,
+            self.expires_in,
+            &mut self.access_token,
+            &mut self.refresh_token,
+        )?;
+        Ok((session, self.account))
     }
+}
+
+#[derive(Deserialize, PartialEq, Eq)]
+struct RefreshTokenGrant {
+    token_type: String,
+    access_token: String,
+    expires_in: u64,
+    refresh_token: String,
+}
+
+impl std::fmt::Debug for RefreshTokenGrant {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RefreshTokenGrant")
+            .field("token_type", &self.token_type)
+            .field("access_token", &"[REDACTED]")
+            .field("expires_in", &self.expires_in)
+            .field("refresh_token", &"[REDACTED]")
+            .finish()
+    }
+}
+
+impl RefreshTokenGrant {
+    fn into_session(mut self) -> Result<AccessSession> {
+        access_session(
+            &self.token_type,
+            self.expires_in,
+            &mut self.access_token,
+            &mut self.refresh_token,
+        )
+    }
+}
+
+fn access_session(
+    token_type: &str,
+    expires_in: u64,
+    access_token: &mut String,
+    refresh_token: &mut String,
+) -> Result<AccessSession> {
+    if token_type != "Bearer"
+        || access_token.is_empty()
+        || expires_in == 0
+        || refresh_token.is_empty()
+    {
+        bail!("Accounts returned an incomplete CLI session");
+    }
+    Ok(AccessSession {
+        access_token: Secret::new(std::mem::take(access_token)),
+        refresh_token: Secret::new(std::mem::take(refresh_token)),
+    })
 }
 
 pub trait AccountsApi {
@@ -202,7 +246,7 @@ pub trait AccountsApi {
         device_name: &str,
     ) -> Result<DeviceAuthorization>;
     fn poll_device_token(&self, device_code: &str, code_verifier: &str) -> Result<PollResult>;
-    fn refresh(&self, refresh_token: &str) -> Result<(AccessSession, AccountMetadata)>;
+    fn refresh(&self, refresh_token: &str) -> Result<AccessSession>;
     fn revoke(&self, access_token: &str) -> Result<()>;
 }
 
@@ -409,14 +453,15 @@ impl AccountsApi for HttpAccountsApi {
         }
     }
 
-    fn refresh(&self, refresh_token: &str) -> Result<(AccessSession, AccountMetadata)> {
+    fn refresh(&self, refresh_token: &str) -> Result<AccessSession> {
         let response = self
             .client
             .post(self.endpoint("token/refresh")?)
             .json(&RefreshRequest { refresh_token })
             .send()
             .context("failed to refresh the Kome CLI session")?;
-        decode_success::<TokenGrant>(response, "Accounts", "CLI session refresh")?.into_session()
+        decode_success::<RefreshTokenGrant>(response, "Accounts", "CLI session refresh")?
+            .into_session()
     }
 
     fn revoke(&self, access_token: &str) -> Result<()> {
@@ -505,9 +550,15 @@ pub fn refresh_login(
     let stored = store
         .load_credential()?
         .ok_or_else(|| anyhow!("login required"))?;
-    let (session, mut account) = api.refresh(&stored.refresh_token)?;
-    account.device_name = stored.device_name.clone();
-    let authenticated = AuthenticatedAccount { session, account };
+    let session = api.refresh(&stored.refresh_token)?;
+    let authenticated = AuthenticatedAccount {
+        session,
+        account: AccountMetadata {
+            account_id: stored.account_id.clone(),
+            account_name: stored.account_name.clone(),
+            device_name: stored.device_name.clone(),
+        },
+    };
     persist_login(store, &authenticated)?;
     Ok(authenticated)
 }
@@ -780,7 +831,7 @@ mod tests {
                 .ok_or_else(|| anyhow!("unexpected poll"))
         }
 
-        fn refresh(&self, _refresh_token: &str) -> Result<(AccessSession, AccountMetadata)> {
+        fn refresh(&self, _refresh_token: &str) -> Result<AccessSession> {
             unreachable!()
         }
 
@@ -832,7 +883,7 @@ mod tests {
     }
 
     fn grant() -> PollResult {
-        PollResult::Granted(TokenGrant {
+        PollResult::Granted(DeviceTokenGrant {
             token_type: "Bearer".to_string(),
             access_token: "access-secret".to_string(),
             expires_in: 600,
@@ -865,8 +916,8 @@ mod tests {
     }
 
     #[test]
-    fn accounts_token_response_matches_the_production_shape() -> Result<()> {
-        let grant: TokenGrant = serde_json::from_str(
+    fn device_token_response_requires_account_metadata() -> Result<()> {
+        let grant: DeviceTokenGrant = serde_json::from_str(
             r#"{"token_type":"Bearer","access_token":"access","expires_in":600,"refresh_token":"refresh","account":{"id":"account-1","name":"jine"}}"#,
         )?;
         let (session, account) = grant.into_session()?;
@@ -878,9 +929,23 @@ mod tests {
     }
 
     #[test]
+    fn refresh_token_response_does_not_require_account_metadata() -> Result<()> {
+        let grant: RefreshTokenGrant = serde_json::from_str(
+            r#"{"token_type":"Bearer","access_token":"access","expires_in":600,"refresh_token":"refresh"}"#,
+        )?;
+        let session = grant.into_session()?;
+        assert_eq!(session.access_token.expose(), "access");
+        assert_eq!(session.refresh_token.expose(), "refresh");
+
+        let without_account = r#"{"token_type":"Bearer","access_token":"access","expires_in":600,"refresh_token":"refresh"}"#;
+        assert!(serde_json::from_str::<DeviceTokenGrant>(without_account).is_err());
+        Ok(())
+    }
+
+    #[test]
     fn legacy_token_response_fields_are_rejected() {
         let legacy = r#"{"token_type":"Bearer","access_token":"access","expires_in":600,"refresh_credential":"refresh","session_id":"session","account":{"id":"account-1","name":"jine"}}"#;
-        assert!(serde_json::from_str::<TokenGrant>(legacy).is_err());
+        assert!(serde_json::from_str::<DeviceTokenGrant>(legacy).is_err());
     }
 
     #[test]
@@ -1080,7 +1145,7 @@ mod tests {
 
     #[test]
     fn secret_debug_output_is_redacted() {
-        let grant = TokenGrant {
+        let grant = DeviceTokenGrant {
             token_type: "Bearer".to_string(),
             access_token: "access-secret".to_string(),
             expires_in: 600,
@@ -1135,19 +1200,12 @@ mod tests {
                 unreachable!()
             }
 
-            fn refresh(&self, refresh_token: &str) -> Result<(AccessSession, AccountMetadata)> {
+            fn refresh(&self, refresh_token: &str) -> Result<AccessSession> {
                 assert_eq!(refresh_token, "old-refresh");
-                Ok((
-                    AccessSession {
-                        access_token: Secret::new("new-access".to_string()),
-                        refresh_token: Secret::new("new-refresh".to_string()),
-                    },
-                    AccountMetadata {
-                        account_id: "account-1".to_string(),
-                        account_name: "jine".to_string(),
-                        device_name: default_device_name(),
-                    },
-                ))
+                Ok(AccessSession {
+                    access_token: Secret::new("new-access".to_string()),
+                    refresh_token: Secret::new("new-refresh".to_string()),
+                })
             }
 
             fn revoke(&self, _access_token: &str) -> Result<()> {
@@ -1162,7 +1220,10 @@ mod tests {
             account_name: "jine".to_string(),
             device_name: "Kome CLI test".to_string(),
         });
-        refresh_login(&RefreshApi, &store).unwrap();
+        let authenticated = refresh_login(&RefreshApi, &store).unwrap();
+        assert_eq!(authenticated.account.account_id, "account-1");
+        assert_eq!(authenticated.account.account_name, "jine");
+        assert_eq!(authenticated.account.device_name, "Kome CLI test");
         let stored = store.credential.borrow();
         let stored = stored.as_ref().unwrap();
         assert_eq!(stored.refresh_token, "new-refresh");

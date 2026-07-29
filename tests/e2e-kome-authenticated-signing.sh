@@ -100,8 +100,7 @@ for (my $index = 0; $index < $expected_requests; $index++) {
         $request !~ /"refresh_credential"/ or die "refresh sent legacy field";
         $request =~ /"refresh_token":"refresh-(?:1|rotated)"/ or die "missing refresh_token";
         $body = '{"token_type":"Bearer","access_token":"access-secret",'
-            . '"expires_in":600,"refresh_token":"refresh-rotated",'
-            . '"account":{"id":"019f9e5ac6687902b0e72fe53abfbef0","name":"jine"}}';
+            . '"expires_in":600,"refresh_token":"refresh-rotated"}';
     } elsif ($method eq 'POST' && $path eq '/v1/cli/session/revoke-current') {
         $body = '';
     } else {
