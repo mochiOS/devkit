@@ -58,6 +58,8 @@ cd "$work_dir"
 kome new Example --id org.example.application --developer org.example.developer >/dev/null
 cd Example
 
+perl -0pi -e 's/required = \[\]/required = ["window.create"]/' Kome.toml
+
 kome build >/dev/null
 kome pack >/dev/null
 
@@ -91,7 +93,7 @@ grep -Fx 'abi = "mochios-1"' unsigned.extract/manifest.toml >/dev/null
 grep -Fx 'path = "$/entry.elf"' unsigned.extract/manifest.toml >/dev/null
 grep -Fx 'mode = "0755"' unsigned.extract/manifest.toml >/dev/null
 grep -Fx 'path = "/applications/Example.app/entry.elf"' unsigned.extract/manifest.toml >/dev/null
-grep -Fx 'requires = []' unsigned.extract/manifest.toml >/dev/null
+grep -Fx 'requires = ["window.create"]' unsigned.extract/manifest.toml >/dev/null
 entry_size="$(wc -c < unsigned.extract/payload/bundle/entry.elf | tr -d ' ')"
 entry_digest="$(sha256sum unsigned.extract/payload/bundle/entry.elf | awk '{print $1}')"
 grep -Fx "size = ${entry_size}" unsigned.extract/manifest.toml >/dev/null
@@ -111,10 +113,110 @@ msign certificate issue \
   --developer-id org.example.developer \
   --serial 1 \
   --not-before 1700000000 \
-  --not-after 1900000000 \
+  --not-after 4102444800 \
   --scope exact:org.example.application \
   --capability window.create \
-  --output keys/developer.cert >/dev/null
+  --output issued.cert >/dev/null
+
+certificate_response="$(printf '{"certificate_base64":"%s"}' "$(base64 -w0 issued.cert)")"
+certificate_response_file="$work_dir/certificate-response.json"
+certificate_request_file="$work_dir/certificate-request.http"
+certificate_port_file="$work_dir/certificate-server.port"
+certificate_server="$work_dir/certificate-server.pl"
+printf '%s' "$certificate_response" > "$certificate_response_file"
+cat > "$certificate_server" <<'PERL'
+use strict;
+use warnings;
+use IO::Socket::INET;
+
+my ($port_file, $request_file, $response_file) = @ARGV;
+my $server = IO::Socket::INET->new(
+    LocalAddr => '127.0.0.1',
+    LocalPort => 0,
+    Proto => 'tcp',
+    Listen => 1,
+    Reuse => 1,
+) or die "failed to listen: $!";
+
+open(my $port_fh, '>', $port_file) or die "failed to write port file: $!";
+print {$port_fh} $server->sockport;
+close($port_fh);
+
+my $client = $server->accept() or die "failed to accept: $!";
+my $request = '';
+while (index($request, "\r\n\r\n") < 0) {
+    my $chunk = '';
+    my $read = sysread($client, $chunk, 4096);
+    die "failed to read request: $!" unless defined $read;
+    last if $read == 0;
+    $request .= $chunk;
+}
+if ($request =~ /content-length:\s*(\d+)/i) {
+    my $length = $1;
+    my $body_start = index($request, "\r\n\r\n") + 4;
+    while (length($request) - $body_start < $length) {
+        my $chunk = '';
+        my $read = sysread($client, $chunk, 4096);
+        die "failed to read body: $!" unless defined $read;
+        last if $read == 0;
+        $request .= $chunk;
+    }
+}
+
+open(my $request_fh, '>', $request_file) or die "failed to write request file: $!";
+print {$request_fh} $request;
+close($request_fh);
+
+open(my $response_fh, '<', $response_file) or die "failed to read response file: $!";
+local $/;
+my $body = <$response_fh>;
+close($response_fh);
+
+print {$client} "HTTP/1.1 200 OK\r\n";
+print {$client} "content-type: application/json\r\n";
+print {$client} "content-length: " . length($body) . "\r\n";
+print {$client} "connection: close\r\n";
+print {$client} "\r\n";
+print {$client} $body;
+close($client);
+PERL
+
+perl "$certificate_server" "$certificate_port_file" "$certificate_request_file" "$certificate_response_file" &
+certificate_server_pid="$!"
+for _ in $(seq 1 100); do
+  if [ -s "$certificate_port_file" ]; then
+    break
+  fi
+  sleep 0.05
+done
+if [ ! -s "$certificate_port_file" ]; then
+  echo "certificate fixture server did not start" >&2
+  kill "$certificate_server_pid" 2>/dev/null || true
+  exit 1
+fi
+certificate_api_base="http://127.0.0.1:$(cat "$certificate_port_file")"
+kome certificate obtain \
+  --developer org.example.developer \
+  --public-key keys/application.pub \
+  --output keys/developer.cert \
+  --api-base "$certificate_api_base" \
+  --bearer-token test-token >/dev/null
+wait "$certificate_server_pid"
+
+grep -F 'POST /developer-certificates HTTP/1.1' "$certificate_request_file" >/dev/null
+grep -Fi 'authorization: Bearer test-token' "$certificate_request_file" >/dev/null
+grep -F '"developer_id":"org.example.developer"' "$certificate_request_file" >/dev/null
+grep -F '"package_id":"org.example.application"' "$certificate_request_file" >/dev/null
+grep -F '"capabilities":["window.create"]' "$certificate_request_file" >/dev/null
+if grep -F 'application.key' "$certificate_request_file" >/dev/null; then
+  echo "certificate obtain request unexpectedly contains the private key path" >&2
+  exit 1
+fi
+if grep -F 'entry.elf' "$certificate_request_file" >/dev/null; then
+  echo "certificate obtain request unexpectedly contains payload metadata" >&2
+  exit 1
+fi
+cmp issued.cert keys/developer.cert
 
 kome sign --unix-time 1800000000 >/dev/null
 kome verify --issuer-public-key root.pub --unix-time 1800000000 > verify.out
