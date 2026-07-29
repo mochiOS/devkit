@@ -178,6 +178,17 @@ fn stage_bundle_file(
     files: &mut Vec<MpkgFile>,
 ) -> Result<()> {
     validate_bundle_path(bundle_path)?;
+    let metadata = fs::symlink_metadata(source)
+        .with_context(|| format!("failed to stat {}", source.display()))?;
+    if metadata.file_type().is_symlink() {
+        bail!("bundle source cannot be a symlink: {}", source.display());
+    }
+    if !metadata.is_file() {
+        bail!("bundle source must be a regular file: {}", source.display());
+    }
+    if is_hard_linked_regular_file(&metadata) {
+        bail!("bundle source cannot be a hard link: {}", source.display());
+    }
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
@@ -193,6 +204,18 @@ fn stage_bundle_file(
         mode: format!("{:04o}", mode.unwrap_or(file_mode(source)?)),
     });
     Ok(())
+}
+
+#[cfg(unix)]
+fn is_hard_linked_regular_file(metadata: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    metadata.nlink() > 1
+}
+
+#[cfg(not(unix))]
+fn is_hard_linked_regular_file(_metadata: &fs::Metadata) -> bool {
+    false
 }
 
 fn validate_bundle_path(path: &str) -> Result<()> {
@@ -228,4 +251,55 @@ fn hex(bytes: &[u8]) -> String {
         output.push(TABLE[(byte & 0x0f) as usize] as char);
     }
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn staging_rejects_symlink_sources() {
+        use std::os::unix::fs::symlink;
+
+        let temporary = tempfile::tempdir().unwrap();
+        let source = temporary.path().join("source");
+        let link = temporary.path().join("link");
+        fs::write(&source, b"asset").unwrap();
+        symlink(&source, &link).unwrap();
+
+        let mut files = Vec::new();
+        assert!(stage_bundle_file(
+            &link,
+            &temporary.path().join("staged/asset"),
+            "asset",
+            "asset",
+            None,
+            &mut files,
+        )
+        .is_err());
+        assert!(files.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn staging_rejects_hard_link_sources() {
+        let temporary = tempfile::tempdir().unwrap();
+        let source = temporary.path().join("source");
+        let link = temporary.path().join("link");
+        fs::write(&source, b"asset").unwrap();
+        fs::hard_link(&source, &link).unwrap();
+
+        let mut files = Vec::new();
+        assert!(stage_bundle_file(
+            &link,
+            &temporary.path().join("staged/asset"),
+            "asset",
+            "asset",
+            None,
+            &mut files,
+        )
+        .is_err());
+        assert!(files.is_empty());
+    }
 }
