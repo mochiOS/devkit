@@ -199,6 +199,12 @@ fn parse_mpkg(bytes: &[u8]) -> Result<Vec<MpkgEntry>> {
         {
             bail!("MPKG contains entry outside allowed roots: {path}");
         }
+        if path.starts_with("signatures/")
+            && path != CERTIFICATE_PATH
+            && path != MANIFEST_SIGNATURE_PATH
+        {
+            bail!("unknown MPKG signature entry: {path}");
+        }
         if !paths.insert(path.clone()) {
             bail!("MPKG contains duplicate entry: {path}");
         }
@@ -247,6 +253,12 @@ fn validate_ustar_stream(bytes: &[u8]) -> Result<()> {
             && !path.starts_with("payload/")
         {
             bail!("MPKG contains entry outside allowed roots: {path}");
+        }
+        if path.starts_with("signatures/")
+            && path != CERTIFICATE_PATH
+            && path != MANIFEST_SIGNATURE_PATH
+        {
+            bail!("unknown MPKG signature entry: {path}");
         }
         if !paths.insert(path.clone()) {
             bail!("MPKG contains duplicate entry: {path}");
@@ -1288,6 +1300,33 @@ mod tests {
             ],
         )
         .unwrap();
+
+        assert!(read_mpkg(&invalid).is_err());
+    }
+
+    #[test]
+    fn parser_rejects_signature_chain_directory_entries() {
+        let temporary = tempfile::tempdir().unwrap();
+        let invalid = temporary.path().join("signature-chain-directory.mpkg");
+        write_raw_mpkg(
+            &invalid,
+            &[
+                RawTarEntry {
+                    path: MANIFEST_PATH,
+                    kind: b'0',
+                    data: b"format = 1\n",
+                    magic: b"ustar\0",
+                    version: b"00",
+                },
+                RawTarEntry {
+                    path: "signatures/chain",
+                    kind: b'5',
+                    data: b"",
+                    magic: b"ustar\0",
+                    version: b"00",
+                },
+            ],
+        );
 
         assert!(read_mpkg(&invalid).is_err());
     }
