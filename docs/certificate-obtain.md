@@ -71,3 +71,6 @@ Capability許可
 ```
 
 Subject公開鍵が`application.pub`と一致しないcertificateは保存しません。
+
+DeveloperCAと同じく、要求本文は16 KiB以下、Capabilityは512件以下に制限します。
+上限超過はHTTP requestを送信する前に拒否します。

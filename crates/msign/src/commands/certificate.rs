@@ -17,6 +17,8 @@ use crate::crypto;
 
 const MAX_CERTIFICATE_RESPONSE_BYTES: u64 = 1024 * 1024;
 const MAX_ERROR_BODY_BYTES: u64 = 8 * 1024;
+const MAX_CERTIFICATE_REQUEST_BYTES: usize = 16 * 1024;
+const MAX_CERTIFICATE_CAPABILITIES: usize = 512;
 
 pub fn issue(args: CertificateIssueArgs) -> Result<()> {
     let issuer_key_path = args
@@ -157,13 +159,20 @@ fn request_certificate(
         package_id: request.package_id.clone(),
         capabilities: request.capabilities.clone(),
     };
+    if body.capabilities.len() > MAX_CERTIFICATE_CAPABILITIES {
+        bail!("certificate request contains more than 512 capabilities");
+    }
+    let body = serde_json::to_vec(&body).context("failed to encode certificate request")?;
+    if body.len() > MAX_CERTIFICATE_REQUEST_BYTES {
+        bail!("certificate request body exceeds 16 KiB");
+    }
     let client = Client::new();
     let mut http = client
         .post(url.as_str())
         .header(ACCEPT, "application/json")
         .header(CONTENT_TYPE, "application/json")
         .header("X-Idempotency-Key", idempotency_key)
-        .json(&body);
+        .body(body);
     if let Some(token) = bearer_token {
         http = http.header(AUTHORIZATION, format!("Bearer {token}"));
     }
@@ -640,8 +649,50 @@ mod tests {
     }
 
     #[test]
+    fn certificate_request_capability_count_matches_developer_ca_policy() {
+        let request = CertificateRequest {
+            developer_id: "developer-record-1".to_string(),
+            subject_public_key: "PUBLIC_KEY".to_string(),
+            package_id: "org.example.application".to_string(),
+            capabilities: vec!["window.create".to_string(); MAX_CERTIFICATE_CAPABILITIES + 1],
+        };
+
+        let error = request_certificate(
+            "http://127.0.0.1:1",
+            None,
+            "certificate-request-5",
+            &request,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("more than 512 capabilities"));
+    }
+
+    #[test]
+    fn certificate_request_body_matches_developer_ca_size_limit() {
+        let request = CertificateRequest {
+            developer_id: "developer-record-1".to_string(),
+            subject_public_key: "PUBLIC_KEY".to_string(),
+            package_id: "org.example.application".to_string(),
+            capabilities: vec!["x".repeat(64); MAX_CERTIFICATE_CAPABILITIES],
+        };
+
+        let error = request_certificate(
+            "http://127.0.0.1:1",
+            None,
+            "certificate-request-6",
+            &request,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("request body exceeds 16 KiB"));
+    }
+
+    #[test]
     fn idempotency_key_matches_developer_ca_policy() {
-        assert!(validate_idempotency_key("certificate-request-5").is_ok());
+        assert!(validate_idempotency_key("certificate-request-7").is_ok());
         assert!(validate_idempotency_key("too-short").is_err());
         assert!(validate_idempotency_key("contains a space").is_err());
         assert!(validate_idempotency_key(&"a".repeat(129)).is_err());
