@@ -5,6 +5,50 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/mochios-devkit-e2e.XXXXXX")"
 trap 'rm -rf "$work_dir"' EXIT
 
+check_mpkg_header() {
+  local package="$1"
+  local size
+  size="$(stat -c '%s' "$package")"
+  if [ "$size" -lt 32 ]; then
+    echo "MPKG is smaller than the 32 byte header: $package" >&2
+    exit 1
+  fi
+
+  local header
+  header=($(od -An -v -tu1 -N32 "$package"))
+  if [ "${#header[@]}" -ne 32 ]; then
+    echo "failed to read complete MPKG header: $package" >&2
+    exit 1
+  fi
+  if [ "${header[0]}" -ne 77 ] || [ "${header[1]}" -ne 80 ] || [ "${header[2]}" -ne 75 ] || [ "${header[3]}" -ne 71 ]; then
+    echo "invalid MPKG magic: $package" >&2
+    exit 1
+  fi
+
+  local major minor header_len compression flags tar_len expected_len
+  major=$((header[4] | (header[5] << 8)))
+  minor=$((header[6] | (header[7] << 8)))
+  header_len=$((header[8] | (header[9] << 8)))
+  compression="${header[10]}"
+  flags="${header[11]}"
+  tar_len=$((header[12] | (header[13] << 8) | (header[14] << 16) | (header[15] << 24) | (header[16] << 32) | (header[17] << 40) | (header[18] << 48) | (header[19] << 56)))
+  expected_len=$((size - 32))
+  if [ "$major" -ne 1 ] || [ "$minor" -ne 0 ] || [ "$header_len" -ne 32 ] || [ "$compression" -ne 0 ] || [ "$flags" -ne 0 ]; then
+    echo "invalid MPKG v1 header fields: $package" >&2
+    exit 1
+  fi
+  if [ "$tar_len" -ne "$expected_len" ]; then
+    echo "MPKG tar stream length mismatch: $package" >&2
+    exit 1
+  fi
+  for index in $(seq 20 31); do
+    if [ "${header[$index]}" -ne 0 ]; then
+      echo "MPKG reserved header byte is non-zero: $package" >&2
+      exit 1
+    fi
+  done
+}
+
 cd "$repo_dir"
 cargo build --bins >/dev/null
 
@@ -26,6 +70,7 @@ if tar -tf dist/Example-unsigned.mpkg >/dev/null 2>&1; then
   exit 1
 fi
 
+check_mpkg_header dist/Example-unsigned.mpkg
 tail -c +33 dist/Example-unsigned.mpkg | tar -tf - > unsigned.entries
 grep -Fx manifest.toml unsigned.entries >/dev/null
 grep -Fx payload/bundle/entry.elf unsigned.entries >/dev/null
@@ -82,6 +127,7 @@ grep -E "^package_digest: [0-9a-f]{64}$" verify.out >/dev/null
 grep -Fx "allowed_capability: window.create" verify.out >/dev/null
 
 test -f dist/Example.mpkg
+check_mpkg_header dist/Example.mpkg
 tail -c +33 dist/Example.mpkg | tar -tf - > signed.entries
 grep -Fx signatures/developer.cert signed.entries >/dev/null
 grep -Fx signatures/manifest.sig signed.entries >/dev/null
