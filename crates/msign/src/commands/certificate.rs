@@ -89,6 +89,8 @@ struct ObtainRequest {
 struct ObtainResponse {
     certificate: Option<String>,
     certificate_base64: Option<String>,
+    developer_id: String,
+    developer_record_id: String,
 }
 
 pub fn obtain(args: CertificateObtainArgs) -> Result<()> {
@@ -107,7 +109,7 @@ pub fn obtain(args: CertificateObtainArgs) -> Result<()> {
     let certificate_bytes = decode_certificate_response(&response)?;
     let certificate = mpkg::decode_canonical_certificate(&certificate_bytes)?;
 
-    validate_obtained_certificate(&certificate, &public_key.to_bytes(), &request)?;
+    validate_obtained_certificate(&certificate, &public_key.to_bytes(), &request, &response)?;
     if let Some(parent) = args.output.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
@@ -223,6 +225,7 @@ fn validate_obtained_certificate(
     certificate: &DeveloperCertificate,
     public_key: &[u8; 32],
     request: &CertificateRequest,
+    response: &ObtainResponse,
 ) -> Result<()> {
     if &certificate.subject_public_key != public_key {
         bail!("certificate subject public key does not match requested public key");
@@ -230,8 +233,11 @@ fn validate_obtained_certificate(
     if certificate.subject_key_id != key_id(public_key) {
         bail!("certificate subject key id does not match requested public key");
     }
-    if certificate.developer_id != request.developer_id {
-        bail!("certificate developer id does not match request");
+    if response.developer_record_id != request.developer_id {
+        bail!("certificate response developer record id does not match request");
+    }
+    if certificate.developer_id != response.developer_id {
+        bail!("certificate developer id does not match response");
     }
     if !certificate
         .package_id_scopes
@@ -436,7 +442,7 @@ mod tests {
         let (_, requested_public) = crypto::generate_keypair();
         let (_, other_public) = crypto::generate_keypair();
         let request = CertificateRequest {
-            developer_id: "org.example.developer".to_string(),
+            developer_id: "developer-record-1".to_string(),
             subject_public_key: crypto::public_key_to_base64(&requested_public),
             package_id: "org.example.application".to_string(),
             capabilities: vec!["window.create".to_string()],
@@ -445,7 +451,7 @@ mod tests {
         let certificate = DeveloperCertificate {
             serial_number: 1,
             issuer_key_id: [0; 32],
-            developer_id: "org.example.developer".to_string(),
+            developer_id: "org.mochios.developer.record1".to_string(),
             subject_key_id: key_id(&other_public_bytes),
             subject_public_key: other_public_bytes,
             not_before: 1_700_000_000,
@@ -459,7 +465,8 @@ mod tests {
         assert!(validate_obtained_certificate(
             &certificate,
             &requested_public.to_bytes(),
-            &request
+            &request,
+            &test_obtain_response("org.mochios.developer.record1", "developer-record-1",),
         )
         .is_err());
     }
@@ -468,7 +475,7 @@ mod tests {
     fn obtained_certificate_must_be_currently_valid() {
         let (_, requested_public) = crypto::generate_keypair();
         let request = CertificateRequest {
-            developer_id: "org.example.developer".to_string(),
+            developer_id: "developer-record-1".to_string(),
             subject_public_key: crypto::public_key_to_base64(&requested_public),
             package_id: "org.example.application".to_string(),
             capabilities: Vec::new(),
@@ -477,7 +484,7 @@ mod tests {
         let mut certificate = DeveloperCertificate {
             serial_number: 1,
             issuer_key_id: [0; 32],
-            developer_id: "org.example.developer".to_string(),
+            developer_id: "org.mochios.developer.record1".to_string(),
             subject_key_id: key_id(&public_key),
             subject_public_key: public_key,
             not_before: 1,
@@ -487,20 +494,27 @@ mod tests {
             allowed_capabilities: Vec::new(),
             signature: [0; SIGNATURE_LEN],
         };
-        assert!(validate_obtained_certificate(&certificate, &public_key, &request).is_err());
+        let response = test_obtain_response("org.mochios.developer.record1", "developer-record-1");
+        assert!(
+            validate_obtained_certificate(&certificate, &public_key, &request, &response).is_err()
+        );
 
         let now = current_unix_time().unwrap();
         certificate.not_before = now + 60;
         certificate.not_after = now + 120;
-        assert!(validate_obtained_certificate(&certificate, &public_key, &request).is_err());
+        assert!(
+            validate_obtained_certificate(&certificate, &public_key, &request, &response).is_err()
+        );
     }
 
     #[test]
     fn obtain_request_contains_only_public_certificate_inputs() {
-        let (api_base, received, server) =
-            serve_once(200, r#"{"certificate_base64":"AA=="}"#.to_string());
+        let (api_base, received, server) = serve_once(
+            200,
+            r#"{"certificate_base64":"AA==","developer_id":"org.mochios.developer.record1","developer_record_id":"developer-record-1"}"#.to_string(),
+        );
         let request = CertificateRequest {
-            developer_id: "org.example.developer".to_string(),
+            developer_id: "developer-record-1".to_string(),
             subject_public_key: "PUBLIC_KEY".to_string(),
             package_id: "org.example.application".to_string(),
             capabilities: vec!["window.create".to_string(), "process.spawn".to_string()],
@@ -517,9 +531,7 @@ mod tests {
         let http = received.recv().unwrap();
 
         assert_eq!(response.certificate_base64.as_deref(), Some("AA=="));
-        assert!(
-            http.starts_with("POST /developers/org.example.developer/certificates/issue HTTP/1.1")
-        );
+        assert!(http.starts_with("POST /developers/developer-record-1/certificates/issue HTTP/1.1"));
         assert!(http.contains("authorization: Bearer test-token"));
         assert!(http.contains("x-idempotency-key: certificate-request-1"));
         assert!(!http.contains(r#""developer_id""#));
@@ -547,7 +559,7 @@ mod tests {
         let mut certificate = DeveloperCertificate {
             serial_number: 1,
             issuer_key_id: key_id(&root_key.verifying_key().to_bytes()),
-            developer_id: "org.example.developer".to_string(),
+            developer_id: "org.mochios.developer.record1".to_string(),
             subject_key_id: key_id(&public_key),
             subject_public_key: public_key,
             not_before: now - 60,
@@ -563,13 +575,13 @@ mod tests {
         let mut certificate_bytes = vec![0; certificate.encoded_len().unwrap()];
         certificate.encode(&mut certificate_bytes).unwrap();
         let response = format!(
-            r#"{{"certificate_base64":"{}"}}"#,
+            r#"{{"certificate_base64":"{}","developer_id":"org.mochios.developer.record1","developer_record_id":"developer-record-1"}}"#,
             STANDARD.encode(&certificate_bytes)
         );
         let (api_base, received, server) = serve_once(200, response);
 
         obtain(CertificateObtainArgs {
-            developer: "org.example.developer".to_string(),
+            developer: "developer-record-1".to_string(),
             public_key: public_key_path,
             package: package_path,
             output: certificate_path.clone(),
@@ -581,9 +593,7 @@ mod tests {
         server.join().unwrap();
         let http = received.recv().unwrap();
 
-        assert!(
-            http.starts_with("POST /developers/org.example.developer/certificates/issue HTTP/1.1")
-        );
+        assert!(http.starts_with("POST /developers/developer-record-1/certificates/issue HTTP/1.1"));
         assert!(http.contains("x-idempotency-key: certificate-request-2"));
         assert!(http.contains(r#""package_id":"org.example.application""#));
         assert!(http.contains(r#""capabilities":["window.create"]"#));
@@ -638,6 +648,15 @@ mod tests {
         let generated = generate_idempotency_key();
         assert_eq!(generated.len(), 32);
         assert!(validate_idempotency_key(&generated).is_ok());
+    }
+
+    fn test_obtain_response(developer_id: &str, developer_record_id: &str) -> ObtainResponse {
+        ObtainResponse {
+            certificate: None,
+            certificate_base64: None,
+            developer_id: developer_id.to_string(),
+            developer_record_id: developer_record_id.to_string(),
+        }
     }
 
     fn serve_once(

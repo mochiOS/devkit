@@ -45,7 +45,10 @@ package_id
 capabilities
 ```
 
-Developer IDはJSON bodyではなくendpoint pathに含めます。
+`--developer`にはDeveloperCAのDeveloper record IDを指定します。この値はJSON bodyでは
+なくendpoint pathに含めます。MCER内のDeveloper IDは別の
+`certificate_developer_id`であり、Cloud応答の`developer_record_id`と`developer_id`を
+それぞれrequest pathとMCERへ照合してから保存します。
 
 devkitがCloudへ送らない情報:
 

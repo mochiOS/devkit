@@ -55,6 +55,8 @@ kome certificate obtain \
 既定では`https://ca.mochios.org/v1/developers/<developer-id>/certificates/issue`へ
 Bearer token付きで送信します。DeveloperCAが要求する`X-Idempotency-Key`は毎回安全な
 乱数から生成します。再試行で同じ発行要求を使う場合は`--idempotency-key`で固定できます。
+`--developer`はDeveloperCAのDeveloper record IDです。MCER内のDeveloper IDとは別に
+Cloud応答から照合します。
 
 署名:
 

@@ -118,7 +118,7 @@ msign certificate issue \
   --capability window.create \
   --output issued.cert >/dev/null
 
-certificate_response="$(printf '{"certificate_base64":"%s"}' "$(base64 -w0 issued.cert)")"
+certificate_response="$(printf '{"certificate_base64":"%s","developer_id":"org.example.developer","developer_record_id":"developer-record-1"}' "$(base64 -w0 issued.cert)")"
 certificate_response_file="$work_dir/certificate-response.json"
 certificate_request_file="$work_dir/certificate-request.http"
 certificate_port_file="$work_dir/certificate-server.port"
@@ -196,7 +196,7 @@ if [ ! -s "$certificate_port_file" ]; then
 fi
 certificate_api_base="http://127.0.0.1:$(cat "$certificate_port_file")"
 kome certificate obtain \
-  --developer org.example.developer \
+  --developer developer-record-1 \
   --public-key keys/application.pub \
   --output keys/developer.cert \
   --api-base "$certificate_api_base" \
@@ -204,7 +204,7 @@ kome certificate obtain \
   --idempotency-key devkit-e2e-certificate-1 >/dev/null
 wait "$certificate_server_pid"
 
-grep -F 'POST /developers/org.example.developer/certificates/issue HTTP/1.1' "$certificate_request_file" >/dev/null
+grep -F 'POST /developers/developer-record-1/certificates/issue HTTP/1.1' "$certificate_request_file" >/dev/null
 grep -Fi 'authorization: Bearer test-token' "$certificate_request_file" >/dev/null
 grep -Fi 'x-idempotency-key: devkit-e2e-certificate-1' "$certificate_request_file" >/dev/null
 if grep -F '"developer_id"' "$certificate_request_file" >/dev/null; then
