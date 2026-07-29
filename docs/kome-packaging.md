@@ -21,10 +21,4 @@ target/mpkg-staging/payload/bundle/entry.elf
 `sha256:` digestが入ります。`kome pack`はこのstaging directoryを作り直してから
 `mpack create`へ渡します。
 
-legacy `.pkg`が必要な場合だけ明示します。
-
-```sh
-kome pack --legacy
-```
-
-legacy `.pkg`はAppStore向け標準形式ではありません。
+legacy `.pkg`はAppStore向け標準形式ではなく、現在の`kome pack`では生成しません。

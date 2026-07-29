@@ -1,26 +1,10 @@
 # Legacy .pkg Migration Guide
 
-legacy `.pkg`は互換性のため残っています。
+legacy `.pkg`はAppStore向け標準形式ではありません。現在の`kome`標準フローは
+MPKG v1のみを生成・署名・検証します。
 
-```sh
-kome pack --legacy
-kome sign --legacy
-kome verify --legacy
-kome keygen
-```
-
-legacy署名は`.pkg`内の`META/signature.toml`を使用します。
-
-```toml
-version = 1
-algorithm = "ed25519"
-key_id = "application"
-public_key = "..."
-package_hash = "..."
-signature = "..."
-```
-
-MPKG v1とは自動判定で混ぜません。AppStore向けには次の標準フローへ移行します。
+既存の`.pkg`成果物は、MPKG v1として自動判定または自動変換しません。
+AppStore向けには次の標準フローへ移行します。
 
 ```sh
 kome pack

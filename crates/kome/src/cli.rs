@@ -54,23 +54,11 @@ pub struct VerifyArgs {
     #[arg(long, default_value = ".")]
     pub project: PathBuf,
 
-    #[arg(long)]
-    pub pubkey: Option<PathBuf>,
-
-    #[arg(short = 'l', long)]
-    pub local: bool,
-
-    #[arg(long)]
-    pub api_base: Option<String>,
-
     #[arg(long, alias = "issuer-public-key")]
     pub root_public_key: Option<PathBuf>,
 
     #[arg(long)]
     pub unix_time: Option<u64>,
-
-    #[arg(long)]
-    pub legacy: bool,
 }
 
 #[derive(Debug, Args)]
@@ -103,9 +91,6 @@ pub struct PackArgs {
 
     #[arg(long)]
     pub force: bool,
-
-    #[arg(long)]
-    pub legacy: bool,
 }
 
 #[derive(Debug, Args)]
@@ -118,9 +103,6 @@ pub struct SignArgs {
     #[arg(long, default_value = "keys/application.key")]
     pub key: PathBuf,
 
-    #[arg(long, default_value = "application")]
-    pub key_id: String,
-
     #[arg(long, default_value = "keys/developer.cert")]
     pub certificate: PathBuf,
 
@@ -129,9 +111,6 @@ pub struct SignArgs {
 
     #[arg(long)]
     pub unix_time: Option<u64>,
-
-    #[arg(long)]
-    pub legacy: bool,
 }
 
 #[derive(Debug, Args)]
