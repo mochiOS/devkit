@@ -119,6 +119,7 @@ pub fn verify(args: PackageVerifyArgs) -> Result<()> {
     certificate
         .verify(&root_public_key, args.unix_time, package_id)
         .map_err(|error| anyhow!(error))?;
+    validate_certificate_capabilities_for_manifest(&certificate, &manifest_value)?;
     verify_manifest_signature(&certificate, manifest, &entries)?;
     verify_payload(&manifest_value, &entries)?;
 
@@ -640,6 +641,21 @@ fn validate_certificate_for_manifest(
     {
         bail!("Package ID is outside Certificate scope");
     }
+    validate_certificate_capabilities_for_manifest(certificate, manifest)?;
+    let now = match unix_time {
+        Some(value) => value,
+        None => current_unix_time()?,
+    };
+    if now < certificate.not_before || now >= certificate.not_after {
+        bail!("Certificate is expired or not yet valid");
+    }
+    Ok(())
+}
+
+fn validate_certificate_capabilities_for_manifest(
+    certificate: &DeveloperCertificate,
+    manifest: &toml::Value,
+) -> Result<()> {
     for capability in required_capabilities(manifest)? {
         if !certificate
             .allowed_capabilities
@@ -648,13 +664,6 @@ fn validate_certificate_for_manifest(
         {
             bail!("Capability is not allowed by Certificate: {capability}");
         }
-    }
-    let now = match unix_time {
-        Some(value) => value,
-        None => current_unix_time()?,
-    };
-    if now < certificate.not_before || now >= certificate.not_after {
-        bail!("Certificate is expired or not yet valid");
     }
     Ok(())
 }
@@ -1061,6 +1070,32 @@ mod tests {
             unix_time: 1_800_000_000,
         })
         .unwrap();
+
+        let no_capability_certificate = temporary.path().join("no-capability.cert");
+        write_test_certificate(
+            &no_capability_certificate,
+            &root_key,
+            TestCertificateSpec {
+                root_public_bytes: &root_public.to_bytes(),
+                developer_public_bytes: &developer_public.to_bytes(),
+                package_id_scopes: vec![PackageIdScope::exact("org.example.application")],
+                allowed_capabilities: Vec::new(),
+                not_before: 1_700_000_000,
+                not_after: 1_900_000_000,
+            },
+        );
+        let mut no_capability_entries = read_mpkg(&signed).unwrap();
+        entry_mut(&mut no_capability_entries, CERTIFICATE_PATH)
+            .unwrap()
+            .data = fs::read(no_capability_certificate).unwrap();
+        let no_capability = temporary.path().join("no-capability.mpkg");
+        write_mpkg(&no_capability, &no_capability_entries).unwrap();
+        assert!(verify(PackageVerifyArgs {
+            package: no_capability,
+            root_public_key: temporary.path().join("root.pub"),
+            unix_time: 1_800_000_000,
+        })
+        .is_err());
 
         let mut missing_certificate_entries = read_mpkg(&signed).unwrap();
         missing_certificate_entries.retain(|entry| entry.path != CERTIFICATE_PATH);
