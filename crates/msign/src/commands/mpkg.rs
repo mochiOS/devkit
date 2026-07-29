@@ -16,7 +16,9 @@ use crate::crypto;
 
 const MPKG_MAGIC: &[u8; 4] = b"MPKG";
 const MPKG_HEADER_LEN: usize = 32;
-const MAX_PACKAGE_LEN: u64 = 256 * 1024 * 1024;
+const MAX_PACKAGE_LEN: u64 = 128 * 1024 * 1024;
+const MAX_ENTRIES: usize = 10_000;
+const MAX_METADATA_LEN: usize = 1024 * 1024;
 const MANIFEST_PATH: &str = "manifest.toml";
 const CERTIFICATE_PATH: &str = "signatures/developer.cert";
 const MANIFEST_SIGNATURE_PATH: &str = "signatures/manifest.sig";
@@ -146,7 +148,7 @@ fn read_package_bytes(path: &Path) -> Result<Vec<u8>> {
         .with_context(|| format!("failed to stat {}", path.display()))?
         .len();
     if length > MAX_PACKAGE_LEN {
-        bail!("MPKG exceeds signature.service package size limit");
+        bail!("MPKG exceeds AppStore Reviewer package size limit");
     }
     fs::read(path).with_context(|| format!("failed to read {}", path.display()))
 }
@@ -220,6 +222,7 @@ fn parse_mpkg(bytes: &[u8]) -> Result<Vec<MpkgEntry>> {
 fn validate_ustar_stream(bytes: &[u8]) -> Result<()> {
     let mut paths = BTreeSet::new();
     let mut offset = 0usize;
+    let mut entry_count = 0usize;
     while offset + 512 <= bytes.len() {
         let block = &bytes[offset..offset + 512];
         if block.iter().all(|byte| *byte == 0) {
@@ -228,6 +231,10 @@ fn validate_ustar_stream(bytes: &[u8]) -> Result<()> {
             }
             return Ok(());
         }
+        if entry_count >= MAX_ENTRIES {
+            bail!("MPKG contains more than {MAX_ENTRIES} entries");
+        }
+        entry_count += 1;
         if &block[257..263] != b"ustar\0" || &block[263..265] != b"00" {
             bail!("MPKG tar entry is not ustar");
         }
@@ -264,6 +271,13 @@ fn validate_ustar_stream(bytes: &[u8]) -> Result<()> {
             bail!("MPKG contains duplicate entry: {path}");
         }
         let size = parse_tar_octal(&block[124..136])?;
+        if matches!(
+            path.as_str(),
+            MANIFEST_PATH | CERTIFICATE_PATH | MANIFEST_SIGNATURE_PATH
+        ) && size > MAX_METADATA_LEN
+        {
+            bail!("MPKG metadata entry is too large: {path}");
+        }
         let payload_start = offset
             .checked_add(512)
             .ok_or_else(|| anyhow!("MPKG tar stream is too large"))?;
@@ -1332,7 +1346,7 @@ mod tests {
     }
 
     #[test]
-    fn package_read_rejects_signature_service_size_limit() {
+    fn package_read_rejects_appstore_reviewer_size_limit() {
         let temporary = tempfile::tempdir().unwrap();
         let oversized = temporary.path().join("oversized.mpkg");
         fs::File::create(&oversized)
@@ -1351,6 +1365,42 @@ mod tests {
             unix_time: 1_800_000_000,
         })
         .is_err());
+    }
+
+    #[test]
+    fn parser_rejects_appstore_reviewer_entry_and_metadata_limits() {
+        let temporary = tempfile::tempdir().unwrap();
+        let too_many_entries = temporary.path().join("too-many-entries.mpkg");
+        let mut tar_bytes = Vec::new();
+        for index in 0..=MAX_ENTRIES {
+            let path = format!("payload/bundle/{index}");
+            append_raw_tar_entry(
+                &mut tar_bytes,
+                &RawTarEntry {
+                    path: &path,
+                    kind: b'5',
+                    data: b"",
+                    magic: b"ustar\0",
+                    version: b"00",
+                },
+            );
+        }
+        write_raw_mpkg_bytes(&too_many_entries, tar_bytes);
+        assert!(read_mpkg(&too_many_entries).is_err());
+
+        let oversized_manifest = vec![b'x'; MAX_METADATA_LEN + 1];
+        let too_much_metadata = temporary.path().join("too-much-metadata.mpkg");
+        write_raw_mpkg(
+            &too_much_metadata,
+            &[RawTarEntry {
+                path: MANIFEST_PATH,
+                kind: b'0',
+                data: &oversized_manifest,
+                magic: b"ustar\0",
+                version: b"00",
+            }],
+        );
+        assert!(read_mpkg(&too_much_metadata).is_err());
     }
 
     #[test]
@@ -1576,6 +1626,10 @@ mod tests {
         for entry in entries {
             append_raw_tar_entry(&mut tar_bytes, entry);
         }
+        write_raw_mpkg_bytes(path, tar_bytes);
+    }
+
+    fn write_raw_mpkg_bytes(path: &Path, mut tar_bytes: Vec<u8>) {
         tar_bytes.extend_from_slice(&[0; 1024]);
 
         let mut header = [0u8; MPKG_HEADER_LEN];
