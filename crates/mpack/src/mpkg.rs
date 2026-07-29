@@ -89,6 +89,12 @@ fn collect_payload_entries_recursive(
         if !metadata.is_file() {
             bail!("MPKG payload must be regular files: {}", source.display());
         }
+        if is_hard_linked_regular_file(&metadata) {
+            bail!(
+                "MPKG payload cannot contain hard-linked file: {}",
+                source.display()
+            );
+        }
         let relative = source
             .strip_prefix(root)
             .with_context(|| format!("failed to relativize {}", source.display()))?;
@@ -101,6 +107,18 @@ fn collect_payload_entries_recursive(
     }
 
     Ok(())
+}
+
+#[cfg(unix)]
+fn is_hard_linked_regular_file(metadata: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    metadata.nlink() > 1
+}
+
+#[cfg(not(unix))]
+fn is_hard_linked_regular_file(_metadata: &fs::Metadata) -> bool {
+    false
 }
 
 fn write_mpkg(output: &Path, manifest: &[u8], payload_entries: &[MpkgEntry]) -> Result<()> {
@@ -346,6 +364,20 @@ mod tests {
         fs::create_dir_all(payload.join("bundle")).unwrap();
         fs::write(temporary.path().join("target"), b"target").unwrap();
         symlink(temporary.path().join("target"), payload.join("bundle/link")).unwrap();
+
+        assert!(collect_payload_entries(&payload).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_hard_link_payload() {
+        use std::fs::hard_link;
+
+        let temporary = tempfile::tempdir().unwrap();
+        let payload = temporary.path().join("payload");
+        fs::create_dir_all(payload.join("bundle")).unwrap();
+        fs::write(payload.join("bundle/source"), b"source").unwrap();
+        hard_link(payload.join("bundle/source"), payload.join("bundle/linked")).unwrap();
 
         assert!(collect_payload_entries(&payload).is_err());
     }
