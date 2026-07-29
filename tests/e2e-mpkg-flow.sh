@@ -50,12 +50,14 @@ check_mpkg_header() {
 }
 
 cd "$repo_dir"
-cargo build --bins >/dev/null
+if [ "${KOME_E2E_SKIP_BUILD:-0}" != 1 ]; then
+  cargo build --bins >/dev/null
+fi
 
 export PATH="$repo_dir/target/debug:$PATH"
 
 cd "$work_dir"
-kome new Example --id org.example.application --developer org.example.developer >/dev/null
+kome new Example --id org.example.application --vendor "Example Developer" >/dev/null
 cd Example
 
 perl -0pi -e 's/required = \[\]/required = ["window.create"]/' Kome.toml
@@ -86,7 +88,7 @@ grep -Fx 'format = 1' unsigned.extract/manifest.toml >/dev/null
 grep -Fx 'id = "org.example.application"' unsigned.extract/manifest.toml >/dev/null
 grep -Fx 'name = "Example"' unsigned.extract/manifest.toml >/dev/null
 grep -Fx 'version = "0.1.0"' unsigned.extract/manifest.toml >/dev/null
-grep -Fx 'vendor = "org.example.developer"' unsigned.extract/manifest.toml >/dev/null
+grep -Fx 'vendor = "Example Developer"' unsigned.extract/manifest.toml >/dev/null
 grep -Fx 'kind = "application"' unsigned.extract/manifest.toml >/dev/null
 grep -Fx 'architecture = "x86_64"' unsigned.extract/manifest.toml >/dev/null
 grep -Fx 'abi = "mochios-1"' unsigned.extract/manifest.toml >/dev/null
@@ -100,17 +102,14 @@ grep -Fx "size = ${entry_size}" unsigned.extract/manifest.toml >/dev/null
 grep -Fx "digest = \"sha256:${entry_digest}\"" unsigned.extract/manifest.toml >/dev/null
 
 msign key generate --private-key root.key --public-key root.pub >/dev/null
-kome key generate >/dev/null
+kome keygen >/dev/null
 
-if kome key generate >/dev/null 2>&1; then
-  echo "kome key generate unexpectedly overwrote existing keys" >&2
-  exit 1
-fi
+kome keygen >/dev/null
 
 msign certificate issue \
   --issuer-key root.key \
   --subject-public-key keys/application.pub \
-  --developer-id org.example.developer \
+  --developer-id 019f9e5ac6687902b0e72fe53abfbef1 \
   --serial 1 \
   --not-before 1700000000 \
   --not-after 4102444800 \
@@ -118,7 +117,7 @@ msign certificate issue \
   --capability window.create \
   --output issued.cert >/dev/null
 
-certificate_response="$(printf '{"certificate_base64":"%s","developer_id":"org.example.developer","developer_record_id":"developer-record-1"}' "$(base64 -w0 issued.cert)")"
+certificate_response="$(printf '{"certificate_base64":"%s","developer_id":"019f9e5ac6687902b0e72fe53abfbef1"}' "$(base64 -w0 issued.cert)")"
 certificate_response_file="$work_dir/certificate-response.json"
 certificate_request_file="$work_dir/certificate-request.http"
 certificate_port_file="$work_dir/certificate-server.port"
@@ -195,16 +194,17 @@ if [ ! -s "$certificate_port_file" ]; then
   exit 1
 fi
 certificate_api_base="http://127.0.0.1:$(cat "$certificate_port_file")"
-kome certificate obtain \
-  --developer developer-record-1 \
+msign certificate obtain \
+  --developer 019f9e5ac6687902b0e72fe53abfbef1 \
   --public-key keys/application.pub \
+  --package dist/Example-unsigned.mpkg \
   --output keys/developer.cert \
   --api-base "$certificate_api_base" \
   --bearer-token test-token \
   --idempotency-key devkit-e2e-certificate-1 >/dev/null
 wait "$certificate_server_pid"
 
-grep -F 'POST /developers/developer-record-1/certificates/issue HTTP/1.1' "$certificate_request_file" >/dev/null
+grep -F 'POST /developers/019f9e5ac6687902b0e72fe53abfbef1/certificates/issue HTTP/1.1' "$certificate_request_file" >/dev/null
 grep -Fi 'authorization: Bearer test-token' "$certificate_request_file" >/dev/null
 grep -Fi 'x-idempotency-key: devkit-e2e-certificate-1' "$certificate_request_file" >/dev/null
 if grep -F '"developer_id"' "$certificate_request_file" >/dev/null; then
@@ -223,10 +223,15 @@ if grep -F 'entry.elf' "$certificate_request_file" >/dev/null; then
 fi
 cmp issued.cert keys/developer.cert
 
-kome sign --unix-time 1800000000 >/dev/null
+msign package sign \
+  dist/Example-unsigned.mpkg \
+  --certificate keys/developer.cert \
+  --key keys/application.key \
+  --output dist/Example.mpkg \
+  --unix-time 1800000000 >/dev/null
 kome verify --issuer-public-key root.pub --unix-time 1800000000 > verify.out
 grep -Fx "verified_package_id: org.example.application" verify.out >/dev/null
-grep -Fx "developer_id: org.example.developer" verify.out >/dev/null
+grep -Fx "developer_id: 019f9e5ac6687902b0e72fe53abfbef1" verify.out >/dev/null
 grep -Fx "certificate_serial: 1" verify.out >/dev/null
 grep -E "^subject_key_id: [0-9a-f]{64}$" verify.out >/dev/null
 grep -E "^manifest_digest: [0-9a-f]{64}$" verify.out >/dev/null
