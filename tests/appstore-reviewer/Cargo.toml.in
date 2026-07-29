@@ -1,0 +1,10 @@
+[package]
+name = "devkit-appstore-reviewer-compat"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+mochios-mpkg-reviewer = { path = "@REVIEWER_DIR@" }

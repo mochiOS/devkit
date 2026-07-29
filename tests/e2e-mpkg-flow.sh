@@ -254,6 +254,23 @@ if grep -aF "$(cat keys/application.key)" dist/Example.mpkg >/dev/null; then
   exit 1
 fi
 
+if [ -n "${APPSTORE_REVIEWER_DIR:-}" ]; then
+  msign certificate inspect keys/developer.cert > certificate.inspect
+  certificate_serial="$(sed -n 's/^serial_number: //p' certificate.inspect)"
+  certificate_subject_key_id="$(sed -n 's/^subject_key_id: //p' certificate.inspect)"
+  certificate_developer_id="$(sed -n 's/^developer_id: //p' certificate.inspect)"
+  certificate_issuer_key_id="$(sed -n 's/^issuer_key_id: //p' certificate.inspect)"
+  "$repo_dir/tests/run-appstore-reviewer.sh" \
+    "$APPSTORE_REVIEWER_DIR" \
+    "$PWD/dist/Example.mpkg" \
+    "$PWD/root.pub" \
+    "$PWD/keys/application.pub" \
+    "$certificate_serial" \
+    "$certificate_subject_key_id" \
+    "$certificate_developer_id" \
+    "$certificate_issuer_key_id"
+fi
+
 cp dist/Example.mpkg dist/Example-tampered.mpkg
 printf x >> dist/Example-tampered.mpkg
 if kome verify dist/Example-tampered.mpkg --issuer-public-key root.pub --unix-time 1800000000 >/dev/null 2>&1; then

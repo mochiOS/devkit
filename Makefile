@@ -7,4 +7,8 @@ install:
 test-e2e-mpkg:
 	bash tests/e2e-mpkg-flow.sh
 
-.PHONY: install test-e2e-mpkg
+test-e2e-appstore:
+	test -n "$(APPSTORE_REVIEWER_DIR)"
+	APPSTORE_REVIEWER_DIR="$(APPSTORE_REVIEWER_DIR)" bash tests/e2e-mpkg-flow.sh
+
+.PHONY: install test-e2e-mpkg test-e2e-appstore
