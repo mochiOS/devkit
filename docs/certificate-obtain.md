@@ -25,14 +25,27 @@ kome certificate obtain \
   --output keys/developer.cert
 ```
 
+既定のDeveloperCA endpointは次です。
+
+```text
+POST https://ca.mochios.org/v1/developers/<developer-id>/certificates/issue
+Authorization: Bearer <short-lived token>
+X-Idempotency-Key: <16-128 safe ASCII characters>
+```
+
+`X-Idempotency-Key`は未指定なら暗号学的乱数から生成します。同じ発行要求を明示的に
+再試行する場合は`--idempotency-key`へ同じ値を指定します。この値は秘密鍵では
+ありませんが、通常ログへは出しません。
+
 devkitがCloudへ送る情報:
 
 ```text
-developer_id
 subject_public_key
 package_id
 capabilities
 ```
+
+Developer IDはJSON bodyではなくendpoint pathに含めます。
 
 devkitがCloudへ送らない情報:
 

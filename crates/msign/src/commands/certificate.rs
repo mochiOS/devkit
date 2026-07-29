@@ -6,6 +6,7 @@ use ed25519_dalek::Signer;
 use mochios_certificate::{
     key_id, DeveloperCertificate, PackageIdScope, KEY_USAGE_PACKAGE_SIGNING, SIGNATURE_LEN,
 };
+use rand_core::{OsRng, RngCore};
 use reqwest::blocking::{Client, Response};
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
@@ -79,7 +80,6 @@ pub fn issue(args: CertificateIssueArgs) -> Result<()> {
 
 #[derive(Debug, Serialize)]
 struct ObtainRequest {
-    developer_id: String,
     subject_public_key: String,
     package_id: String,
     capabilities: Vec<String>,
@@ -94,7 +94,16 @@ struct ObtainResponse {
 pub fn obtain(args: CertificateObtainArgs) -> Result<()> {
     let public_key = crypto::read_public_key(&args.public_key)?;
     let request = mpkg::certificate_request(&args.package, &args.developer, &public_key)?;
-    let response = request_certificate(&args.api_base, args.bearer_token.as_deref(), &request)?;
+    let idempotency_key = args
+        .idempotency_key
+        .unwrap_or_else(generate_idempotency_key);
+    validate_idempotency_key(&idempotency_key)?;
+    let response = request_certificate(
+        &args.api_base,
+        args.bearer_token.as_deref(),
+        &idempotency_key,
+        &request,
+    )?;
     let certificate_bytes = decode_certificate_response(&response)?;
     let certificate = mpkg::decode_canonical_certificate(&certificate_bytes)?;
 
@@ -124,20 +133,34 @@ pub(crate) struct CertificateRequest {
 fn request_certificate(
     api_base: &str,
     bearer_token: Option<&str>,
+    idempotency_key: &str,
     request: &CertificateRequest,
 ) -> Result<ObtainResponse> {
-    let url = format!("{}/developer-certificates", api_base.trim_end_matches('/'));
+    validate_idempotency_key(idempotency_key)?;
+    let mut url = reqwest::Url::parse(api_base).context("invalid DeveloperCA API base URL")?;
+    {
+        let mut segments = url
+            .path_segments_mut()
+            .map_err(|_| anyhow!("DeveloperCA API base URL cannot be a base URL"))?;
+        segments.pop_if_empty();
+        segments.extend([
+            "developers",
+            request.developer_id.as_str(),
+            "certificates",
+            "issue",
+        ]);
+    }
     let body = ObtainRequest {
-        developer_id: request.developer_id.clone(),
         subject_public_key: request.subject_public_key.clone(),
         package_id: request.package_id.clone(),
         capabilities: request.capabilities.clone(),
     };
     let client = Client::new();
     let mut http = client
-        .post(&url)
+        .post(url.as_str())
         .header(ACCEPT, "application/json")
         .header(CONTENT_TYPE, "application/json")
+        .header("X-Idempotency-Key", idempotency_key)
         .json(&body);
     if let Some(token) = bearer_token {
         http = http.header(AUTHORIZATION, format!("Bearer {token}"));
@@ -154,6 +177,23 @@ fn request_certificate(
     }
     let body = read_response_body_limited(response, MAX_CERTIFICATE_RESPONSE_BYTES)?;
     serde_json::from_slice(&body).context("failed to parse certificate response")
+}
+
+fn generate_idempotency_key() -> String {
+    let mut bytes = [0u8; 16];
+    OsRng.fill_bytes(&mut bytes);
+    hex(&bytes)
+}
+
+fn validate_idempotency_key(value: &str) -> Result<()> {
+    if !(16..=128).contains(&value.len())
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
+    {
+        bail!("idempotency key must contain 16 to 128 safe ASCII characters");
+    }
+    Ok(())
 }
 
 fn read_response_body_limited(response: Response, limit: u64) -> Result<Vec<u8>> {
@@ -466,14 +506,23 @@ mod tests {
             capabilities: vec!["window.create".to_string(), "process.spawn".to_string()],
         };
 
-        let response = request_certificate(&api_base, Some("test-token"), &request).unwrap();
+        let response = request_certificate(
+            &api_base,
+            Some("test-token"),
+            "certificate-request-1",
+            &request,
+        )
+        .unwrap();
         server.join().unwrap();
         let http = received.recv().unwrap();
 
         assert_eq!(response.certificate_base64.as_deref(), Some("AA=="));
-        assert!(http.starts_with("POST /developer-certificates HTTP/1.1"));
+        assert!(
+            http.starts_with("POST /developers/org.example.developer/certificates/issue HTTP/1.1")
+        );
         assert!(http.contains("authorization: Bearer test-token"));
-        assert!(http.contains(r#""developer_id":"org.example.developer""#));
+        assert!(http.contains("x-idempotency-key: certificate-request-1"));
+        assert!(!http.contains(r#""developer_id""#));
         assert!(http.contains(r#""subject_public_key":"PUBLIC_KEY""#));
         assert!(http.contains(r#""package_id":"org.example.application""#));
         assert!(http.contains(r#""capabilities":["window.create","process.spawn"]"#));
@@ -526,11 +575,16 @@ mod tests {
             output: certificate_path.clone(),
             api_base,
             bearer_token: None,
+            idempotency_key: Some("certificate-request-2".to_string()),
         })
         .unwrap();
         server.join().unwrap();
         let http = received.recv().unwrap();
 
+        assert!(
+            http.starts_with("POST /developers/org.example.developer/certificates/issue HTTP/1.1")
+        );
+        assert!(http.contains("x-idempotency-key: certificate-request-2"));
         assert!(http.contains(r#""package_id":"org.example.application""#));
         assert!(http.contains(r#""capabilities":["window.create"]"#));
         assert_eq!(fs::read(certificate_path).unwrap(), certificate_bytes);
@@ -547,7 +601,7 @@ mod tests {
             capabilities: Vec::new(),
         };
 
-        let error = request_certificate(&api_base, None, &request)
+        let error = request_certificate(&api_base, None, "certificate-request-3", &request)
             .unwrap_err()
             .to_string();
         server.join().unwrap();
@@ -567,12 +621,23 @@ mod tests {
             capabilities: Vec::new(),
         };
 
-        let error = request_certificate(&api_base, None, &request)
+        let error = request_certificate(&api_base, None, "certificate-request-4", &request)
             .unwrap_err()
             .to_string();
         server.join().unwrap();
 
         assert!(error.contains("certificate response is too large"));
+    }
+
+    #[test]
+    fn idempotency_key_matches_developer_ca_policy() {
+        assert!(validate_idempotency_key("certificate-request-5").is_ok());
+        assert!(validate_idempotency_key("too-short").is_err());
+        assert!(validate_idempotency_key("contains a space").is_err());
+        assert!(validate_idempotency_key(&"a".repeat(129)).is_err());
+        let generated = generate_idempotency_key();
+        assert_eq!(generated.len(), 32);
+        assert!(validate_idempotency_key(&generated).is_ok());
     }
 
     fn serve_once(

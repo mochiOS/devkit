@@ -200,12 +200,17 @@ kome certificate obtain \
   --public-key keys/application.pub \
   --output keys/developer.cert \
   --api-base "$certificate_api_base" \
-  --bearer-token test-token >/dev/null
+  --bearer-token test-token \
+  --idempotency-key devkit-e2e-certificate-1 >/dev/null
 wait "$certificate_server_pid"
 
-grep -F 'POST /developer-certificates HTTP/1.1' "$certificate_request_file" >/dev/null
+grep -F 'POST /developers/org.example.developer/certificates/issue HTTP/1.1' "$certificate_request_file" >/dev/null
 grep -Fi 'authorization: Bearer test-token' "$certificate_request_file" >/dev/null
-grep -F '"developer_id":"org.example.developer"' "$certificate_request_file" >/dev/null
+grep -Fi 'x-idempotency-key: devkit-e2e-certificate-1' "$certificate_request_file" >/dev/null
+if grep -F '"developer_id"' "$certificate_request_file" >/dev/null; then
+  echo "certificate obtain request unexpectedly contains developer_id in its body" >&2
+  exit 1
+fi
 grep -F '"package_id":"org.example.application"' "$certificate_request_file" >/dev/null
 grep -F '"capabilities":["window.create"]' "$certificate_request_file" >/dev/null
 if grep -F 'application.key' "$certificate_request_file" >/dev/null; then

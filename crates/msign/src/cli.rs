@@ -142,11 +142,14 @@ pub struct CertificateObtainArgs {
     #[arg(long)]
     pub output: PathBuf,
 
-    #[arg(long, default_value = "https://api.mochios.org/v1")]
+    #[arg(long, default_value = "https://ca.mochios.org/v1")]
     pub api_base: String,
 
     #[arg(long)]
     pub bearer_token: Option<String>,
+
+    #[arg(long)]
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(Debug, Args)]

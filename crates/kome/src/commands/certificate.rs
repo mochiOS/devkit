@@ -26,6 +26,9 @@ pub fn obtain(args: CertificateObtainArgs) -> Result<()> {
     if let Some(token) = args.bearer_token {
         command.arg("--bearer-token").arg(token);
     }
+    if let Some(key) = args.idempotency_key {
+        command.arg("--idempotency-key").arg(key);
+    }
     let status = command
         .status()
         .context("failed to execute msign. is msign installed?")?;
