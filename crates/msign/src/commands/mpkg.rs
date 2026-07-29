@@ -1062,6 +1062,41 @@ mod tests {
         })
         .unwrap();
 
+        let mut missing_certificate_entries = read_mpkg(&signed).unwrap();
+        missing_certificate_entries.retain(|entry| entry.path != CERTIFICATE_PATH);
+        let missing_certificate = temporary.path().join("missing-certificate.mpkg");
+        write_mpkg(&missing_certificate, &missing_certificate_entries).unwrap();
+        assert!(verify(PackageVerifyArgs {
+            package: missing_certificate,
+            root_public_key: temporary.path().join("root.pub"),
+            unix_time: 1_800_000_000,
+        })
+        .is_err());
+
+        let mut missing_signature_entries = read_mpkg(&signed).unwrap();
+        missing_signature_entries.retain(|entry| entry.path != MANIFEST_SIGNATURE_PATH);
+        let missing_signature = temporary.path().join("missing-signature.mpkg");
+        write_mpkg(&missing_signature, &missing_signature_entries).unwrap();
+        assert!(verify(PackageVerifyArgs {
+            package: missing_signature,
+            root_public_key: temporary.path().join("root.pub"),
+            unix_time: 1_800_000_000,
+        })
+        .is_err());
+
+        let mut signature_tampered_entries = read_mpkg(&signed).unwrap();
+        entry_mut(&mut signature_tampered_entries, MANIFEST_SIGNATURE_PATH)
+            .unwrap()
+            .data[0] ^= 1;
+        let signature_tampered = temporary.path().join("signature-tampered.mpkg");
+        write_mpkg(&signature_tampered, &signature_tampered_entries).unwrap();
+        assert!(verify(PackageVerifyArgs {
+            package: signature_tampered,
+            root_public_key: temporary.path().join("root.pub"),
+            unix_time: 1_800_000_000,
+        })
+        .is_err());
+
         let mut tampered_entries = read_mpkg(&signed).unwrap();
         entry_mut(&mut tampered_entries, "payload/bundle/entry.elf")
             .unwrap()
