@@ -1,228 +1,126 @@
 # mochiOS developer kit
 
-このリポジトリは、mochiOSアプリをMPKG v1として生成・署名・検証するための
-開発者向けCLIを提供します。
+mochiOSアプリをMPKG v1としてbuild、署名、検証する開発者向けCLIです。
+
+## Quick Start
+
+初回だけAccountログインとEd25519 application鍵の生成を行います。
+
+```sh
+kome login
+kome keygen
+kome sign
+```
+
+2回目以降は、project directoryで次を実行します。
+
+```sh
+kome sign
+```
+
+`kome sign`は必要なbuildとunsigned MPKG生成を行い、認証済みAccountからDeveloperを
+解決し、Developer Certificateを取得または再利用します。署名済みMPKGを一時ファイルで
+検証し、成功した場合だけ`dist/<name>.mpkg`へ配置します。未ログイン時に勝手にブラウザを
+開くことはありません。
+
+新規project:
+
+```sh
+kome new Example --id com.example.application --vendor "Example Developer"
+cd Example
+kome login
+kome keygen
+kome sign
+```
 
 ## Tools
 
-- `kome`: Kome projectの作成、build、MPKG生成、署名フローの入口
-- `mpack`: `.pkg`互換packageとunsigned MPKG v1の生成器
-- `msign`: Ed25519鍵、MCER Developer Certificate、MPKG署名・検証ツール
+- `kome`: project作成、Account session、build、pack、署名の通常入口
+- `mpack`: unsigned MPKG v1の低レベル生成器
+- `msign`: Ed25519鍵、MCER、MPKG署名・検証の低レベルツール
 - `komeup`: Kome toolchain installer
-
-## Standard MPKG Flow
-
-Cloud/AppStore向けの標準フローはMPKG v1です。
-
-```sh
-kome new Example --id org.example.application --developer org.example.developer
-cd Example
-kome build
-kome pack
-kome key generate
-```
-
-`kome pack`は既定でunsigned MPKG v1を生成します。
-
-```text
-dist/Example-unsigned.mpkg
-```
-
-生成されるMPKGは32 byte headerと無圧縮ustar streamで構成されます。
-`signatures/`は署名前には存在しなくても構いません。
-`msign package verify`と`msign certificate obtain`は、AppStore Reviewerの
-128MiB上限を事前に適用します。mochiOS上の`signature.service`の256MiB上限より
-厳しいため、ローカル検証を通ったMPKGがサイズだけを理由にReviewerで拒否されません。
-
-Developer CertificateはCloud ConsoleまたはDeveloperCA APIから取得します。
-初期実装ではConsole併用が有効な運用です。
-
-```text
-keys/application.pub と dist/Example-unsigned.mpkg をConsoleへ渡す
-Consoleから keys/developer.cert を取得する
-```
-
-CLIから取得する場合:
-
-```sh
-kome certificate obtain \
-  --developer org.example.developer \
-  --public-key keys/application.pub \
-  --package dist/Example-unsigned.mpkg \
-  --output keys/developer.cert
-```
-
-既定では`https://ca.mochios.org/v1/developers/<developer-id>/certificates/issue`へ
-Bearer token付きで送信します。DeveloperCAが要求する`X-Idempotency-Key`は毎回安全な
-乱数から生成します。再試行で同じ発行要求を使う場合は`--idempotency-key`で固定できます。
-`--developer`はDeveloperCAのDeveloper record IDです。MCER内のDeveloper IDとは別に
-Cloud応答から照合します。
-
-署名:
-
-```sh
-kome sign \
-  dist/Example-unsigned.mpkg \
-  --certificate keys/developer.cert \
-  --key keys/application.key \
-  --output dist/Example.mpkg
-```
-
-ローカル検証:
-
-```sh
-kome verify dist/Example.mpkg \
-  --issuer-public-key root.pub \
-  --unix-time 1750000000
-```
-
-成功したsigned MPKGはGitHub Releaseへassetとして配置できます。
-
-## Guides
-
-- [Kome package guide](docs/kome-packaging.md)
-- [MPKG v1 guide](docs/mpkg-v1.md)
-- [Developer key management](docs/developer-key-management.md)
-- [Certificate obtain guide](docs/certificate-obtain.md)
-- [Package signing guide](docs/package-signing.md)
-- [AppStore publish guide](docs/appstore-publish.md)
-- [legacy .pkg migration guide](docs/legacy-pkg-migration.md)
 
 ## Generated Files
 
-`kome new`:
-
 ```text
 Kome.toml
-src/main.kome
-assets/
-.gitignore
-```
-
-`.gitignore`には`target/`、`dist/`、`keys/*.key`を追加します。
-秘密鍵をGitへ追加しないでください。
-
-`kome build`:
-
-```text
-target/debug/entry.elf
-```
-
-現時点の`kome build`はmock ELFを生成します。`komec`本体は未実装です。
-
-`kome pack`:
-
-```text
-dist/<name>-unsigned.mpkg
-target/mpkg-staging/manifest.toml
-target/mpkg-staging/payload/bundle/...
-```
-
-`target/mpkg-staging`は中間生成物です。MPKG manifestには実payloadのsizeと
-SHA-256 digestが入ります。
-
-`kome key generate`:
-
-```text
 keys/application.key
 keys/application.pub
-```
-
-鍵はEd25519です。秘密鍵はraw 32 byte signing keyのBase64、公開鍵はraw
-32 byte verifying keyのBase64です。既存ファイルは上書きしません。
-Unix環境では秘密鍵を可能な範囲でowner-only permissionで作成します。
-
-`kome certificate obtain`:
-
-```text
 keys/developer.cert
+keys/developer.issuer.pub
+target/debug/entry.elf
+dist/Example-unsigned.mpkg
+dist/Example.mpkg
 ```
 
-保存前にMCER decode、Subject公開鍵、Subject Key ID、Package ID scope、
-Capability許可、有効期間を確認します。`application.key`、MPKG payload、Kome sourceは
-Cloudへ送信しません。
+`application.key`はraw 32-byte Ed25519 signing keyのBase64です。stdout、Cloud、MPKGへ
+出力されず、`.gitignore`へ`keys/application.key`が重複なく追加されます。
+`application.pub`だけがCertificate発行要求へ送られます。
 
-`kome sign`:
+`kome pack`はMPKG v1の32-byte headerと決定的な無圧縮ustar streamを生成します。
+`manifest.toml`には実payloadのsizeとSHA-256が入り、署名前の出力には
+`signatures/`がなくても構いません。
 
-```text
-dist/<name>.mpkg
+## Account And Developer
+
+```sh
+kome account
+kome developer list
+kome developer use 019f9e5ac6687902b0e72fe53abfbef1
+kome logout
 ```
 
-MPKG内に次を追加します。
+Developer IDは32文字の小文字16進識別子です。Developer ID自体は公開識別子であり、
+credentialではありません。Package IDは`org.mochios.*`に限定されず、
+`com.example.paint`や`io.github.username.tool`を使用できます。
 
-```text
-signatures/developer.cert
-signatures/manifest.sig
-```
+CLI refresh credentialとsession IDはOS credential storeを優先して保存します。OS storeが
+利用できない場合だけ、project外の所有者限定設定ファイルへfallbackします。Web Cookieと
+access tokenは永続保存しません。
 
-`manifest.sig`は次のbyte列への64 byte Ed25519署名です。
+## Guides
 
-```text
-"mochios-mpkg-manifest-v1\0" || SHA-256(manifest.toml bytes)
-```
-
-署名処理はmanifestとpayload bytesを変更しません。
-
-## Legacy .pkg
-
-legacy `.pkg`はAppStore向け標準形式ではありません。現在の`kome`標準フローは
-MPKG v1のみを生成・署名・検証します。
-
-既存の`.pkg`成果物はMPKG v1として自動判定または自動変換しません。
+- [Kome login guide](docs/kome-login.md)
+- [Kome session guide](docs/kome-session.md)
+- [Developer key management](docs/developer-key-management.md)
+- [Kome package guide](docs/kome-packaging.md)
+- [Package signing guide](docs/package-signing.md)
+- [Package ID rules](docs/package-id.md)
+- [MPKG v1 guide](docs/mpkg-v1.md)
+- [AppStore publish guide](docs/appstore-publish.md)
+- [Low-level Certificate guide](docs/certificate-obtain.md)
+- [legacy .pkg migration guide](docs/legacy-pkg-migration.md)
 
 ## Low-level Commands
 
-Unsigned MPKG v1を直接作る場合:
+通常の開発では必要ありません。fixture、運営、形式検証用です。
 
 ```sh
-mpack create \
-  --manifest manifest.toml \
-  --payload payload \
-  --output app.mpkg
-```
-
-`payload` directoryの中身はMPKG内で`payload/`配下に入ります。
-現行v1で受理するpayload rootは`root/`と`bundle/`です。
-
-運営者、fixture、offline CA用途の証明書発行:
-
-```sh
+mpack create --manifest manifest.toml --payload payload --output app.mpkg
+msign key generate --private-key application.key --public-key application.pub
 msign certificate issue \
   --issuer-key issuer.key \
   --subject-public-key application.pub \
-  --developer-id org.example.developer \
+  --developer-id 019f9e5ac6687902b0e72fe53abfbef1 \
   --serial 1 \
   --not-before 1700000000 \
   --not-after 1800000000 \
-  --scope exact:org.example.application \
+  --scope exact:com.example.application \
   --capability window.create \
   --output developer.cert
-```
-
-互換性のため`--root-key`と`--developer-key`も残していますが、
-証明書発行者がDeveloper秘密鍵を読む必要はありません。
-
-MPKG署名と検証:
-
-```sh
 msign package sign app.mpkg --certificate developer.cert --key application.key
-msign package verify app.mpkg --issuer-public-key root.pub --unix-time 1750000000
+msign package verify app.mpkg --root-public-key root.pub --unix-time 1750000000
 ```
 
-## Security Notes
+`msign certificate issue`は運営・fixture用であり、一般利用者向けのCertificate取得手順では
+ありません。
 
-- Developer秘密鍵をCloudへ送らない
-- Developer秘密鍵をstdoutへ出さない
-- Developer秘密鍵をMPKGへ格納しない
-- Certificate Subject公開鍵と`application.key`由来公開鍵を照合する
-- Cloudから返ったCertificateはローカルでMCERとして検証してから保存する
-- package scope外、Capability外、期限外のCertificateでは署名しない
-- 既に署名済みのMPKGは既定で再署名しない
-- path traversal、symlink、hard link、device、FIFO、PAX/GNU拡張を拒否する
-- AppStore Reviewerに合わせ、128MiBを超えるMPKGを拒否する
+## Security
 
-## Install
-
-```sh
-make install
-```
+- Device AuthorizationはPKCE S256を使用し、Accounts指定のpoll intervalを守ります。
+- verification URLへ載せる値は公開`code`だけです。device codeやtokenは載せません。
+- application private key、refresh credential、payload、sourceをCloudへ送りません。
+- CertificateのMCER形式、Issuer署名、Subject、Developer、scope、Capability、期限を
+  ローカルで検証します。
+- 署名後にheader、ustar、Certificate、manifest署名、payload size/digestを検証します。
+- AppStore Reviewerは公開時にCertificateの最新statusを再確認する責務を持ちます。

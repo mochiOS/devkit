@@ -1,15 +1,14 @@
 # Legacy .pkg Migration Guide
 
-legacy `.pkg`はAppStore向け標準形式ではありません。現在の`kome`標準フローは
-MPKG v1のみを生成・署名・検証します。
+legacy `.pkg`はAppStore向け標準形式ではありません。既存成果物をMPKG v1として自動判定、
+自動変換しません。
 
-既存の`.pkg`成果物は、MPKG v1として自動判定または自動変換しません。
-AppStore向けには次の標準フローへ移行します。
+Kome projectの設定とpayloadを移行した後、標準フローを実行してください。
 
 ```sh
-kome pack
-kome key generate
-kome certificate obtain
+kome login
+kome keygen
 kome sign
-kome verify
 ```
+
+2回目以降は`kome sign`だけでbuild、pack、Certificate確認、署名、検証を行います。

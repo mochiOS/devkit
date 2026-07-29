@@ -1,15 +1,31 @@
 # Kome Packaging Guide
 
-Komeの標準package flowはMPKG v1です。
+新規projectは任意の有効なreverse-domain Package IDで作成できます。
 
 ```sh
-kome new Example --id org.example.application --developer org.example.developer
+kome new Example --id com.example.application --vendor "Example Developer"
 cd Example
 kome build
 kome pack
 ```
 
-`kome pack`は`Kome.toml`と`target/debug/entry.elf`から次を生成します。
+`Kome.toml`の主要部分:
+
+```toml
+[package]
+name = "Example"
+id = "com.example.application"
+version = "0.1.0"
+vendor = "Example Developer"
+
+[developer]
+id = "019f9e5ac6687902b0e72fe53abfbef1"
+```
+
+`[developer]`は任意です。省略時はユーザー設定、またはAccountの発行可能Developerから
+`kome sign`が選択します。
+
+`kome pack`は次を生成します。
 
 ```text
 dist/Example-unsigned.mpkg
@@ -17,8 +33,12 @@ target/mpkg-staging/manifest.toml
 target/mpkg-staging/payload/bundle/entry.elf
 ```
 
-`target/mpkg-staging/manifest.toml`には実payloadから計算した`size`と
-`sha256:` digestが入ります。`kome pack`はこのstaging directoryを作り直してから
-`mpack create`へ渡します。
+生成manifestには実payloadから計算したsizeと`sha256:` digestが入ります。
+`target/mpkg-staging`を作り直してから`mpack create`へ渡すため、同じ入力から同じMPKGを
+生成します。legacy `.pkg`は生成しません。
 
-legacy `.pkg`はAppStore向け標準形式ではなく、現在の`kome pack`では生成しません。
+通常はbuildとpackも自動実行する次のコマンドだけで十分です。
+
+```sh
+kome sign
+```

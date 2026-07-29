@@ -1,76 +1,56 @@
-# Certificate Obtain Guide
+# Low-level Certificate Guide
 
-Developer CertificateはMCER v1 wire bytesとして保存します。
+通常の開発者はCertificateを手動取得しません。`kome sign`が認証済みAccountのDeveloperを
+解決し、必要な場合だけDeveloperCAへ発行を要求します。
 
-Console併用:
-
-```text
-keys/application.pub
-dist/Example-unsigned.mpkg
-```
-
-この2つをConsoleへ渡し、取得したcertificateを次へ保存します。
+DeveloperCAへ送る情報:
 
 ```text
-keys/developer.cert
+Developer ID
+application.pub
+Package ID
+全binary.requiresの和集合
 ```
 
-CLI obtain:
+送らない情報:
+
+```text
+application.key
+CLI refresh credential
+MPKG本体とpayload
+source code
+build成果物
+ローカルpath
+```
+
+取得したMCER v1は`keys/developer.cert`へ保存する前に、canonical encoding、Issuer署名、
+Subject公開鍵とKey ID、Developer ID、Package ID scope、Capability、有効期間を検証します。
+Issuer公開鍵は認証済みHTTPS応答から取得し、`keys/developer.issuer.pub`へ保存して以後の
+ローカル検証に使います。
+
+次の低レベルコマンドは運営、fixture、API調査用です。一般向け署名フローでは要求しません。
 
 ```sh
-kome certificate obtain \
-  --developer org.example.developer \
+msign certificate obtain \
+  --developer 019f9e5ac6687902b0e72fe53abfbef1 \
   --public-key keys/application.pub \
   --package dist/Example-unsigned.mpkg \
   --output keys/developer.cert
 ```
 
-既定のDeveloperCA endpointは次です。
+offline fixture用の発行:
 
-```text
-POST https://ca.mochios.org/v1/developers/<developer-id>/certificates/issue
-Authorization: Bearer <short-lived token>
-X-Idempotency-Key: <16-128 safe ASCII characters>
+```sh
+msign certificate issue \
+  --issuer-key fixture-root.key \
+  --subject-public-key keys/application.pub \
+  --developer-id 019f9e5ac6687902b0e72fe53abfbef1 \
+  --serial 1 \
+  --not-before 1700000000 \
+  --not-after 1800000000 \
+  --scope exact:com.example.application \
+  --capability window.create \
+  --output keys/developer.cert
 ```
 
-`X-Idempotency-Key`は未指定なら暗号学的乱数から生成します。同じ発行要求を明示的に
-再試行する場合は`--idempotency-key`へ同じ値を指定します。この値は秘密鍵では
-ありませんが、通常ログへは出しません。
-
-devkitがCloudへ送る情報:
-
-```text
-subject_public_key
-package_id
-capabilities
-```
-
-`--developer`にはDeveloperCAのDeveloper record IDを指定します。この値はJSON bodyでは
-なくendpoint pathに含めます。MCER内のDeveloper IDは別の
-`certificate_developer_id`であり、Cloud応答の`developer_record_id`と`developer_id`を
-それぞれrequest pathとMCERへ照合してから保存します。
-
-devkitがCloudへ送らない情報:
-
-```text
-application.key
-MPKG payload
-Kome source code
-```
-
-保存前の検証:
-
-```text
-MCER decode
-Subject公開鍵一致
-Subject Key ID一致
-Developer ID一致
-Package ID scope
-Capability許可
-現在時刻でのnot_before / not_after
-```
-
-Subject公開鍵が`application.pub`と一致しないcertificateは保存しません。
-
-DeveloperCAと同じく、要求本文は16 KiB以下、Capabilityは512件以下に制限します。
-上限超過はHTTP requestを送信する前に拒否します。
+`msign certificate issue`へapplication秘密鍵を渡す必要はありません。

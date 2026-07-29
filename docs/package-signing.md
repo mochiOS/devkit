@@ -1,17 +1,63 @@
 # Package Signing Guide
 
-MPKG署名:
+初回:
 
 ```sh
-kome sign \
-  dist/Example-unsigned.mpkg \
-  --certificate keys/developer.cert \
-  --key keys/application.key \
-  --output dist/Example.mpkg \
-  --unix-time 1750000000
+kome login
+kome keygen
+kome sign
 ```
 
-低レベルCLI:
+2回目以降:
+
+```sh
+kome sign
+```
+
+`kome sign`は次を順に実行します。
+
+1. `Kome.toml`とPackage IDを検証する
+2. 入力が新しい場合にbuildとunsigned MPKG生成を行う
+3. application鍵を生成または検証する
+4. 保存済みCLI sessionをrefreshする
+5. AccountのDeveloper membershipからDeveloperを解決する
+6. 既存Developer Certificateを検証し、必要なら取得する
+7. 一時MPKGへ`developer.cert`と`manifest.sig`を追加する
+8. 一時MPKGをローカル検証する
+9. 成功した場合だけ`dist/<name>.mpkg`へ配置する
+
+未ログイン時はログイン方法を表示して終了し、勝手にDevice Authorizationを開始しません。
+明示的に同じコマンドからログインする場合だけ`kome sign --login`を使用できます。
+
+Developerの解決順:
+
+1. `Kome.toml`の`[developer].id`
+2. `kome developer use`で保存したdefault Developer
+3. 発行可能なDeveloperが1件なら自動選択
+4. 複数なら対話選択
+5. 0件ならConsoleでの作成を案内
+
+Certificate再利用時はMCER、Issuer署名、application公開鍵、Developer ID、Package ID
+scope、全required Capability、有効期間を検証します。鍵、Developer、Package ID、
+Capability、期限のいずれかが変わると再取得します。
+
+署名対象:
+
+```text
+"mochios-mpkg-manifest-v1\0" || SHA-256(manifest.tomlの正確なbyte列)
+```
+
+署名後のentry:
+
+```text
+signatures/developer.cert
+signatures/manifest.sig
+```
+
+ローカル検証ではMPKG header、ustar制約、MCER、Issuer署名、Certificate期限とscope、
+Capability、manifest署名、payload size/digest、重複・未列挙payloadを確認します。
+
+低レベル操作はfixtureや形式調査に限定してください。
 
 ```sh
 msign package sign \
@@ -19,46 +65,8 @@ msign package sign \
   --certificate keys/developer.cert \
   --key keys/application.key \
   --output dist/Example.mpkg
+
+msign package verify \
+  dist/Example.mpkg \
+  --root-public-key keys/developer.issuer.pub
 ```
-
-署名前に確認するもの:
-
-```text
-inputがMPKG v1
-MPKGがAppStore Reviewerの128MiB上限内
-manifest.tomlが一意
-developer.certがMCER v1
-application.key由来の公開鍵とcertificate Subject公開鍵の一致
-package.idがcertificate scope内
-全binary.requiresがcertificate allowed capabilities内
-certificateが有効期間内
-既署名MPKGではないこと
-```
-
-署名対象:
-
-```text
-"mochios-mpkg-manifest-v1\0" || SHA-256(manifest.toml bytes)
-```
-
-署名後に追加されるentry:
-
-```text
-signatures/developer.cert
-signatures/manifest.sig
-```
-
-通常は既署名MPKGへの再署名を拒否します。明示的に置換する場合だけ
-`msign package sign --replace-signature`を使用します。
-
-ローカル検証:
-
-```sh
-kome verify dist/Example.mpkg \
-  --issuer-public-key root.pub \
-  --unix-time 1750000000
-```
-
-ローカル検証でも128MiBを超えるMPKGは拒否します。mochiOS上の
-`signature.service`は256MiBまで受け付けますが、AppStore Reviewerの上限を
-事前検出するため、公開用devkitはより厳しい値を使います。

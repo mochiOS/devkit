@@ -1,43 +1,33 @@
 # AppStore Publish Guide
 
-AppStoreへ提出するassetはsigned MPKGです。
+通常の提出用assetは`kome sign`が生成したsigned MPKGです。
+
+```sh
+kome sign
+```
 
 ```text
 dist/Example.mpkg
 ```
 
-提出前にローカル検証を通します。
+Komeは最終pathへ置く前にローカル検証を完了します。追加で低レベル検証を実行する場合:
 
 ```sh
-kome verify dist/Example.mpkg \
-  --issuer-public-key root.pub \
-  --unix-time 1750000000
+msign package verify \
+  dist/Example.mpkg \
+  --root-public-key keys/developer.issuer.pub
 ```
 
-成功時に表示される主な情報:
+ローカル検証はCertificateの形式、Issuer署名、有効期間、Package ID scope、Capability、
+manifest署名、payload size/digestを確認します。期限内の既存Certificateを利用したoffline
+署名を許可できる場合でも、AppStore Reviewerは公開時にCertificateの最新statusを検証する
+責務を持ちます。
 
-```text
-verified_package_id
-developer_id
-certificate_serial
-subject_key_id
-manifest_digest
-package_digest
-allowed_capability
-```
-
-秘密鍵や署名内部状態は表示しません。
-
-AppStore repositoryを同時にcheckoutしている開発環境では、同じsigned MPKGを
-実Reviewerへ渡す相互検証も実行できます。
+AppStore repositoryを同時にcheckoutしているfixture環境では、同じsigned MPKGをReviewerへ
+渡す相互検証も実行できます。
 
 ```sh
 make test-e2e-appstore APPSTORE_REVIEWER_DIR=/path/to/AppStore/reviewer
 ```
 
-このtargetはKome project作成からCloud互換Certificate取得fixture、署名、ローカル検証、
-`mochios-mpkg-reviewer::inspect_mpkg`による受理までを1本のE2Eとして確認します。
-
-GitHub Releaseへ公開する場合は、`dist/Example.mpkg`をrelease assetとして
-配置します。現時点のdevkitはGitHubへtokenを保存しません。upload補助は将来の
-`kome publish`で拡張する想定です。
+devkitはGitHub tokenを保存せず、release uploadを自動実行しません。
