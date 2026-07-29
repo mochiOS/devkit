@@ -16,7 +16,7 @@ Package ID
 
 ```text
 application.key
-CLI refresh credential
+CLI refresh token
 MPKG本体とpayload
 source code
 build成果物

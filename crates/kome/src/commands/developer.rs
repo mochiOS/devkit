@@ -2,14 +2,14 @@ use anyhow::{bail, Result};
 use mochios_certificate::is_valid_developer_id;
 
 use crate::{
-    auth::{refresh_login, DeveloperMembership, HttpAccountsApi},
-    cli::{AccountArgs, DeveloperUseArgs},
+    auth::{refresh_login, DeveloperApi, DeveloperMembership, HttpAccountsApi, HttpDeveloperApi},
+    cli::{DeveloperListArgs, DeveloperUseArgs},
     commands::account::print_login_required,
     credential::CredentialStore,
     preferences::Preferences,
 };
 
-pub fn list(args: AccountArgs) -> Result<()> {
+pub fn list(args: DeveloperListArgs) -> Result<()> {
     let store = CredentialStore::system()?;
     if store.load()?.is_none() {
         print_login_required();
@@ -17,7 +17,9 @@ pub fn list(args: AccountArgs) -> Result<()> {
     }
     let api = HttpAccountsApi::new(&args.accounts_api_base)?;
     let account = refresh_login(&api, &store)?;
-    print_memberships(&account.developers);
+    let developers = HttpDeveloperApi::new(&args.developer_ca_api_base)?
+        .developers(account.session.access_token.expose())?;
+    print_memberships(&developers);
     Ok(())
 }
 
@@ -30,12 +32,13 @@ pub fn use_developer(args: DeveloperUseArgs) -> Result<()> {
         print_login_required();
         return Ok(());
     }
-    let api = HttpAccountsApi::new(&args.accounts_api_base)?;
+    let api = HttpAccountsApi::new(&args.api.accounts_api_base)?;
     let account = refresh_login(&api, &store)?;
-    let membership = account
-        .developers
+    let developers = HttpDeveloperApi::new(&args.api.developer_ca_api_base)?
+        .developers(account.session.access_token.expose())?;
+    let membership = developers
         .iter()
-        .find(|membership| membership.developer_id == args.developer_id)
+        .find(|membership| membership.id == args.developer_id)
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "現在のAccountは指定されたDeveloperのMemberではありません。\n\n確認:\n  kome account\n  kome developer list"
@@ -60,11 +63,11 @@ fn print_memberships(memberships: &[DeveloperMembership]) {
     for membership in memberships {
         println!(
             "{}\t{}\tmembership={}\tstatus={}\tcertificate={}",
-            membership.developer_id,
-            membership.name,
-            membership.membership_status,
-            membership.developer_status,
-            if membership.certificate_issuable {
+            membership.id,
+            membership.display_name,
+            membership.status,
+            membership.verification_status,
+            if membership.can_issue {
                 "available"
             } else {
                 "unavailable"
@@ -74,12 +77,12 @@ fn print_memberships(memberships: &[DeveloperMembership]) {
 }
 
 fn ensure_usable_membership(membership: &DeveloperMembership) -> Result<()> {
-    if membership.membership_status != "active" {
+    if membership.status != "active" {
         bail!(
             "現在のAccountは指定されたDeveloperのactive Memberではありません。\n\n確認:\n  kome account\n  kome developer list"
         );
     }
-    if membership.developer_status != "verified" || !membership.certificate_issuable {
+    if membership.verification_status != "verified" || !membership.can_issue {
         bail!("Developerはまだ確認されていません。\nConsoleで状態を確認してください。");
     }
     Ok(())
@@ -91,11 +94,12 @@ mod tests {
 
     fn membership(status: &str, membership: &str, issuable: bool) -> DeveloperMembership {
         DeveloperMembership {
-            developer_id: "019f9e5ac6687902b0e72fe53abfbef1".to_string(),
-            name: "Example".to_string(),
-            membership_status: membership.to_string(),
-            developer_status: status.to_string(),
-            certificate_issuable: issuable,
+            id: "019f9e5ac6687902b0e72fe53abfbef1".to_string(),
+            display_name: "Example".to_string(),
+            status: membership.to_string(),
+            verification_status: status.to_string(),
+            role: "owner".to_string(),
+            can_issue: issuable,
         }
     }
 

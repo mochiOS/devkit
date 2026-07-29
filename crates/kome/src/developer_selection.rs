@@ -21,13 +21,13 @@ pub fn resolve(
 
     let issuable: Vec<&DeveloperMembership> = memberships
         .iter()
-        .filter(|membership| membership.can_issue())
+        .filter(|membership| membership.is_issuable())
         .collect();
     match issuable.as_slice() {
         [] => bail!(
             "利用可能なDeveloperがありません。\n\nConsoleでDeveloperを作成してから、もう一度`kome sign`を実行してください。"
         ),
-        [membership] => Ok(membership.developer_id.clone()),
+        [membership] => Ok(membership.id.clone()),
         _ => choose_interactively(&issuable, input, output),
     }
 }
@@ -42,18 +42,18 @@ fn select_explicit(
     }
     let membership = memberships
         .iter()
-        .find(|membership| membership.developer_id == developer_id)
+        .find(|membership| membership.id == developer_id)
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "現在のAccountは指定されたDeveloperのactive Memberではありません。\n\n確認:\n  kome account\n  kome developer list"
             )
         })?;
-    if membership.membership_status != "active" {
+    if membership.status != "active" {
         bail!(
             "現在のAccountは指定されたDeveloperのactive Memberではありません。\n\n確認:\n  kome account\n  kome developer list"
         );
     }
-    if membership.developer_status != "verified" || !membership.certificate_issuable {
+    if membership.verification_status != "verified" || !membership.can_issue {
         bail!("Developerはまだ確認されていません。\nConsoleで状態を確認してください。");
     }
     Ok(developer_id.to_string())
@@ -70,8 +70,8 @@ fn choose_interactively(
             output,
             "  {}. {} {}",
             index + 1,
-            membership.developer_id,
-            membership.name
+            membership.id,
+            membership.display_name
         )?;
     }
     write!(output, "> ")?;
@@ -91,7 +91,7 @@ fn choose_interactively(
                 .ok_or_else(|| anyhow::anyhow!("Developer selection is out of range"))?,
         )
         .ok_or_else(|| anyhow::anyhow!("Developer selection is out of range"))?;
-    Ok(membership.developer_id.clone())
+    Ok(membership.id.clone())
 }
 
 #[cfg(test)]
@@ -103,11 +103,12 @@ mod tests {
 
     fn membership(id: &str) -> DeveloperMembership {
         DeveloperMembership {
-            developer_id: id.to_string(),
-            name: "Example".to_string(),
-            membership_status: "active".to_string(),
-            developer_status: "verified".to_string(),
-            certificate_issuable: true,
+            id: id.to_string(),
+            display_name: "Example".to_string(),
+            status: "active".to_string(),
+            verification_status: "verified".to_string(),
+            role: "owner".to_string(),
+            can_issue: true,
         }
     }
 

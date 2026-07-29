@@ -41,8 +41,8 @@ pub enum Command {
 
 #[derive(Debug, Subcommand)]
 pub enum DeveloperCommand {
-    /// List Developer memberships returned by Accounts.
-    List(AccountArgs),
+    /// List Developers available through DeveloperCA.
+    List(DeveloperListArgs),
     /// Select the default Developer used by Kome signing.
     Use(DeveloperUseArgs),
 }
@@ -74,15 +74,28 @@ pub struct AccountArgs {
 pub type LogoutArgs = AccountArgs;
 
 #[derive(Debug, Args)]
-pub struct DeveloperUseArgs {
-    pub developer_id: String,
-
+pub struct DeveloperListArgs {
     #[arg(
         long,
         env = "KOME_ACCOUNTS_API_BASE",
         default_value = DEFAULT_ACCOUNTS_API_BASE
     )]
     pub accounts_api_base: String,
+
+    #[arg(
+        long,
+        env = "KOME_DEVELOPER_CA_API_BASE",
+        default_value = crate::certificate_client::DEFAULT_DEVELOPER_CA_API_BASE
+    )]
+    pub developer_ca_api_base: String,
+}
+
+#[derive(Debug, Args)]
+pub struct DeveloperUseArgs {
+    pub developer_id: String,
+
+    #[command(flatten)]
+    pub api: DeveloperListArgs,
 }
 
 #[derive(Debug, Args)]

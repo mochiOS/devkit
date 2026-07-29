@@ -20,7 +20,7 @@ kome sign
 2. 入力が新しい場合にbuildとunsigned MPKG生成を行う
 3. application鍵を生成または検証する
 4. 保存済みCLI sessionをrefreshする
-5. AccountのDeveloper membershipからDeveloperを解決する
+5. DeveloperCAのDeveloper一覧からDeveloperを解決する
 6. 既存Developer Certificateを検証し、必要なら取得する
 7. 一時MPKGへ`developer.cert`と`manifest.sig`を追加する
 8. 一時MPKGをローカル検証する

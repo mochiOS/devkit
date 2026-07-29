@@ -34,8 +34,8 @@ fn revoke_and_delete(
     stored: &crate::credential::StoredCredential,
 ) -> Result<()> {
     let revoke_result = (|| -> Result<()> {
-        let session = api.refresh(&stored.refresh_credential)?;
-        api.revoke(session.access_token.expose(), &session.session_id)
+        let (session, _) = api.refresh(&stored.refresh_token)?;
+        api.revoke(session.access_token.expose())
     })();
     store.delete_credential()?;
     revoke_result
@@ -49,17 +49,18 @@ mod tests {
 
     use super::*;
     use crate::{
-        auth::{
-            AccessSession, AccountMetadata, DeveloperMembership, DeviceAuthorization, PollResult,
-            Secret,
-        },
+        auth::{AccessSession, AccountMetadata, DeviceAuthorization, PollResult, Secret},
         credential::StoredCredential,
     };
 
     struct FailingApi;
 
     impl AccountsApi for FailingApi {
-        fn start_device_authorization(&self, _code_challenge: &str) -> Result<DeviceAuthorization> {
+        fn start_device_authorization(
+            &self,
+            _code_challenge: &str,
+            _device_name: &str,
+        ) -> Result<DeviceAuthorization> {
             unreachable!()
         }
 
@@ -71,23 +72,21 @@ mod tests {
             unreachable!()
         }
 
-        fn refresh(&self, _refresh_credential: &str) -> Result<AccessSession> {
-            Ok(AccessSession {
-                access_token: Secret::new("access".to_string()),
-                refresh_credential: Secret::new("refresh".to_string()),
-                session_id: "session".to_string(),
-            })
+        fn refresh(&self, _refresh_token: &str) -> Result<(AccessSession, AccountMetadata)> {
+            Ok((
+                AccessSession {
+                    access_token: Secret::new("access".to_string()),
+                    refresh_token: Secret::new("refresh".to_string()),
+                },
+                AccountMetadata {
+                    account_id: "account".to_string(),
+                    account_name: "jine".to_string(),
+                    device_name: "Kome CLI".to_string(),
+                },
+            ))
         }
 
-        fn account(&self, _access_token: &str) -> Result<AccountMetadata> {
-            unreachable!()
-        }
-
-        fn developers(&self, _access_token: &str) -> Result<Vec<DeveloperMembership>> {
-            unreachable!()
-        }
-
-        fn revoke(&self, _access_token: &str, _session_id: &str) -> Result<()> {
+        fn revoke(&self, _access_token: &str) -> Result<()> {
             bail!("offline")
         }
     }
@@ -113,8 +112,7 @@ mod tests {
     #[test]
     fn cloud_failure_still_deletes_local_credential() {
         let stored = StoredCredential {
-            refresh_credential: "old-refresh".to_string(),
-            session_id: "old-session".to_string(),
+            refresh_token: "old-refresh".to_string(),
             account_id: "account".to_string(),
             account_name: "jine".to_string(),
             device_name: "Kome CLI".to_string(),

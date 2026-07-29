@@ -1,4 +1,5 @@
 use std::{
+    env,
     io::Read,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -12,7 +13,10 @@ use anyhow::{anyhow, bail, Context, Result};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use mochios_certificate::is_valid_developer_id;
 use rand_core::{OsRng, RngCore};
-use reqwest::blocking::{Client, Response};
+use reqwest::{
+    blocking::{Client, Response},
+    StatusCode,
+};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::Url;
@@ -20,7 +24,7 @@ use zeroize::Zeroize;
 
 use crate::credential::{CredentialPersistence, StoredCredential};
 
-pub const DEFAULT_ACCOUNTS_API_BASE: &str = "https://accounts.mochios.org/v1";
+pub const DEFAULT_ACCOUNTS_API_BASE: &str = "https://accounts.mochios.org/v1/cli";
 const CLIENT_ID: &str = "kome-cli";
 const RESPONSE_LIMIT: u64 = 1024 * 1024;
 const SLOW_DOWN_SECONDS: u64 = 5;
@@ -109,36 +113,33 @@ fn default_device_name() -> String {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct DeveloperMembership {
-    #[serde(alias = "id")]
-    pub developer_id: String,
-    #[serde(default)]
-    pub name: String,
-    pub membership_status: String,
-    pub developer_status: String,
-    pub certificate_issuable: bool,
+    pub id: String,
+    pub display_name: String,
+    pub status: String,
+    pub verification_status: String,
+    pub role: String,
+    pub can_issue: bool,
 }
 
 impl DeveloperMembership {
-    pub fn can_issue(&self) -> bool {
-        is_valid_developer_id(&self.developer_id)
-            && self.membership_status == "active"
-            && self.developer_status == "verified"
-            && self.certificate_issuable
+    pub fn is_issuable(&self) -> bool {
+        is_valid_developer_id(&self.id)
+            && self.status == "active"
+            && self.verification_status == "verified"
+            && self.can_issue
     }
 }
 
 #[derive(Debug)]
 pub struct AccessSession {
     pub access_token: Secret,
-    pub refresh_credential: Secret,
-    pub session_id: String,
+    pub refresh_token: Secret,
 }
 
 #[derive(Debug)]
 pub struct AuthenticatedAccount {
     pub session: AccessSession,
     pub account: AccountMetadata,
-    pub developers: Vec<DeveloperMembership>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -153,45 +154,60 @@ pub enum PollResult {
 
 #[derive(Deserialize, PartialEq, Eq)]
 pub struct TokenGrant {
+    token_type: String,
     access_token: String,
-    refresh_credential: String,
-    session_id: String,
+    expires_in: u64,
+    refresh_token: String,
+    account: AccountMetadata,
 }
 
 impl std::fmt::Debug for TokenGrant {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("TokenGrant")
+            .field("token_type", &self.token_type)
             .field("access_token", &"[REDACTED]")
-            .field("refresh_credential", &"[REDACTED]")
-            .field("session_id", &self.session_id)
+            .field("expires_in", &self.expires_in)
+            .field("refresh_token", &"[REDACTED]")
+            .field("account", &self.account)
             .finish()
     }
 }
 
 impl TokenGrant {
-    fn into_session(mut self) -> Result<AccessSession> {
-        if self.access_token.is_empty()
-            || self.refresh_credential.is_empty()
-            || self.session_id.is_empty()
+    fn into_session(mut self) -> Result<(AccessSession, AccountMetadata)> {
+        if self.token_type != "Bearer"
+            || self.access_token.is_empty()
+            || self.expires_in == 0
+            || self.refresh_token.is_empty()
+            || self.account.account_id.is_empty()
+            || self.account.account_name.is_empty()
         {
             bail!("Accounts returned an incomplete CLI session");
         }
-        Ok(AccessSession {
-            access_token: Secret::new(std::mem::take(&mut self.access_token)),
-            refresh_credential: Secret::new(std::mem::take(&mut self.refresh_credential)),
-            session_id: self.session_id,
-        })
+        Ok((
+            AccessSession {
+                access_token: Secret::new(std::mem::take(&mut self.access_token)),
+                refresh_token: Secret::new(std::mem::take(&mut self.refresh_token)),
+            },
+            self.account,
+        ))
     }
 }
 
 pub trait AccountsApi {
-    fn start_device_authorization(&self, code_challenge: &str) -> Result<DeviceAuthorization>;
+    fn start_device_authorization(
+        &self,
+        code_challenge: &str,
+        device_name: &str,
+    ) -> Result<DeviceAuthorization>;
     fn poll_device_token(&self, device_code: &str, code_verifier: &str) -> Result<PollResult>;
-    fn refresh(&self, refresh_credential: &str) -> Result<AccessSession>;
-    fn account(&self, access_token: &str) -> Result<AccountMetadata>;
+    fn refresh(&self, refresh_token: &str) -> Result<(AccessSession, AccountMetadata)>;
+    fn revoke(&self, access_token: &str) -> Result<()>;
+}
+
+pub trait DeveloperApi {
     fn developers(&self, access_token: &str) -> Result<Vec<DeveloperMembership>>;
-    fn revoke(&self, access_token: &str, session_id: &str) -> Result<()>;
 }
 
 pub trait Browser {
@@ -274,15 +290,36 @@ impl HttpAccountsApi {
             .join(path)
             .context("failed to construct an Accounts endpoint")
     }
+}
 
-    fn session_revoke_endpoint(&self, session_id: &str) -> Result<Url> {
-        let mut endpoint = self.endpoint("sessions")?;
-        endpoint
-            .path_segments_mut()
-            .map_err(|_| anyhow!("Accounts API base URL cannot contain path segments"))?
-            .push(session_id)
-            .push("revoke");
-        Ok(endpoint)
+pub struct HttpDeveloperApi {
+    client: Client,
+    base: Url,
+}
+
+impl HttpDeveloperApi {
+    pub fn new(base: &str) -> Result<Self> {
+        let mut base = Url::parse(base).context("DeveloperCA API base URL is invalid")?;
+        if base.scheme() != "https" && !is_loopback_http(&base) {
+            bail!("DeveloperCA API must use HTTPS");
+        }
+        if !base.path().ends_with('/') {
+            let path = format!("{}/", base.path());
+            base.set_path(&path);
+        }
+        Ok(Self {
+            client: Client::builder()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .context("failed to create the DeveloperCA HTTP client")?,
+            base,
+        })
+    }
+
+    fn endpoint(&self, path: &str) -> Result<Url> {
+        self.base
+            .join(path)
+            .context("failed to construct a DeveloperCA endpoint")
     }
 }
 
@@ -291,41 +328,58 @@ struct DeviceAuthorizationRequest<'a> {
     client_id: &'static str,
     code_challenge: &'a str,
     code_challenge_method: &'static str,
+    device_name: &'a str,
 }
 
 #[derive(Serialize)]
 struct DeviceTokenRequest<'a> {
-    client_id: &'static str,
     device_code: &'a str,
     code_verifier: &'a str,
 }
 
 #[derive(Serialize)]
 struct RefreshRequest<'a> {
-    client_id: &'static str,
-    refresh_credential: &'a str,
+    refresh_token: &'a str,
 }
 
 #[derive(Debug, Deserialize)]
-struct ErrorResponse {
-    error: String,
-    #[serde(default)]
-    error_description: String,
+#[serde(untagged)]
+enum ErrorResponse {
+    OAuth {
+        error: String,
+        #[serde(default)]
+        error_description: String,
+    },
+    General {
+        error: GeneralError,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+struct GeneralError {
+    code: String,
+    message: String,
 }
 
 impl AccountsApi for HttpAccountsApi {
-    fn start_device_authorization(&self, code_challenge: &str) -> Result<DeviceAuthorization> {
+    fn start_device_authorization(
+        &self,
+        code_challenge: &str,
+        device_name: &str,
+    ) -> Result<DeviceAuthorization> {
         let response = self
             .client
-            .post(self.endpoint("device/authorization")?)
+            .post(self.endpoint("device/authorize")?)
             .json(&DeviceAuthorizationRequest {
                 client_id: CLIENT_ID,
                 code_challenge,
                 code_challenge_method: "S256",
+                device_name,
             })
             .send()
             .context("Device Authorization request failed")?;
-        decode_success::<DeviceAuthorization>(response, "Device Authorization")?.normalize()
+        decode_success::<DeviceAuthorization>(response, "Accounts", "Device Authorization")?
+            .normalize()
     }
 
     fn poll_device_token(&self, device_code: &str, code_verifier: &str) -> Result<PollResult> {
@@ -333,17 +387,16 @@ impl AccountsApi for HttpAccountsApi {
             .client
             .post(self.endpoint("device/token")?)
             .json(&DeviceTokenRequest {
-                client_id: CLIENT_ID,
                 device_code,
                 code_verifier,
             })
             .send()
             .context("Device Authorization polling failed")?;
         if response.status().is_success() {
-            return Ok(PollResult::Granted(decode_json(response)?));
+            return Ok(PollResult::Granted(decode_json(response, "Accounts")?));
         }
-        let error: ErrorResponse = decode_json(response)?;
-        match error.error.as_str() {
+        let error = decode_error(response, "Accounts")?;
+        match error_code(&error) {
             "authorization_pending" => Ok(PollResult::AuthorizationPending),
             "slow_down" => Ok(PollResult::SlowDown),
             "access_denied" => Ok(PollResult::AccessDenied),
@@ -356,29 +409,33 @@ impl AccountsApi for HttpAccountsApi {
         }
     }
 
-    fn refresh(&self, refresh_credential: &str) -> Result<AccessSession> {
+    fn refresh(&self, refresh_token: &str) -> Result<(AccessSession, AccountMetadata)> {
         let response = self
             .client
             .post(self.endpoint("token/refresh")?)
-            .json(&RefreshRequest {
-                client_id: CLIENT_ID,
-                refresh_credential,
-            })
+            .json(&RefreshRequest { refresh_token })
             .send()
             .context("failed to refresh the Kome CLI session")?;
-        decode_success::<TokenGrant>(response, "CLI session refresh")?.into_session()
+        decode_success::<TokenGrant>(response, "Accounts", "CLI session refresh")?.into_session()
     }
 
-    fn account(&self, access_token: &str) -> Result<AccountMetadata> {
+    fn revoke(&self, access_token: &str) -> Result<()> {
         let response = self
             .client
-            .get(self.endpoint("account")?)
+            .post(self.endpoint("session/revoke-current")?)
             .bearer_auth(access_token)
             .send()
-            .context("failed to obtain Account information")?;
-        decode_success(response, "Account information")
+            .context("failed to revoke the Kome CLI session")?;
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let error = decode_error(response, "Accounts")?;
+            bail!("CLI session revocation failed: {}", human_api_error(&error));
+        }
     }
+}
 
+impl DeveloperApi for HttpDeveloperApi {
     fn developers(&self, access_token: &str) -> Result<Vec<DeveloperMembership>> {
         #[derive(Deserialize)]
         struct DeveloperList {
@@ -387,33 +444,19 @@ impl AccountsApi for HttpAccountsApi {
 
         let response = self
             .client
-            .get(self.endpoint("developers")?)
+            .get(self.endpoint("cli/developers")?)
             .bearer_auth(access_token)
             .send()
             .context("failed to obtain the Developer list")?;
-        let developers = decode_success::<DeveloperList>(response, "Developer list")?.developers;
+        let developers =
+            decode_success::<DeveloperList>(response, "DeveloperCA", "Developer list")?.developers;
         if developers
             .iter()
-            .any(|membership| !is_valid_developer_id(&membership.developer_id))
+            .any(|membership| !is_valid_developer_id(&membership.id))
         {
-            bail!("Accounts returned an invalid Developer ID");
+            bail!("DeveloperCA returned an invalid Developer ID");
         }
         Ok(developers)
-    }
-
-    fn revoke(&self, access_token: &str, session_id: &str) -> Result<()> {
-        let response = self
-            .client
-            .post(self.session_revoke_endpoint(session_id)?)
-            .bearer_auth(access_token)
-            .send()
-            .context("failed to revoke the Kome CLI session")?;
-        if response.status().is_success() {
-            Ok(())
-        } else {
-            let error = decode_error(response)?;
-            bail!("CLI session revocation failed: {}", human_api_error(&error));
-        }
     }
 }
 
@@ -429,21 +472,17 @@ pub fn device_login(
     ui: &dyn LoginUi,
 ) -> Result<LoginResult> {
     let (mut verifier, challenge) = generate_pkce();
-    let authorization = api.start_device_authorization(&challenge)?;
+    let device_name = current_device_name();
+    let authorization = api.start_device_authorization(&challenge, &device_name)?;
     let verification_url = canonical_verification_url(&authorization)?;
     let browser_opened = browser.open(&verification_url);
     ui.present(&verification_url, &authorization.user_code, browser_opened);
     ui.waiting();
-    let session = poll_until_authorized(api, waiter, &authorization, &verifier)?;
+    let (session, mut account) = poll_until_authorized(api, waiter, &authorization, &verifier)?;
     verifier.zeroize();
-    let account = api.account(session.access_token.expose())?;
-    let developers = api.developers(session.access_token.expose())?;
+    account.device_name = device_name;
     Ok(LoginResult {
-        authenticated: AuthenticatedAccount {
-            session,
-            account,
-            developers,
-        },
+        authenticated: AuthenticatedAccount { session, account },
     })
 }
 
@@ -452,8 +491,7 @@ pub fn persist_login(
     account: &AuthenticatedAccount,
 ) -> Result<()> {
     store.save_credential(&StoredCredential {
-        refresh_credential: account.session.refresh_credential.expose().to_string(),
-        session_id: account.session.session_id.clone(),
+        refresh_token: account.session.refresh_token.expose().to_string(),
         account_id: account.account.account_id.clone(),
         account_name: account.account.account_name.clone(),
         device_name: account.account.device_name.clone(),
@@ -467,14 +505,9 @@ pub fn refresh_login(
     let stored = store
         .load_credential()?
         .ok_or_else(|| anyhow!("login required"))?;
-    let session = api.refresh(&stored.refresh_credential)?;
-    let account = api.account(session.access_token.expose())?;
-    let developers = api.developers(session.access_token.expose())?;
-    let authenticated = AuthenticatedAccount {
-        session,
-        account,
-        developers,
-    };
+    let (session, mut account) = api.refresh(&stored.refresh_token)?;
+    account.device_name = stored.device_name.clone();
+    let authenticated = AuthenticatedAccount { session, account };
     persist_login(store, &authenticated)?;
     Ok(authenticated)
 }
@@ -496,7 +529,7 @@ fn poll_until_authorized(
     waiter: &dyn Waiter,
     authorization: &DeviceAuthorization,
     verifier: &str,
-) -> Result<AccessSession> {
+) -> Result<(AccessSession, AccountMetadata)> {
     let mut interval = authorization.interval;
     let mut elapsed = 0u64;
     loop {
@@ -521,6 +554,15 @@ fn poll_until_authorized(
             PollResult::InvalidGrant => bail!("Device Authorization grant is invalid"),
         }
     }
+}
+
+fn current_device_name() -> String {
+    ["COMPUTERNAME", "HOSTNAME"]
+        .into_iter()
+        .find_map(|name| env::var(name).ok())
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(default_device_name)
 }
 
 fn generate_pkce() -> (String, String) {
@@ -555,43 +597,103 @@ fn canonical_verification_url(authorization: &DeviceAuthorization) -> Result<Url
     Ok(base)
 }
 
-fn decode_success<T: DeserializeOwned>(response: Response, operation: &str) -> Result<T> {
+fn decode_success<T: DeserializeOwned>(
+    response: Response,
+    service: &str,
+    operation: &str,
+) -> Result<T> {
     if response.status().is_success() {
-        decode_json(response)
+        decode_json(response, service)
     } else {
-        let error = decode_error(response)?;
+        let error = decode_error(response, service)?;
         bail!("{operation} failed: {}", human_api_error(&error));
     }
 }
 
-fn decode_error(response: Response) -> Result<ErrorResponse> {
-    decode_json(response).context("Accounts returned an invalid error response")
+fn decode_error(response: Response, service: &str) -> Result<ErrorResponse> {
+    let status = response.status();
+    let body = read_response(response, service)?;
+    parse_error(status, &body, service)
 }
 
-fn decode_json<T: DeserializeOwned>(mut response: Response) -> Result<T> {
+fn parse_error(status: StatusCode, body: &[u8], service: &str) -> Result<ErrorResponse> {
+    serde_json::from_slice(body).map_err(|_| {
+        anyhow!(
+            "{service} returned HTTP {status} with a non-JSON error body: {}",
+            short_body(body)
+        )
+    })
+}
+
+fn decode_json<T: DeserializeOwned>(response: Response, service: &str) -> Result<T> {
+    let status = response.status();
+    let body = read_response(response, service)?;
+    serde_json::from_slice(&body)
+        .with_context(|| format!("{service} returned an invalid JSON response (HTTP {status})"))
+}
+
+fn read_response(mut response: Response, service: &str) -> Result<Vec<u8>> {
     if response
         .content_length()
         .is_some_and(|size| size > RESPONSE_LIMIT)
     {
-        bail!("Accounts response is too large");
+        bail!("{service} response is too large");
     }
     let mut body = Vec::new();
     response
         .by_ref()
         .take(RESPONSE_LIMIT + 1)
         .read_to_end(&mut body)
-        .context("failed to read the Accounts response")?;
+        .with_context(|| format!("failed to read the {service} response"))?;
     if body.len() as u64 > RESPONSE_LIMIT {
-        bail!("Accounts response is too large");
+        bail!("{service} response is too large");
     }
-    serde_json::from_slice(&body).context("Accounts returned an invalid response")
+    Ok(body)
 }
 
 fn human_api_error(error: &ErrorResponse) -> &str {
-    if error.error_description.is_empty() {
-        &error.error
+    match error {
+        ErrorResponse::OAuth {
+            error,
+            error_description,
+        } => {
+            if error_description.is_empty() {
+                error
+            } else {
+                error_description
+            }
+        }
+        ErrorResponse::General { error } => {
+            if error.message.is_empty() {
+                &error.code
+            } else {
+                &error.message
+            }
+        }
+    }
+}
+
+fn error_code(error: &ErrorResponse) -> &str {
+    match error {
+        ErrorResponse::OAuth { error, .. } => error,
+        ErrorResponse::General { error } => &error.code,
+    }
+}
+
+fn short_body(body: &[u8]) -> String {
+    const LIMIT: usize = 256;
+    let end = body.len().min(LIMIT);
+    let mut text = String::from_utf8_lossy(&body[..end])
+        .replace(['\r', '\n', '\t'], " ")
+        .trim()
+        .to_string();
+    if body.len() > LIMIT {
+        text.push_str("...");
+    }
+    if text.is_empty() {
+        "<empty>".to_string()
     } else {
-        &error.error_description
+        text
     }
 }
 
@@ -610,6 +712,7 @@ mod tests {
 
     struct MockApi {
         challenge: RefCell<Option<String>>,
+        device_name: RefCell<Option<String>>,
         verifier: RefCell<Option<String>>,
         polls: RefCell<VecDeque<PollResult>>,
     }
@@ -639,6 +742,7 @@ mod tests {
         fn with_polls(polls: Vec<PollResult>) -> Self {
             Self {
                 challenge: RefCell::new(None),
+                device_name: RefCell::new(None),
                 verifier: RefCell::new(None),
                 polls: RefCell::new(polls.into()),
             }
@@ -646,8 +750,13 @@ mod tests {
     }
 
     impl AccountsApi for MockApi {
-        fn start_device_authorization(&self, code_challenge: &str) -> Result<DeviceAuthorization> {
+        fn start_device_authorization(
+            &self,
+            code_challenge: &str,
+            device_name: &str,
+        ) -> Result<DeviceAuthorization> {
             *self.challenge.borrow_mut() = Some(code_challenge.to_string());
+            *self.device_name.borrow_mut() = Some(device_name.to_string());
             DeviceAuthorization {
                 device_code: Secret::default(),
                 device_code_wire: "device-secret".to_string(),
@@ -671,25 +780,11 @@ mod tests {
                 .ok_or_else(|| anyhow!("unexpected poll"))
         }
 
-        fn refresh(&self, _refresh_credential: &str) -> Result<AccessSession> {
+        fn refresh(&self, _refresh_token: &str) -> Result<(AccessSession, AccountMetadata)> {
             unreachable!()
         }
 
-        fn account(&self, access_token: &str) -> Result<AccountMetadata> {
-            assert_eq!(access_token, "access-secret");
-            Ok(AccountMetadata {
-                account_id: "account-1".to_string(),
-                account_name: "jine".to_string(),
-                device_name: "Kome CLI test".to_string(),
-            })
-        }
-
-        fn developers(&self, access_token: &str) -> Result<Vec<DeveloperMembership>> {
-            assert_eq!(access_token, "access-secret");
-            Ok(Vec::new())
-        }
-
-        fn revoke(&self, _access_token: &str, _session_id: &str) -> Result<()> {
+        fn revoke(&self, _access_token: &str) -> Result<()> {
             unreachable!()
         }
     }
@@ -738,20 +833,136 @@ mod tests {
 
     fn grant() -> PollResult {
         PollResult::Granted(TokenGrant {
+            token_type: "Bearer".to_string(),
             access_token: "access-secret".to_string(),
-            refresh_credential: "refresh-secret".to_string(),
-            session_id: "session-1".to_string(),
+            expires_in: 600,
+            refresh_token: "refresh-secret".to_string(),
+            account: AccountMetadata {
+                account_id: "account-1".to_string(),
+                account_name: "jine".to_string(),
+                device_name: default_device_name(),
+            },
         })
     }
 
     #[test]
-    fn session_revoke_endpoint_has_no_empty_path_segment() -> Result<()> {
-        let api = HttpAccountsApi::new("http://127.0.0.1:1234/v1")?;
+    fn production_api_paths_match_the_cli_contract() -> Result<()> {
+        let api = HttpAccountsApi::new(DEFAULT_ACCOUNTS_API_BASE)?;
         assert_eq!(
-            api.session_revoke_endpoint("session-1")?.as_str(),
-            "http://127.0.0.1:1234/v1/sessions/session-1/revoke"
+            api.endpoint("device/authorize")?.as_str(),
+            "https://accounts.mochios.org/v1/cli/device/authorize"
+        );
+        assert_eq!(
+            api.endpoint("session/revoke-current")?.as_str(),
+            "https://accounts.mochios.org/v1/cli/session/revoke-current"
+        );
+        let developers = HttpDeveloperApi::new("https://ca.mochios.org/v1")?;
+        assert_eq!(
+            developers.endpoint("cli/developers")?.as_str(),
+            "https://ca.mochios.org/v1/cli/developers"
         );
         Ok(())
+    }
+
+    #[test]
+    fn accounts_token_response_matches_the_production_shape() -> Result<()> {
+        let grant: TokenGrant = serde_json::from_str(
+            r#"{"token_type":"Bearer","access_token":"access","expires_in":600,"refresh_token":"refresh","account":{"id":"account-1","name":"jine"}}"#,
+        )?;
+        let (session, account) = grant.into_session()?;
+        assert_eq!(session.access_token.expose(), "access");
+        assert_eq!(session.refresh_token.expose(), "refresh");
+        assert_eq!(account.account_id, "account-1");
+        assert_eq!(account.account_name, "jine");
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_token_response_fields_are_rejected() {
+        let legacy = r#"{"token_type":"Bearer","access_token":"access","expires_in":600,"refresh_credential":"refresh","session_id":"session","account":{"id":"account-1","name":"jine"}}"#;
+        assert!(serde_json::from_str::<TokenGrant>(legacy).is_err());
+    }
+
+    #[test]
+    fn accounts_request_bodies_contain_only_supported_fields() -> Result<()> {
+        assert_eq!(
+            serde_json::to_value(DeviceAuthorizationRequest {
+                client_id: CLIENT_ID,
+                code_challenge: "challenge",
+                code_challenge_method: "S256",
+                device_name: "workstation",
+            })?,
+            serde_json::json!({
+                "client_id": "kome-cli",
+                "code_challenge": "challenge",
+                "code_challenge_method": "S256",
+                "device_name": "workstation",
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(DeviceTokenRequest {
+                device_code: "device-code",
+                code_verifier: "verifier",
+            })?,
+            serde_json::json!({
+                "device_code": "device-code",
+                "code_verifier": "verifier",
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(RefreshRequest {
+                refresh_token: "refresh",
+            })?,
+            serde_json::json!({"refresh_token": "refresh"})
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn developer_ca_membership_matches_the_production_shape() -> Result<()> {
+        let membership: DeveloperMembership = serde_json::from_str(
+            r#"{"id":"019f9e5ac6687902b0e72fe53abfbef1","display_name":"Example","status":"active","verification_status":"verified","role":"owner","can_issue":true}"#,
+        )?;
+        assert!(membership.is_issuable());
+        assert_eq!(membership.role, "owner");
+        Ok(())
+    }
+
+    #[test]
+    fn oauth_and_nested_api_errors_are_both_supported() -> Result<()> {
+        let oauth: ErrorResponse = serde_json::from_str(
+            r#"{"error":"authorization_pending","error_description":"Authorization is pending"}"#,
+        )?;
+        assert_eq!(error_code(&oauth), "authorization_pending");
+        assert_eq!(human_api_error(&oauth), "Authorization is pending");
+
+        let general: ErrorResponse = serde_json::from_str(
+            r#"{"error":{"code":"DEVICE_REQUEST_INVALID","message":"Device authorization request is invalid"}}"#,
+        )?;
+        assert_eq!(error_code(&general), "DEVICE_REQUEST_INVALID");
+        assert_eq!(
+            human_api_error(&general),
+            "Device authorization request is invalid"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn non_json_error_body_is_short_and_single_line() {
+        let body = vec![b'x'; 300];
+        assert_eq!(short_body(b"Not Found\n"), "Not Found");
+        let shortened = short_body(&body);
+        assert_eq!(shortened.len(), 259);
+        assert!(shortened.ends_with("..."));
+    }
+
+    #[test]
+    fn non_json_error_reports_http_status_and_body() {
+        let error = parse_error(StatusCode::NOT_FOUND, b"Not Found\n", "Accounts")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("404 Not Found"));
+        assert!(error.contains("Not Found"));
     }
 
     #[test]
@@ -765,6 +976,10 @@ mod tests {
         let ui = RecordingUi::default();
         let result = device_login(&api, &ClosedBrowser, &waiter, &ui).unwrap();
         assert_eq!(result.authenticated.account.account_name, "jine");
+        assert_eq!(
+            api.device_name.borrow().as_deref(),
+            Some(current_device_name().as_str())
+        );
         assert_eq!(ui.browser_opened.get(), Some(false));
         assert_eq!(waiter.waits.borrow().as_slice(), &[2, 2, 7]);
 
@@ -848,26 +1063,33 @@ mod tests {
     #[test]
     fn developer_membership_requires_all_active_states() {
         let mut membership = DeveloperMembership {
-            developer_id: "019f9e5ac6687902b0e72fe53abfbef1".to_string(),
-            name: "Example".to_string(),
-            membership_status: "active".to_string(),
-            developer_status: "verified".to_string(),
-            certificate_issuable: true,
+            id: "019f9e5ac6687902b0e72fe53abfbef1".to_string(),
+            display_name: "Example".to_string(),
+            status: "active".to_string(),
+            verification_status: "verified".to_string(),
+            role: "owner".to_string(),
+            can_issue: true,
         };
-        assert!(membership.can_issue());
-        membership.membership_status = "invited".to_string();
-        assert!(!membership.can_issue());
-        membership.membership_status = "active".to_string();
-        membership.developer_id = "org.mochios.developer.invalid".to_string();
-        assert!(!membership.can_issue());
+        assert!(membership.is_issuable());
+        membership.status = "invited".to_string();
+        assert!(!membership.is_issuable());
+        membership.status = "active".to_string();
+        membership.id = "org.mochios.developer.invalid".to_string();
+        assert!(!membership.is_issuable());
     }
 
     #[test]
     fn secret_debug_output_is_redacted() {
         let grant = TokenGrant {
+            token_type: "Bearer".to_string(),
             access_token: "access-secret".to_string(),
-            refresh_credential: "refresh-secret".to_string(),
-            session_id: "session-1".to_string(),
+            expires_in: 600,
+            refresh_token: "refresh-secret".to_string(),
+            account: AccountMetadata {
+                account_id: "account-1".to_string(),
+                account_name: "jine".to_string(),
+                device_name: default_device_name(),
+            },
         };
         let output = format!("{grant:?}");
         assert!(!output.contains("access-secret"));
@@ -875,7 +1097,7 @@ mod tests {
     }
 
     #[test]
-    fn successful_login_is_persisted_after_account_fetch() {
+    fn successful_login_persists_account_from_token_grant() {
         let api = MockApi::with_polls(vec![grant()]);
         let store = MockStore::default();
         device_login_and_persist(
@@ -888,7 +1110,7 @@ mod tests {
         .unwrap();
         let stored = store.credential.borrow();
         let stored = stored.as_ref().unwrap();
-        assert_eq!(stored.refresh_credential, "refresh-secret");
+        assert_eq!(stored.refresh_token, "refresh-secret");
         assert_eq!(stored.account_name, "jine");
     }
 
@@ -900,6 +1122,7 @@ mod tests {
             fn start_device_authorization(
                 &self,
                 _code_challenge: &str,
+                _device_name: &str,
             ) -> Result<DeviceAuthorization> {
                 unreachable!()
             }
@@ -912,38 +1135,29 @@ mod tests {
                 unreachable!()
             }
 
-            fn refresh(&self, refresh_credential: &str) -> Result<AccessSession> {
-                assert_eq!(refresh_credential, "old-refresh");
-                Ok(AccessSession {
-                    access_token: Secret::new("new-access".to_string()),
-                    refresh_credential: Secret::new("new-refresh".to_string()),
-                    session_id: "new-session".to_string(),
-                })
+            fn refresh(&self, refresh_token: &str) -> Result<(AccessSession, AccountMetadata)> {
+                assert_eq!(refresh_token, "old-refresh");
+                Ok((
+                    AccessSession {
+                        access_token: Secret::new("new-access".to_string()),
+                        refresh_token: Secret::new("new-refresh".to_string()),
+                    },
+                    AccountMetadata {
+                        account_id: "account-1".to_string(),
+                        account_name: "jine".to_string(),
+                        device_name: default_device_name(),
+                    },
+                ))
             }
 
-            fn account(&self, access_token: &str) -> Result<AccountMetadata> {
-                assert_eq!(access_token, "new-access");
-                Ok(AccountMetadata {
-                    account_id: "account-1".to_string(),
-                    account_name: "jine".to_string(),
-                    device_name: "Kome CLI test".to_string(),
-                })
-            }
-
-            fn developers(&self, access_token: &str) -> Result<Vec<DeveloperMembership>> {
-                assert_eq!(access_token, "new-access");
-                Ok(Vec::new())
-            }
-
-            fn revoke(&self, _access_token: &str, _session_id: &str) -> Result<()> {
+            fn revoke(&self, _access_token: &str) -> Result<()> {
                 unreachable!()
             }
         }
 
         let store = MockStore::default();
         *store.credential.borrow_mut() = Some(StoredCredential {
-            refresh_credential: "old-refresh".to_string(),
-            session_id: "old-session".to_string(),
+            refresh_token: "old-refresh".to_string(),
             account_id: "account-1".to_string(),
             account_name: "jine".to_string(),
             device_name: "Kome CLI test".to_string(),
@@ -951,7 +1165,6 @@ mod tests {
         refresh_login(&RefreshApi, &store).unwrap();
         let stored = store.credential.borrow();
         let stored = stored.as_ref().unwrap();
-        assert_eq!(stored.refresh_credential, "new-refresh");
-        assert_eq!(stored.session_id, "new-session");
+        assert_eq!(stored.refresh_token, "new-refresh");
     }
 }

@@ -16,8 +16,8 @@ const CREDENTIAL_FILE: &str = "credentials.json";
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StoredCredential {
-    pub refresh_credential: String,
-    pub session_id: String,
+    #[serde(alias = "refresh_credential")]
+    pub refresh_token: String,
     pub account_id: String,
     pub account_name: String,
     pub device_name: String,
@@ -27,8 +27,7 @@ impl std::fmt::Debug for StoredCredential {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("StoredCredential")
-            .field("refresh_credential", &"[REDACTED]")
-            .field("session_id", &self.session_id)
+            .field("refresh_token", &"[REDACTED]")
             .field("account_id", &self.account_id)
             .field("account_name", &self.account_name)
             .field("device_name", &self.device_name)
@@ -38,7 +37,7 @@ impl std::fmt::Debug for StoredCredential {
 
 impl Drop for StoredCredential {
     fn drop(&mut self) {
-        self.refresh_credential.zeroize();
+        self.refresh_token.zeroize();
     }
 }
 
@@ -365,8 +364,7 @@ mod tests {
 
     fn credential() -> StoredCredential {
         StoredCredential {
-            refresh_credential: "refresh-secret".to_string(),
-            session_id: "session-1".to_string(),
+            refresh_token: "refresh-secret".to_string(),
             account_id: "account-1".to_string(),
             account_name: "jine".to_string(),
             device_name: "Kome CLI test".to_string(),
@@ -393,7 +391,7 @@ mod tests {
         assert!(os.borrow().as_ref().unwrap().contains("refresh-secret"));
         assert!(fallback.borrow().is_none());
 
-        value.refresh_credential = "rotated-secret".to_string();
+        value.refresh_token = "rotated-secret".to_string();
         store.save(&value).unwrap();
         assert_eq!(store.load().unwrap(), Some(value));
     }
@@ -435,10 +433,19 @@ mod tests {
     }
 
     #[test]
-    fn debug_output_redacts_refresh_credential() {
+    fn debug_output_redacts_refresh_token() {
         let output = format!("{:?}", credential());
         assert!(!output.contains("refresh-secret"));
         assert!(output.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn legacy_refresh_credential_is_accepted_without_session_id_dependency() {
+        let stored: StoredCredential = serde_json::from_str(
+            r#"{"refresh_credential":"legacy","session_id":"obsolete","account_id":"account-1","account_name":"jine","device_name":"Kome CLI"}"#,
+        )
+        .unwrap();
+        assert_eq!(stored.refresh_token, "legacy");
     }
 
     #[test]

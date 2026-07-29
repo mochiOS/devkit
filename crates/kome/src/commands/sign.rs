@@ -10,7 +10,7 @@ use anyhow::{bail, Context, Result};
 use tempfile::NamedTempFile;
 
 use crate::{
-    auth::{refresh_login, HttpAccountsApi},
+    auth::{refresh_login, DeveloperApi, HttpAccountsApi, HttpDeveloperApi},
     certificate_client::{
         read_public_key, validate_certificate, write_issuer_public_key, CertificateIssuer,
         CertificateRequirements, HttpCertificateIssuer, IssuedCertificate,
@@ -56,6 +56,8 @@ pub fn run(args: SignArgs) -> Result<()> {
             "ログイン状態の有効期限が切れています。\n\n再ログイン:\n  kome login\n\n原因: {error:#}"
         )
     })?;
+    let developers = HttpDeveloperApi::new(&args.developer_ca_api_base)?
+        .developers(authenticated.session.access_token.expose())?;
     let preferences = Preferences::load()?;
     let stdin = io::stdin();
     let mut input = BufReader::new(stdin.lock());
@@ -63,7 +65,7 @@ pub fn run(args: SignArgs) -> Result<()> {
     let developer_id = developer_selection::resolve(
         &manifest,
         &preferences,
-        &authenticated.developers,
+        &developers,
         &mut input,
         &mut output,
     )?;
