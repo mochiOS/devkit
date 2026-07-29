@@ -25,7 +25,7 @@ msign package sign \
 
 ```text
 inputがMPKG v1
-MPKGがsignature.serviceの256MiB上限内
+MPKGがAppStore Reviewerの128MiB上限内
 manifest.tomlが一意
 developer.certがMCER v1
 application.key由来の公開鍵とcertificate Subject公開鍵の一致
@@ -59,5 +59,6 @@ kome verify dist/Example.mpkg \
   --unix-time 1750000000
 ```
 
-ローカル検証でも256MiBを超えるMPKGは拒否します。これはmochiOS上の
-`signature.service`が受け付けるpackage転送上限と同じです。
+ローカル検証でも128MiBを超えるMPKGは拒否します。mochiOS上の
+`signature.service`は256MiBまで受け付けますが、AppStore Reviewerの上限を
+事前検出するため、公開用devkitはより厳しい値を使います。

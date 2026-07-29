@@ -30,8 +30,9 @@ dist/Example-unsigned.mpkg
 
 生成されるMPKGは32 byte headerと無圧縮ustar streamで構成されます。
 `signatures/`は署名前には存在しなくても構いません。
-`msign package verify`と`msign certificate obtain`は、mochiOS上の
-`signature.service`と同じ256MiB上限を事前に適用します。
+`msign package verify`と`msign certificate obtain`は、AppStore Reviewerの
+128MiB上限を事前に適用します。mochiOS上の`signature.service`の256MiB上限より
+厳しいため、ローカル検証を通ったMPKGがサイズだけを理由にReviewerで拒否されません。
 
 Developer CertificateはCloud ConsoleまたはDeveloperCA APIから取得します。
 初期実装ではConsole併用が有効な運用です。
@@ -50,6 +51,10 @@ kome certificate obtain \
   --package dist/Example-unsigned.mpkg \
   --output keys/developer.cert
 ```
+
+既定では`https://ca.mochios.org/v1/developers/<developer-id>/certificates/issue`へ
+Bearer token付きで送信します。DeveloperCAが要求する`X-Idempotency-Key`は毎回安全な
+乱数から生成します。再試行で同じ発行要求を使う場合は`--idempotency-key`で固定できます。
 
 署名:
 
@@ -212,7 +217,7 @@ msign package verify app.mpkg --issuer-public-key root.pub --unix-time 175000000
 - package scope外、Capability外、期限外のCertificateでは署名しない
 - 既に署名済みのMPKGは既定で再署名しない
 - path traversal、symlink、hard link、device、FIFO、PAX/GNU拡張を拒否する
-- OS側の検証転送上限に合わせ、256MiBを超えるMPKGを拒否する
+- AppStore Reviewerに合わせ、128MiBを超えるMPKGを拒否する
 
 ## Install
 

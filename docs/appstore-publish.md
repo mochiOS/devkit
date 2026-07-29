@@ -28,6 +28,16 @@ allowed_capability
 
 秘密鍵や署名内部状態は表示しません。
 
+AppStore repositoryを同時にcheckoutしている開発環境では、同じsigned MPKGを
+実Reviewerへ渡す相互検証も実行できます。
+
+```sh
+make test-e2e-appstore APPSTORE_REVIEWER_DIR=/path/to/AppStore/reviewer
+```
+
+このtargetはKome project作成からCloud互換Certificate取得fixture、署名、ローカル検証、
+`mochios-mpkg-reviewer::inspect_mpkg`による受理までを1本のE2Eとして確認します。
+
 GitHub Releaseへ公開する場合は、`dist/Example.mpkg`をrelease assetとして
 配置します。現時点のdevkitはGitHubへtokenを保存しません。upload補助は将来の
 `kome publish`で拡張する想定です。
