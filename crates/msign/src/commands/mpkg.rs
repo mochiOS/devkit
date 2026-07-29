@@ -612,8 +612,12 @@ fn manifest_file_mode_value(value: Option<&toml::Value>) -> Result<u32> {
         Some(toml::Value::String(value)) if !value.is_empty() && value.len() <= 4 => {
             u32::from_str_radix(value, 8).context("file.mode is invalid")?
         }
-        Some(toml::Value::Integer(value)) => {
-            u32::try_from(*value).context("file.mode is invalid")?
+        Some(toml::Value::Integer(value)) if *value >= 0 => {
+            let value = value.to_string();
+            if value.is_empty() || value.len() > 4 {
+                bail!("file.mode is invalid");
+            }
+            u32::from_str_radix(&value, 8).context("file.mode is invalid")?
         }
         _ => bail!("file.mode is invalid"),
     };
@@ -985,6 +989,24 @@ mod tests {
         )
         .unwrap();
         assert!(validate_manifest_shape(&invalid_mode_bits).is_err());
+    }
+
+    #[test]
+    fn manifest_mode_matches_signature_service_octal_parser() {
+        let string_mode = toml::Value::String("0755".to_string());
+        assert_eq!(manifest_file_mode_value(Some(&string_mode)).unwrap(), 0o755);
+
+        let integer_mode = toml::Value::Integer(755);
+        assert_eq!(
+            manifest_file_mode_value(Some(&integer_mode)).unwrap(),
+            0o755
+        );
+
+        let ambiguous_decimal = toml::Value::Integer(420);
+        assert_eq!(
+            manifest_file_mode_value(Some(&ambiguous_decimal)).unwrap(),
+            0o420
+        );
     }
 
     #[test]
