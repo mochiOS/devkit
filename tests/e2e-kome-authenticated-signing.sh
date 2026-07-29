@@ -99,6 +99,8 @@ for (my $index = 0; $index < $expected_requests; $index++) {
         $body = '{"developers":[{"developer_id":"019f9e5ac6687902b0e72fe53abfbef1",'
             . '"name":"Example Developer","membership_status":"active",'
             . '"developer_status":"verified","certificate_issuable":true}]}';
+    } elsif ($method eq 'POST' && $path eq '/v1/sessions/session-1/revoke') {
+        $body = '{}';
     } else {
         die "unexpected Accounts request: $method $path";
     }
@@ -112,7 +114,7 @@ close($requests);
 close($server);
 PERL
 
-perl "$account_server" "$account_port_file" "$account_requests" 10 &
+perl "$account_server" "$account_port_file" "$account_requests" 21 &
 account_server_pid="$!"
 for _ in $(seq 1 100); do
   [ -s "$account_port_file" ] && break
@@ -131,6 +133,22 @@ fi
 test ! -e credentials.json
 test ! -e .git/credentials.json
 test -f "$KOME_CONFIG_HOME/credentials.json"
+
+kome account --accounts-api-base "$accounts_base" > "$work_dir/account.out"
+grep -Fx 'Account: jine' "$work_dir/account.out" >/dev/null
+grep -Fx 'Session: active' "$work_dir/account.out" >/dev/null
+grep -Fx 'Device: Linux · Kome CLI' "$work_dir/account.out" >/dev/null
+
+kome developer list --accounts-api-base "$accounts_base" > "$work_dir/developer-list.out"
+grep -F '019f9e5ac6687902b0e72fe53abfbef1' "$work_dir/developer-list.out" >/dev/null
+grep -F 'membership=active' "$work_dir/developer-list.out" >/dev/null
+
+kome developer use \
+  019f9e5ac6687902b0e72fe53abfbef1 \
+  --accounts-api-base "$accounts_base" > "$work_dir/developer-use.out"
+grep -Fx 'Default Developer: 019f9e5ac6687902b0e72fe53abfbef1' "$work_dir/developer-use.out" >/dev/null
+grep -Fx 'default_developer = "019f9e5ac6687902b0e72fe53abfbef1"' \
+  "$KOME_CONFIG_HOME/settings.toml" >/dev/null
 
 msign key generate --private-key "$work_dir/root.key" --public-key "$work_dir/root.pub" >/dev/null
 
@@ -280,19 +298,24 @@ kome sign \
   --developer-ca-api-base "$ca_base" > "$work_dir/sign-second.out"
 grep -Fx 'Verified:    OK' "$work_dir/sign-second.out" >/dev/null
 
-wait "$account_server_pid"
-account_server_pid=""
-test "$(grep -c '^===== request ' "$account_requests")" -eq 10
-grep -F '"code_challenge_method":"S256"' "$account_requests" >/dev/null
-grep -F '"code_verifier":' "$account_requests" >/dev/null
-grep -F '"refresh_credential":"refresh-1"' "$account_requests" >/dev/null
-grep -F '"refresh_credential":"refresh-rotated"' "$account_requests" >/dev/null
-
 credential_file="$KOME_CONFIG_HOME/credentials.json"
 test -f "$credential_file"
 if [ "$(stat -c '%a' "$credential_file")" != 600 ]; then
   echo "fallback credential file is not owner-only" >&2
   exit 1
 fi
+
+kome logout --accounts-api-base "$accounts_base" > "$work_dir/logout.out"
+grep -Fx 'Logged out from Kome CLI.' "$work_dir/logout.out" >/dev/null
+test ! -e "$credential_file"
+
+wait "$account_server_pid"
+account_server_pid=""
+test "$(grep -c '^===== request ' "$account_requests")" -eq 21
+grep -F '"code_challenge_method":"S256"' "$account_requests" >/dev/null
+grep -F '"code_verifier":' "$account_requests" >/dev/null
+grep -F '"refresh_credential":"refresh-1"' "$account_requests" >/dev/null
+grep -F '"refresh_credential":"refresh-rotated"' "$account_requests" >/dev/null
+grep -F 'POST /v1/sessions/session-1/revoke HTTP/1.1' "$account_requests" >/dev/null
 
 echo "authenticated Kome signing flow passed"

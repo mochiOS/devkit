@@ -276,7 +276,7 @@ impl HttpAccountsApi {
     }
 
     fn session_revoke_endpoint(&self, session_id: &str) -> Result<Url> {
-        let mut endpoint = self.endpoint("sessions/")?;
+        let mut endpoint = self.endpoint("sessions")?;
         endpoint
             .path_segments_mut()
             .map_err(|_| anyhow!("Accounts API base URL cannot contain path segments"))?
@@ -742,6 +742,16 @@ mod tests {
             refresh_credential: "refresh-secret".to_string(),
             session_id: "session-1".to_string(),
         })
+    }
+
+    #[test]
+    fn session_revoke_endpoint_has_no_empty_path_segment() -> Result<()> {
+        let api = HttpAccountsApi::new("http://127.0.0.1:1234/v1")?;
+        assert_eq!(
+            api.session_revoke_endpoint("session-1")?.as_str(),
+            "http://127.0.0.1:1234/v1/sessions/session-1/revoke"
+        );
+        Ok(())
     }
 
     #[test]
