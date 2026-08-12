@@ -98,6 +98,16 @@ fn validate(args: &LinuxArgs) -> Result<()> {
             bail!("unsafe writable Linux path: {path}");
         }
     }
+    for path in &args.portal_read_paths {
+        if !valid_portal_path(path, false) {
+            bail!("unsafe mochiOS portal read path: {path}");
+        }
+    }
+    for path in &args.portal_write_paths {
+        if !valid_portal_path(path, true) {
+            bail!("unsafe mochiOS portal write path: {path}");
+        }
+    }
     if args.writable_paths.iter().enumerate().any(|(index, path)| {
         args.writable_paths[index + 1..]
             .iter()
@@ -236,14 +246,42 @@ fn manifest_toml(args: &LinuxArgs, payload: &Path) -> Result<String> {
         .iter()
         .map(|path| format!("    {path:?},\n"))
         .collect::<String>();
+    let portal_read = toml_array(&args.portal_read_paths);
+    let portal_write = toml_array(&args.portal_write_paths);
     Ok(format!(
-        "format = 1\n\n[package]\nid = {bundle:?}\nname = {name:?}\nversion = {version:?}\nvendor = {vendor:?}\nkind = \"application\"\narchitecture = \"x86_64\"\nabi = \"mboot-linux-1\"\n\n[linux]\nentrypoint = {entrypoint:?}\nrootfs_file = \"linux-rootfs\"\nwritable_paths = [\n{writable}]\n\n{rootfs}{about}{icon}",
+        "format = 1\n\n[package]\nid = {bundle:?}\nname = {name:?}\nversion = {version:?}\nvendor = {vendor:?}\nkind = \"application\"\narchitecture = \"x86_64\"\nabi = \"mboot-linux-1\"\n\n[linux]\nentrypoint = {entrypoint:?}\nrootfs_file = \"linux-rootfs\"\nwritable_paths = [\n{writable}]\nportal_read_paths = [\n{portal_read}]\nportal_write_paths = [\n{portal_write}]\n\n{rootfs}{about}{icon}",
         bundle = args.bundle_id,
         name = args.name,
         version = args.version,
         vendor = args.vendor,
         entrypoint = args.entrypoint,
     ))
+}
+
+fn toml_array(paths: &[String]) -> String {
+    paths
+        .iter()
+        .map(|path| format!("    {path:?},\n"))
+        .collect()
+}
+
+fn valid_portal_path(path: &str, writable: bool) -> bool {
+    let user_home = path == "/home/$USER"
+        || path
+            .strip_prefix("/home/$USER/")
+            .is_some_and(|suffix| !suffix.is_empty() && normalized_suffix(suffix));
+    user_home
+        || (!writable
+            && (path == "/applications"
+                || path.strip_prefix("/applications/").is_some_and(normalized_suffix)
+                || path == "/libraries"
+                || path.strip_prefix("/libraries/").is_some_and(normalized_suffix)))
+}
+
+fn normalized_suffix(path: &str) -> bool {
+    !path.is_empty()
+        && !path.contains('\\')
+        && path.split('/').all(|part| !part.is_empty() && part != "." && part != "..")
 }
 
 fn file_record(id: &str, path: &str, source: &Path) -> Result<String> {
@@ -356,6 +394,8 @@ mod tests {
             },
             architecture: String::from("amd64"),
             writable_paths: vec![String::from("/usr/share/editor")],
+            portal_read_paths: Vec::new(),
+            portal_write_paths: Vec::new(),
             icon: None,
             output: PathBuf::from("editor.mpkg"),
             force: false,

@@ -56,6 +56,12 @@ pub struct LinuxArgs {
     #[arg(long = "writable-path")]
     pub writable_paths: Vec<String>,
 
+    #[arg(long = "portal-read")]
+    pub portal_read_paths: Vec<String>,
+
+    #[arg(long = "portal-write")]
+    pub portal_write_paths: Vec<String>,
+
     #[arg(long)]
     pub icon: Option<PathBuf>,
 
