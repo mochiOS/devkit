@@ -14,6 +14,56 @@ pub struct Cli {
 pub enum Command {
     Pack(PackArgs),
     Create(CreateArgs),
+    Linux(LinuxArgs),
+}
+
+#[derive(Debug, Args)]
+#[group(required = true, multiple = false)]
+pub struct LinuxSource {
+    #[arg(long)]
+    pub apt_package: Option<String>,
+
+    #[arg(long)]
+    pub linux_binary: Option<PathBuf>,
+
+    #[arg(long)]
+    pub rootfs: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct LinuxArgs {
+    #[arg(long)]
+    pub bundle_id: String,
+
+    #[arg(long)]
+    pub name: String,
+
+    #[arg(long)]
+    pub version: String,
+
+    #[arg(long)]
+    pub vendor: String,
+
+    #[arg(long)]
+    pub entrypoint: String,
+
+    #[command(flatten)]
+    pub source: LinuxSource,
+
+    #[arg(long, default_value = "amd64")]
+    pub architecture: String,
+
+    #[arg(long = "writable-path")]
+    pub writable_paths: Vec<String>,
+
+    #[arg(long)]
+    pub icon: Option<PathBuf>,
+
+    #[arg(short, long)]
+    pub output: PathBuf,
+
+    #[arg(long)]
+    pub force: bool,
 }
 
 #[derive(Debug, Args)]

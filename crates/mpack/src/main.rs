@@ -1,5 +1,6 @@
 mod app_files;
 mod cli;
+mod linux_package;
 mod manifest;
 mod mpkg;
 mod package;
@@ -15,5 +16,6 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Pack(args) => package::pack(args),
         Command::Create(args) => mpkg::create(args),
+        Command::Linux(args) => linux_package::create(args),
     }
 }

@@ -1162,6 +1162,7 @@ dependencies = [
  "clap",
  "flate2",
  "serde",
+ "sha2",
  "tar",
  "tempfile",
  "toml 1.1.2+spec-1.1.0",
