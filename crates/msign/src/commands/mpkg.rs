@@ -16,7 +16,7 @@ use crate::crypto;
 
 const MPKG_MAGIC: &[u8; 4] = b"MPKG";
 const MPKG_HEADER_LEN: usize = 32;
-const MAX_PACKAGE_LEN: u64 = 128 * 1024 * 1024;
+const MAX_PACKAGE_LEN: u64 = 256 * 1024 * 1024;
 const MAX_ENTRIES: usize = 10_000;
 const MAX_METADATA_LEN: usize = 1024 * 1024;
 const MANIFEST_PATH: &str = "manifest.toml";
