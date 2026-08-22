@@ -1,0 +1,14 @@
+[package]
+name = "development-pki"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+mochios-certificate = { git = "https://github.com/mochiOS/syscalls", rev = "af217f5ca6a585110aabac813eb46dff8ccb7bfc", package = "mochios-certificate" }
+mochios-developer-ca-trust = { git = "https://github.com/mochiOS/DeveloperCA", rev = "71f9487a3abe29046e827784502516c9a296c509", package = "mochios-developer-ca-trust" }
+rand_core = { version = "0.6", features = ["getrandom"] }
+serde = "1"
+serde_json = "1"

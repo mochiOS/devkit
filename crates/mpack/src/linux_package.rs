@@ -108,6 +108,9 @@ fn validate(args: &LinuxArgs) -> Result<()> {
             bail!("unsafe mochiOS portal write path: {path}");
         }
     }
+    if args.network.as_deref().is_some_and(|mode| mode != "client") {
+        bail!("unsupported Linux network mode (expected client)");
+    }
     if args.writable_paths.iter().enumerate().any(|(index, path)| {
         args.writable_paths[index + 1..]
             .iter()
@@ -248,8 +251,9 @@ fn manifest_toml(args: &LinuxArgs, payload: &Path) -> Result<String> {
         .collect::<String>();
     let portal_read = toml_array(&args.portal_read_paths);
     let portal_write = toml_array(&args.portal_write_paths);
+    let network = args.network.as_ref().map_or(String::new(), |mode| format!("network = {mode:?}\n"));
     Ok(format!(
-        "format = 1\n\n[package]\nid = {bundle:?}\nname = {name:?}\nversion = {version:?}\nvendor = {vendor:?}\nkind = \"application\"\narchitecture = \"x86_64\"\nabi = \"mboot-linux-1\"\n\n[linux]\nentrypoint = {entrypoint:?}\nrootfs_file = \"linux-rootfs\"\nwritable_paths = [\n{writable}]\nportal_read_paths = [\n{portal_read}]\nportal_write_paths = [\n{portal_write}]\n\n{rootfs}{about}{icon}",
+        "format = 1\n\n[package]\nid = {bundle:?}\nname = {name:?}\nversion = {version:?}\nvendor = {vendor:?}\nkind = \"application\"\narchitecture = \"x86_64\"\nabi = \"mboot-linux-1\"\n\n[linux]\nentrypoint = {entrypoint:?}\nrootfs_file = \"linux-rootfs\"\n{network}writable_paths = [\n{writable}]\nportal_read_paths = [\n{portal_read}]\nportal_write_paths = [\n{portal_write}]\n\n{rootfs}{about}{icon}",
         bundle = args.bundle_id,
         name = args.name,
         version = args.version,
@@ -396,6 +400,7 @@ mod tests {
             writable_paths: vec![String::from("/usr/share/editor")],
             portal_read_paths: Vec::new(),
             portal_write_paths: Vec::new(),
+            network: None,
             icon: None,
             output: PathBuf::from("editor.mpkg"),
             force: false,

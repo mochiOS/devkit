@@ -365,6 +365,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "development-pki"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "ed25519-dalek",
+ "mochios-certificate",
+ "mochios-developer-ca-trust",
+ "rand_core 0.6.4",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1151,6 +1165,17 @@ version = "0.1.0"
 source = "git+https://github.com/mochiOS/syscalls?rev=af217f5ca6a585110aabac813eb46dff8ccb7bfc#af217f5ca6a585110aabac813eb46dff8ccb7bfc"
 dependencies = [
  "ed25519-dalek",
+ "sha2",
+]
+
+[[package]]
+name = "mochios-developer-ca-trust"
+version = "0.1.0"
+source = "git+https://github.com/mochiOS/DeveloperCA?rev=71f9487a3abe29046e827784502516c9a296c509#71f9487a3abe29046e827784502516c9a296c509"
+dependencies = [
+ "base64",
+ "ed25519-dalek",
+ "serde",
  "sha2",
 ]
 

@@ -62,6 +62,10 @@ pub struct LinuxArgs {
     #[arg(long = "portal-write")]
     pub portal_write_paths: Vec<String>,
 
+    /// Declare client-only network access. Supported value: client.
+    #[arg(long)]
+    pub network: Option<String>,
+
     #[arg(long)]
     pub icon: Option<PathBuf>,
 
