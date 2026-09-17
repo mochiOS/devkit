@@ -5,7 +5,7 @@ mod crypto;
 use anyhow::Result;
 use clap::Parser;
 
-use crate::cli::{CertificateCommand, Cli, Command, KeyCommand, PackageCommand};
+use crate::cli::{CertificateCommand, Cli, Command, IdentityCommand, KeyCommand, PackageCommand};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -27,7 +27,19 @@ fn main() -> Result<()> {
             command: PackageCommand::Sign(args),
         } => commands::mpkg::sign(args),
         Command::Package {
+            command: PackageCommand::SignAuto(args),
+        } => commands::identity::sign_auto(args),
+        Command::Package {
             command: PackageCommand::Verify(args),
         } => commands::mpkg::verify(args),
+        Command::Package {
+            command: PackageCommand::BuiltInRecord(args),
+        } => commands::builtin::record(args),
+        Command::Identity {
+            command: IdentityCommand::Import(args),
+        } => commands::identity::import(args),
+        Command::Identity {
+            command: IdentityCommand::List,
+        } => commands::identity::list(),
     }
 }

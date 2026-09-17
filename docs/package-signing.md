@@ -1,72 +1,125 @@
-# Package Signing Guide
+# Package signing
 
-初回:
+mochiOS package signing establishes the developer identity and protects the
+MPKG manifest and payload integrity. Capability authorization remains a
+separate policy decision made from the package request, certificate allowance,
+system policy, user grants, and delegation ceiling.
 
-```sh
-kome login
-kome keygen
-kome sign
-```
+The normal development workflow uses a local signing identity store. Private
+key paths are not stored in a Makefile, package manifest, or repository.
 
-2回目以降:
+## Identity store
 
-```sh
-kome sign
-```
-
-`kome sign`は次を順に実行します。
-
-1. `Kome.toml`とPackage IDを検証する
-2. 入力が新しい場合にbuildとunsigned MPKG生成を行う
-3. application鍵を生成または検証する
-4. 保存済みCLI sessionをrefreshする
-5. DeveloperCAのDeveloper一覧からDeveloperを解決する
-6. 既存Developer Certificateを検証し、必要なら取得する
-7. 一時MPKGへ`developer.cert`と`manifest.sig`を追加する
-8. 一時MPKGをローカル検証する
-9. 成功した場合だけ`dist/<name>.mpkg`へ配置する
-
-未ログイン時はログイン方法を表示して終了し、勝手にDevice Authorizationを開始しません。
-明示的に同じコマンドからログインする場合だけ`kome sign --login`を使用できます。
-
-Developerの解決順:
-
-1. `Kome.toml`の`[developer].id`
-2. `kome developer use`で保存したdefault Developer
-3. 発行可能なDeveloperが1件なら自動選択
-4. 複数なら対話選択
-5. 0件ならConsoleでの作成を案内
-
-Certificate再利用時はMCER、Issuer署名、application公開鍵、Developer ID、Package ID
-scope、全required Capability、有効期間を検証します。鍵、Developer、Package ID、
-Capability、期限のいずれかが変わると再取得します。
-
-署名対象:
+By default, `msign` stores local identities below:
 
 ```text
-"mochios-mpkg-manifest-v1\0" || SHA-256(manifest.tomlの正確なbyte列)
+$XDG_CONFIG_HOME/mochios/signing
 ```
 
-署名後のentry:
+If `XDG_CONFIG_HOME` is unset, it uses:
 
 ```text
-signatures/developer.cert
-signatures/manifest.sig
+$HOME/.config/mochios/signing
 ```
 
-ローカル検証ではMPKG header、ustar制約、MCER、Issuer署名、Certificate期限とscope、
-Capability、manifest署名、payload size/digest、重複・未列挙payloadを確認します。
+`MOCHIOS_SIGNING_HOME` may override the root for isolated build environments.
+The root and identity directories are private to the current user. Private
+keys and the default-identity selector are created with mode `0600`.
 
-低レベル操作はfixtureや形式調査に限定してください。
+Import an existing Developer Certificate and matching Ed25519 private key:
 
-```sh
-msign package sign \
-  dist/Example-unsigned.mpkg \
-  --certificate keys/developer.cert \
-  --key keys/application.key \
-  --output dist/Example.mpkg
-
-msign package verify \
-  dist/Example.mpkg \
-  --root-public-key keys/developer.issuer.pub
+```bash
+msign identity import local-dev \
+  --certificate developer.cert \
+  --key developer.key \
+  --default
 ```
+
+The import verifies the canonical certificate encoding and confirms that the
+private key matches its subject public key before storing either file.
+
+List identities:
+
+```bash
+msign identity list
+```
+
+Identity names are selectors local to the workstation. They are not Package
+IDs, developer identities, or a central registration mechanism.
+
+## Automatic selection
+
+For an unsigned MPKG, automatic selection reads the Package ID and requested
+binary capabilities from the package manifest. A candidate identity is usable
+only when all of the following are true:
+
+* its certificate is currently valid;
+* its package scope permits the Package ID;
+* its capability allowance covers every requested capability;
+* its private key matches the certificate.
+
+The default identity is preferred when it is eligible. If no default is
+eligible, exactly one eligible identity must exist; ambiguity is reported as an
+error rather than selecting a signer unpredictably.
+
+Sign directly:
+
+```bash
+msign package sign-auto app.mpkg
+```
+
+Select an identity explicitly without exposing a key path:
+
+```bash
+msign package sign-auto app.mpkg --identity local-dev
+```
+
+Use `--output signed.mpkg` to preserve the unsigned input, and
+`--replace-signature` only when intentionally replacing an existing signature.
+
+## mmake integration
+
+The repository provides an incremental host-tool target and an automatic
+package-signing target:
+
+```bash
+mmake msign-tool
+mmake sign-package PACKAGE=/absolute/or/workspace/path/app.mpkg
+mmake package-and-sign \
+  PACKAGE_MANIFEST=/workspace/app/manifest.toml \
+  PACKAGE_PAYLOAD=/workspace/app/payload \
+  PACKAGE=/workspace/app/dist/app.mpkg
+```
+
+`sign-package` invokes `msign package sign-auto`; it never accepts or records a
+private-key path. Package-producing component targets should depend on
+`package-and-sign`, or depend on `msign-tool` and invoke the same command after
+creating their MPKG. `package-and-sign` uses the existing canonical
+`mpack create` implementation and then signs the resulting MPKG using the local
+identity store. The boot
+image target does not depend on a personal developer identity: files baked into
+the system image use explicit BuiltIn provenance and are not silently treated
+as locally signed packages.
+
+When verification uses an issuer carrying the trusted
+`development-package-signing` usage, signature.service marks the install record
+as Development. A package or signer cannot self-assert that provenance.
+
+## Trust and authorization boundaries
+
+The existing format and cryptography remain unchanged:
+
+* Ed25519 signatures;
+* SHA-256 payload digests;
+* canonical MPKG manifest signing;
+* Developer Certificate package scope and capability allowance.
+
+Successful signing or verification does not grant capabilities by itself. At
+install and exec time, mochiOS independently resolves the application identity
+and computes effective capabilities under system policy and user/delegation
+limits. An unverified package must not be treated as a trusted built-in merely
+because verification metadata is absent.
+
+Development fixture keys are for tests and local fixtures only. They are not
+production trust roots and must not be copied into a user identity store for
+real software distribution.

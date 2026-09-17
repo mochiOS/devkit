@@ -31,6 +31,29 @@ struct MpkgEntry {
     mode: u32,
 }
 
+pub(crate) struct PackageRequirements {
+    pub package_id: String,
+    pub capabilities: Vec<String>,
+}
+
+pub(crate) fn package_requirements(package: &Path) -> Result<PackageRequirements> {
+    let entries = read_mpkg(package)?;
+    reject_chain_and_unknown_signatures(&entries)?;
+    let manifest = &entry(&entries, MANIFEST_PATH)?.data;
+    let manifest_text = std::str::from_utf8(manifest).context("manifest is not UTF-8")?;
+    let manifest_value: toml::Value =
+        toml::from_str(manifest_text).context("manifest is not valid TOML")?;
+    validate_manifest_shape(&manifest_value)?;
+    let package_id = package_id(&manifest_value)?.to_string();
+    let mut capabilities = required_capabilities(&manifest_value)?;
+    capabilities.sort();
+    capabilities.dedup();
+    Ok(PackageRequirements {
+        package_id,
+        capabilities,
+    })
+}
+
 pub fn sign(args: PackageSignArgs) -> Result<()> {
     let mut entries = read_mpkg(&args.package)?;
     reject_chain_and_unknown_signatures(&entries)?;

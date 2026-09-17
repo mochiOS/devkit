@@ -1,126 +1,125 @@
 # mochiOS developer kit
 
-mochiOSアプリをMPKG v1としてbuild、署名、検証する開発者向けCLIです。
+mochiOS applications are distributed as deterministic MPKG v1 archives. The
+supported development path uses `mpack` for package construction and `msign`
+for local identity management, signing, and verification. Kome remains an
+unfinished language/tooling experiment and is not required by this workflow.
 
-## Quick Start
+## Quick start
 
-初回だけAccountログインとEd25519 application鍵の生成を行います。
-
-```sh
-kome login
-kome keygen
-kome sign
-```
-
-2回目以降は、project directoryで次を実行します。
+Import a Developer Certificate and its matching Ed25519 private key once:
 
 ```sh
-kome sign
+msign identity import local-dev \
+  --certificate developer.cert \
+  --key application.key \
+  --default
 ```
 
-`kome sign`は必要なbuildとunsigned MPKG生成を行い、認証済みAccountからDeveloperを
-解決し、Developer Certificateを取得または再利用します。署名済みMPKGを一時ファイルで
-検証し、成功した場合だけ`dist/<name>.mpkg`へ配置します。未ログイン時に勝手にブラウザを
-開くことはありません。
-
-新規project:
+Build an unsigned package from a canonical runtime manifest and payload tree,
+then sign it using the automatically selected local identity:
 
 ```sh
-kome new Example --id com.example.application --vendor "Example Developer"
-cd Example
-kome login
-kome keygen
-kome sign
+mpack create \
+  --manifest manifest.toml \
+  --payload payload \
+  --output dist/Example.mpkg
+msign package sign-auto dist/Example.mpkg
 ```
+
+Inside the mochiOS source tree the same flow is available through mmake:
+
+```sh
+mmake package-and-sign \
+  PACKAGE_MANIFEST=/workspace/Example/manifest.toml \
+  PACKAGE_PAYLOAD=/workspace/Example/payload \
+  PACKAGE=/workspace/Example/dist/Example.mpkg
+```
+
+The build graph never contains a private-key path. `msign` selects an eligible
+identity by Package ID scope, certificate validity, and requested Capability
+allowance. Ambiguous selection fails rather than choosing unpredictably.
 
 ## Tools
 
-- `kome`: project作成、Account session、build、pack、署名の通常入口
-- `mpack`: unsigned MPKG v1の低レベル生成器
-- `msign`: Ed25519鍵、MCER、MPKG署名・検証の低レベルツール
-- `komeup`: Kome toolchain installer
+- `mpack create`: deterministic unsigned MPKG v1 construction
+- `msign identity`: local signing identity import and inspection
+- `msign package sign-auto`: automatic local identity selection and signing
+- `msign package verify`: low-level package verification
+- `development-pki`: reproducible development trust fixtures
 
-## Generated Files
+`mpack pack` and the Kome commands are not part of the supported application
+development path while Kome is unfinished.
 
-```text
-Kome.toml
-keys/application.key
-keys/application.pub
-keys/developer.cert
-keys/developer.issuer.pub
-target/debug/entry.elf
-dist/Example-unsigned.mpkg
-dist/Example.mpkg
-```
+## Local identity storage
 
-`application.key`はraw 32-byte Ed25519 signing keyのBase64です。stdout、Cloud、MPKGへ
-出力されず、`.gitignore`へ`keys/application.key`が重複なく追加されます。
-`application.pub`だけがCertificate発行要求へ送られます。
+The default store is `$XDG_CONFIG_HOME/mochios/signing`, or
+`$HOME/.config/mochios/signing` when `XDG_CONFIG_HOME` is unset.
+`MOCHIOS_SIGNING_HOME` may select an isolated store. Store directories are mode
+`0700`; private keys and the default selector are mode `0600`.
 
-`kome pack`はMPKG v1の32-byte headerと決定的な無圧縮ustar streamを生成します。
-`manifest.toml`には実payloadのsizeとSHA-256が入り、署名前の出力には
-`signatures/`がなくても構いません。
+Identity selector names are workstation-local labels. They do not replace the
+certificate developer identity or require central Package ID registration.
 
-## Account And Developer
+## Package and security model
+
+MPKG v1 contains a fixed 32-byte header and a deterministic uncompressed ustar
+stream. The signed canonical manifest commits to every payload size and SHA-256
+digest. Package signatures use Ed25519 and carry a Developer Certificate.
+
+Signing establishes identity and integrity only. Capability authorization is
+computed independently at install, spawn, and exec from requested Capability,
+certificate allowance, system policy, user grant, and caller/delegation
+ceiling. The kernel remains the final enforcement boundary.
+
+Install provenance is assigned by a trusted verifier:
+
+- BuiltIn records are generated while constructing the boot image.
+- VerifiedPackage records come from an ordinary trusted signing issuer.
+- Development records require a trusted issuer with the
+  `development-package-signing` usage.
+
+A package manifest or signer cannot self-assert trusted provenance.
+
+## Certificate operations
+
+Generate a standalone application key when provisioning a new identity:
 
 ```sh
-kome account
-kome developer list
-kome developer use 019f9e5ac6687902b0e72fe53abfbef1
-kome logout
+msign key generate \
+  --private-key application.key \
+  --public-key application.pub
 ```
 
-Developer IDは32文字の小文字16進識別子です。Developer ID自体は公開識別子であり、
-credentialではありません。Package IDは`org.mochios.*`に限定されず、
-`com.example.paint`や`io.github.username.tool`を使用できます。
+Obtain a certificate without uploading the private key, MPKG payload, source,
+or build output:
 
-CLI refresh credentialとsession IDはOS credential storeを優先して保存します。OS storeが
-利用できない場合だけ、project外の所有者限定設定ファイルへfallbackします。Web Cookieと
-access tokenは永続保存しません。
+```sh
+msign certificate obtain \
+  --developer 019f9e5ac6687902b0e72fe53abfbef1 \
+  --public-key application.pub \
+  --package dist/Example.mpkg \
+  --output developer.cert
+```
+
+`msign certificate issue` is reserved for operators and reproducible fixtures.
 
 ## Guides
 
-- [Kome login guide](docs/kome-login.md)
-- [Kome session guide](docs/kome-session.md)
+- [Package signing](docs/package-signing.md)
 - [Developer key management](docs/developer-key-management.md)
-- [Kome package guide](docs/kome-packaging.md)
-- [Package signing guide](docs/package-signing.md)
+- [Certificate obtain](docs/certificate-obtain.md)
 - [Package ID rules](docs/package-id.md)
-- [MPKG v1 guide](docs/mpkg-v1.md)
-- [AppStore publish guide](docs/appstore-publish.md)
-- [Low-level Certificate guide](docs/certificate-obtain.md)
-- [legacy .pkg migration guide](docs/legacy-pkg-migration.md)
+- [MPKG v1](docs/mpkg-v1.md)
+- [AppStore publishing](docs/appstore-publish.md)
+- [Legacy package migration](docs/legacy-pkg-migration.md)
 
-## Low-level Commands
+## Security rules
 
-通常の開発では必要ありません。fixture、運営、形式検証用です。
-
-```sh
-mpack create --manifest manifest.toml --payload payload --output app.mpkg
-msign key generate --private-key application.key --public-key application.pub
-msign certificate issue \
-  --issuer-key issuer.key \
-  --subject-public-key application.pub \
-  --developer-id 019f9e5ac6687902b0e72fe53abfbef1 \
-  --serial 1 \
-  --not-before 1700000000 \
-  --not-after 1800000000 \
-  --scope exact:com.example.application \
-  --capability window.create \
-  --output developer.cert
-msign package sign app.mpkg --certificate developer.cert --key application.key
-msign package verify app.mpkg --root-public-key root.pub --unix-time 1750000000
-```
-
-`msign certificate issue`は運営・fixture用であり、一般利用者向けのCertificate取得手順では
-ありません。
-
-## Security
-
-- Device AuthorizationはPKCE S256を使用し、Accounts指定のpoll intervalを守ります。
-- verification URLへ載せる値は公開`code`だけです。device codeやtokenは載せません。
-- application private key、refresh credential、payload、sourceをCloudへ送りません。
-- CertificateのMCER形式、Issuer署名、Subject、Developer、scope、Capability、期限を
-  ローカルで検証します。
-- 署名後にheader、ustar、Certificate、manifest署名、payload size/digestを検証します。
-- AppStore Reviewerは公開時にCertificateの最新statusを再確認する責務を持ちます。
+- Private keys stay local and are never placed in MPKG files.
+- Certificate scope and Capability allowance are checked before signing and
+  again during installation.
+- Runtime trust uses current signed trust and revocation snapshots and fails
+  closed when they are unavailable or expired.
+- Development fixture keys are public test material and are never production
+  identities or production trust roots.

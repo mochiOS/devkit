@@ -24,6 +24,10 @@ pub enum Command {
         #[command(subcommand)]
         command: PackageCommand,
     },
+    Identity {
+        #[command(subcommand)]
+        command: IdentityCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -41,7 +45,37 @@ pub enum CertificateCommand {
 #[derive(Debug, Subcommand)]
 pub enum PackageCommand {
     Sign(PackageSignArgs),
+    SignAuto(PackageSignAutoArgs),
     Verify(PackageVerifyArgs),
+    BuiltInRecord(BuiltInRecordArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct BuiltInRecordArgs {
+    pub manifest: PathBuf,
+
+    #[arg(long)]
+    pub output: PathBuf,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum IdentityCommand {
+    Import(IdentityImportArgs),
+    List,
+}
+
+#[derive(Debug, Args)]
+pub struct IdentityImportArgs {
+    pub name: String,
+
+    #[arg(long)]
+    pub certificate: PathBuf,
+
+    #[arg(long)]
+    pub key: PathBuf,
+
+    #[arg(long)]
+    pub default: bool,
 }
 
 #[derive(Debug, Args)]
@@ -127,6 +161,23 @@ pub struct PackageSignArgs {
 
     #[arg(long)]
     pub key: PathBuf,
+
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+
+    #[arg(long)]
+    pub unix_time: Option<u64>,
+
+    #[arg(long)]
+    pub replace_signature: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct PackageSignAutoArgs {
+    pub package: PathBuf,
+
+    #[arg(long)]
+    pub identity: Option<String>,
 
     #[arg(short, long)]
     pub output: Option<PathBuf>,

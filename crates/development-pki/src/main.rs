@@ -89,6 +89,7 @@ fn refresh(directory: &Path, now: u64) -> Result<()> {
                 not_after: generated_at + TEN_YEARS,
                 allowed_key_usages: vec![
                     "developer-certificate-signing".to_string(),
+                    "development-package-signing".to_string(),
                     "revocation-signing".to_string(),
                 ],
             }],
