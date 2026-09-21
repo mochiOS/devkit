@@ -12,6 +12,10 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    Elf {
+        #[command(subcommand)]
+        command: ElfCommand,
+    },
     Key {
         #[command(subcommand)]
         command: KeyCommand,
@@ -28,6 +32,34 @@ pub enum Command {
         #[command(subcommand)]
         command: IdentityCommand,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ElfCommand {
+    Sign(ElfSignArgs),
+    Verify(ElfVerifyArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ElfSignArgs {
+    pub elf: PathBuf,
+
+    #[arg(long, required_unless_present = "key", conflicts_with = "key")]
+    pub adhoc: bool,
+
+    #[arg(long, required_unless_present = "adhoc", conflicts_with = "adhoc")]
+    pub key: Option<PathBuf>,
+
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct ElfVerifyArgs {
+    pub elf: PathBuf,
+
+    #[arg(long)]
+    pub public_key: Option<PathBuf>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -198,4 +230,34 @@ pub struct PackageVerifyArgs {
 
     #[arg(long)]
     pub unix_time: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn elf_sign_requires_exactly_one_signature_kind() {
+        assert!(Cli::try_parse_from(["msign", "elf", "sign", "program.elf"]).is_err());
+        assert!(Cli::try_parse_from([
+            "msign",
+            "elf",
+            "sign",
+            "program.elf",
+            "--adhoc",
+            "--key",
+            "developer.key",
+        ])
+        .is_err());
+        assert!(Cli::try_parse_from(["msign", "elf", "sign", "program.elf", "--adhoc",]).is_ok());
+        assert!(Cli::try_parse_from([
+            "msign",
+            "elf",
+            "sign",
+            "program.elf",
+            "--key",
+            "developer.key",
+        ])
+        .is_ok());
+    }
 }
