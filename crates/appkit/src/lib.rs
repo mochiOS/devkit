@@ -1,4 +1,4 @@
-//! The supported application-development API for mochiOS.
+//! AppKit is the supported application framework for mochiOS.
 //!
 //! This crate is the stable entry point for application code. ViewKit remains
 //! the UI implementation, while OS integration is exposed through small,

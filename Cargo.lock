@@ -1796,7 +1796,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mochios-application-sdk"
+name = "mochios-appkit"
 version = "0.1.0"
 dependencies = [
  "mochi-user-platform",

@@ -1,13 +1,13 @@
 [package]
-name = "mochios-application-sdk"
-description = "The supported application-development API for mochiOS"
+name = "mochios-appkit"
+description = "The application framework for mochiOS"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/mochiOS/devkit"
 
 [lib]
-name = "mochios_application_sdk"
+name = "appkit"
 crate-type = ["rlib", "staticlib", "cdylib"]
 
 [features]

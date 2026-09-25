@@ -50,11 +50,11 @@ allowance. Ambiguous selection fails rather than choosing unpredictably.
 
 ## Application SDK
 
-`mochios-application-sdk` is the supported Rust entry point for GUI
+`AppKit` (`mochios-appkit`) is the supported Rust entry point for GUI
 applications. It re-exports ViewKit and provides capability-checked clipboard,
 document-opening, and default-application APIs. Its fixed-width C ABI and
 umbrella header are intended for Clang applications and future Kome bindings.
-See [the SDK guide](crates/mochios-application-sdk/README.md).
+See [the AppKit guide](crates/appkit/README.md).
 
 `mpack pack` and the Kome commands are not part of the supported application
 development path while Kome is unfinished.

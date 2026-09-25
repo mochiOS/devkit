@@ -112,17 +112,17 @@ fn roles(bits: u16) -> Result<AssociationRoles, Status> {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn mosdk_abi_version() -> u32 {
+pub extern "C" fn mochios_abi_version() -> u32 {
     ABI_VERSION
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn mosdk_last_system_error() -> i64 {
+pub extern "C" fn mochios_last_system_error() -> i64 {
     LAST_SYSTEM_ERROR.with(Cell::get)
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn mosdk_status_name(status: i32) -> StringView {
+pub extern "C" fn mochios_status_name(status: i32) -> StringView {
     let name = match status {
         0 => "ok",
         1 => "null_pointer",
@@ -141,7 +141,7 @@ pub extern "C" fn mosdk_status_name(status: i32) -> StringView {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn mosdk_clipboard_set_text(text: StringView) -> i32 {
+pub unsafe extern "C" fn mochios_clipboard_set_text(text: StringView) -> i32 {
     ffi_status(|| {
         let text = unsafe { string(text)? };
         clipboard::set_text(text).map_err(map_error)
@@ -149,7 +149,7 @@ pub unsafe extern "C" fn mosdk_clipboard_set_text(text: StringView) -> i32 {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn mosdk_clipboard_copy_text(
+pub unsafe extern "C" fn mochios_clipboard_copy_text(
     output: MutableBuffer,
     required_length: *mut u64,
     has_text: *mut u8,
@@ -168,7 +168,7 @@ pub unsafe extern "C" fn mosdk_clipboard_copy_text(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn mosdk_association_set(
+pub unsafe extern "C" fn mochios_association_set(
     extension: StringView,
     content_type: StringView,
     bundle_id: StringView,
@@ -186,7 +186,7 @@ pub unsafe extern "C" fn mosdk_association_set(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn mosdk_association_remove(
+pub unsafe extern "C" fn mochios_association_remove(
     extension: StringView,
     content_type: StringView,
     role_bits: u16,
@@ -202,7 +202,7 @@ pub unsafe extern "C" fn mosdk_association_remove(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn mosdk_association_resolve(
+pub unsafe extern "C" fn mochios_association_resolve(
     extension: StringView,
     content_type: StringView,
     role_bits: u16,
@@ -221,7 +221,7 @@ pub unsafe extern "C" fn mosdk_association_resolve(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn mosdk_document_open(
+pub unsafe extern "C" fn mochios_document_open(
     path: StringView,
     content_type: StringView,
     role_bits: u16,
@@ -243,7 +243,7 @@ pub unsafe extern "C" fn mosdk_document_open(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn mosdk_document_open_with(
+pub unsafe extern "C" fn mochios_document_open_with(
     path: StringView,
     content_type: StringView,
     bundle_id: StringView,
@@ -268,7 +268,7 @@ pub unsafe extern "C" fn mosdk_document_open_with(
 
 #[cfg(feature = "ui")]
 #[unsafe(no_mangle)]
-pub extern "C" fn mosdk_application_request_exit() -> i32 {
+pub extern "C" fn mochios_application_request_exit() -> i32 {
     ffi_status(|| {
         crate::request_exit();
         Ok(())
@@ -277,7 +277,7 @@ pub extern "C" fn mosdk_application_request_exit() -> i32 {
 
 #[cfg(not(feature = "ui"))]
 #[unsafe(no_mangle)]
-pub extern "C" fn mosdk_application_request_exit() -> i32 {
+pub extern "C" fn mochios_application_request_exit() -> i32 {
     Status::UnsupportedPlatform as i32
 }
 
@@ -288,7 +288,7 @@ mod tests {
     #[test]
     fn abi_version_has_stable_encoding() {
         assert_eq!(ABI_VERSION, 0x0001_0000);
-        assert_eq!(mosdk_abi_version(), ABI_VERSION);
+        assert_eq!(mochios_abi_version(), ABI_VERSION);
     }
 
     #[test]
@@ -332,7 +332,7 @@ mod tests {
         let invalid = [0xff];
         assert_eq!(
             unsafe {
-                mosdk_clipboard_set_text(StringView {
+                mochios_clipboard_set_text(StringView {
                     data: invalid.as_ptr(),
                     length: 1,
                 })
@@ -341,7 +341,7 @@ mod tests {
         );
         assert_eq!(
             unsafe {
-                mosdk_association_remove(
+                mochios_association_remove(
                     StringView {
                         data: b"txt".as_ptr(),
                         length: 3,

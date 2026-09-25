@@ -4,7 +4,7 @@ members = [
     "crates/mpack",
     "crates/kome",
     "crates/development-pki",
-    "crates/mochios-application-sdk",
+    "crates/appkit",
     "xtask", "crates/komeup",
 ]
 resolver = "2"
