@@ -363,9 +363,17 @@ impl<Content: View> View for ApplicationMenuBar<Content> {
                     .radius(context.theme.menu.item_radius)
                     .paint(menu_bounds, context);
             }
+            let line_height = context.typography.style(TextRole::Label).line_height
+                * context.text_measurer.font_scale();
+            let text_bounds = Rect::new(
+                menu_bounds.origin.x,
+                menu_bounds.origin.y + ((menu_bounds.size.height - line_height) / 2.0).max(0.0),
+                menu_bounds.size.width,
+                line_height.min(menu_bounds.size.height),
+            );
             Text::label(menu.title.clone())
                 .alignment(TextAlignment::Center)
-                .paint(menu_bounds, context);
+                .paint(text_bounds, context);
         }
     }
 
