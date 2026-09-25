@@ -32,6 +32,8 @@ Desktop integration is grouped by purpose:
 
 - `clipboard`: typed shared clipboard access
 - `document`: opening documents and managing default applications
+- `DocumentController`: Open, Save, Save As, edited-state tracking and
+  unsaved-changes confirmation for file-backed document windows
 - `viewkit` / `prelude`: windows, layout, controls, events, appearance and accessibility
 
 These APIs do not grant authority. The application manifest must request the

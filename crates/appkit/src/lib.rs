@@ -7,6 +7,8 @@
 
 pub mod clipboard;
 pub mod document;
+#[cfg(feature = "ui")]
+pub mod document_controller;
 pub mod error;
 pub mod ffi;
 #[cfg(feature = "ui")]
@@ -15,6 +17,9 @@ pub mod menu;
 pub mod panel;
 
 pub use error::{Error, Result};
+
+#[cfg(feature = "ui")]
+pub use document_controller::{DocumentController, DocumentInfo, DocumentMetadata};
 
 #[cfg(feature = "ui")]
 pub use menu::{ApplicationMenu, ApplicationMenuBar, ApplicationMenuItem, MenuShortcut};
@@ -31,6 +36,8 @@ pub mod prelude {
     pub use crate::document::{self, AssociationHandler, AssociationRoles};
     pub use crate::error::{Error as ApplicationError, Result as ApplicationResult};
 
+    #[cfg(feature = "ui")]
+    pub use crate::document_controller::{DocumentController, DocumentInfo, DocumentMetadata};
     #[cfg(feature = "ui")]
     pub use crate::menu::{ApplicationMenu, ApplicationMenuBar, ApplicationMenuItem, MenuShortcut};
     #[cfg(feature = "ui")]

@@ -283,6 +283,14 @@ impl FilePanel {
         self.state.visible.set(true);
     }
 
+    fn set_directory(&self, directory: Option<&Path>) {
+        let directory = directory
+            .and_then(|path| fs::canonicalize(path).ok())
+            .filter(|path| path.starts_with(&self.state.root) && path.is_dir())
+            .unwrap_or_else(|| self.state.root.clone());
+        self.state.navigate(&directory);
+    }
+
     fn is_visible(&self) -> bool {
         self.state.visible.get()
     }
@@ -557,6 +565,13 @@ impl SavePanel {
         self.0.show();
     }
 
+    /// Presents the panel using the current document name and directory.
+    pub fn show_for(&self, directory: Option<&Path>, suggested_name: &str) {
+        self.0.set_directory(directory);
+        self.0.state.name.set_value(suggested_name);
+        self.0.show();
+    }
+
     pub fn is_visible(&self) -> bool {
         self.0.is_visible()
     }
@@ -601,6 +616,13 @@ impl OpenPanel {
     }
 
     pub fn show(&self) {
+        self.0.show();
+    }
+
+    /// Presents the panel in the supplied directory when it is within the
+    /// configured root.
+    pub fn show_at(&self, directory: Option<&Path>) {
+        self.0.set_directory(directory);
         self.0.show();
     }
 
