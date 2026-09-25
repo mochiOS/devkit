@@ -9,9 +9,13 @@ pub mod clipboard;
 pub mod document;
 pub mod error;
 pub mod ffi;
+#[cfg(feature = "ui")]
+pub mod panel;
 
 pub use error::{Error, Result};
 
+#[cfg(feature = "ui")]
+pub use panel::{OpenPanel, OpenPanelOptions, SavePanel, SavePanelOptions};
 #[cfg(feature = "ui")]
 pub use viewkit;
 #[cfg(feature = "ui")]
@@ -23,6 +27,8 @@ pub mod prelude {
     pub use crate::document::{self, AssociationHandler, AssociationRoles};
     pub use crate::error::{Error as ApplicationError, Result as ApplicationResult};
 
+    #[cfg(feature = "ui")]
+    pub use crate::panel::{OpenPanel, OpenPanelOptions, SavePanel, SavePanelOptions};
     #[cfg(feature = "ui")]
     pub use viewkit::prelude::*;
 }
