@@ -9,7 +9,6 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use viewkit::accessibility::{AccessibilityNode, AccessibilityRole};
-use viewkit::draw_command::DrawCommand;
 use viewkit::event::{ContextMenuItem, ContextMenuRequest, EventContext, EventResult, ViewEvent};
 use viewkit::platform::{Key, KeyModifiers, PointerButton};
 use viewkit::prelude::*;
@@ -334,15 +333,6 @@ impl<Content: View> View for ApplicationMenuBar<Content> {
         Rectangle::new()
             .color(RectangleColor::Custom(context.theme.colors.surface_subtle))
             .paint(bar, context);
-        context.display_list.push(DrawCommand::FillRect {
-            rect: Rect::new(
-                bar.origin.x,
-                bar.origin.y + (bar.size.height - context.theme.divider.thickness).max(0.0),
-                bar.size.width,
-                context.theme.divider.thickness.max(1.0),
-            ),
-            color: context.theme.colors.border,
-        });
 
         for (index, (menu, menu_bounds)) in self
             .menus

@@ -70,7 +70,7 @@ enum Mode {
 }
 
 struct PanelState {
-    visible: State<bool>,
+    visible: Cell<bool>,
     mode: Mode,
     root: PathBuf,
     directory: RefCell<PathBuf>,
@@ -226,7 +226,7 @@ impl FilePanel {
         let name = TextFieldInteractionState::new();
         name.set_value(suggested_name);
         let state = Rc::new(PanelState {
-            visible: State::new(false),
+            visible: Cell::new(false),
             mode,
             root: root.clone(),
             directory: RefCell::new(initial.clone()),
@@ -737,6 +737,40 @@ mod tests {
         panel.0.state.accept();
         assert_eq!(calls.get(), 1);
         assert!(!panel.is_visible());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn cloned_file_panels_share_presentation_state() {
+        let root = temporary_directory("panel-presentation");
+        let save_panel = SavePanel::new(
+            SavePanelOptions {
+                initial_directory: Some(root.clone()),
+                root_directory: Some(root.clone()),
+                ..SavePanelOptions::default()
+            },
+            |_| Ok(()),
+        );
+        let save_action_panel = save_panel.clone();
+        save_action_panel.show();
+        assert!(save_panel.is_visible());
+        save_panel.0.state.cancel();
+        assert!(!save_action_panel.is_visible());
+
+        let open_panel = OpenPanel::new(
+            OpenPanelOptions {
+                initial_directory: Some(root.clone()),
+                root_directory: Some(root.clone()),
+                ..OpenPanelOptions::default()
+            },
+            |_| Ok(()),
+        );
+        let open_action_panel = open_panel.clone();
+        open_action_panel.show();
+        assert!(open_panel.is_visible());
+        open_panel.0.state.cancel();
+        assert!(!open_action_panel.is_visible());
+
         fs::remove_dir_all(root).unwrap();
     }
 
