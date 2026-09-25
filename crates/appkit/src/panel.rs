@@ -532,14 +532,15 @@ impl View for FilePanel {
     }
 }
 
-pub struct SavePanel(FilePanel);
+#[derive(Clone)]
+pub struct SavePanel(Rc<FilePanel>);
 
 impl SavePanel {
     pub fn new(
         options: SavePanelOptions,
         handler: impl Fn(&Path) -> Result<(), String> + 'static,
     ) -> Self {
-        Self(FilePanel::new(
+        Self(Rc::new(FilePanel::new(
             options.title,
             "Save",
             Mode::Save {
@@ -549,7 +550,7 @@ impl SavePanel {
             options.initial_directory,
             options.root_directory,
             handler,
-        ))
+        )))
     }
 
     pub fn show(&self) {
@@ -580,14 +581,15 @@ impl View for SavePanel {
     }
 }
 
-pub struct OpenPanel(FilePanel);
+#[derive(Clone)]
+pub struct OpenPanel(Rc<FilePanel>);
 
 impl OpenPanel {
     pub fn new(
         options: OpenPanelOptions,
         handler: impl Fn(&Path) -> Result<(), String> + 'static,
     ) -> Self {
-        Self(FilePanel::new(
+        Self(Rc::new(FilePanel::new(
             options.title,
             "Open",
             Mode::Open,
@@ -595,7 +597,7 @@ impl OpenPanel {
             options.initial_directory,
             options.root_directory,
             handler,
-        ))
+        )))
     }
 
     pub fn show(&self) {
