@@ -1,0 +1,24 @@
+[package]
+name = "mochios-application-sdk"
+description = "The supported application-development API for mochiOS"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/mochiOS/devkit"
+
+[lib]
+name = "mochios_application_sdk"
+crate-type = ["rlib", "staticlib", "cdylib"]
+
+[features]
+default = ["ui"]
+ui = ["dep:viewkit"]
+
+[dependencies]
+viewkit = { version = "2.0.0", path = "../../../../libraries/viewkit", optional = true }
+
+[target.'cfg(target_os = "mochios")'.dependencies]
+mochi-user-platform = { version = "0.1.0", path = "../../../../user/crates/platform", default-features = false, features = ["std"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("mochios"))'] }
