@@ -9,6 +9,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use viewkit::accessibility::{AccessibilityNode, AccessibilityRole};
+use viewkit::command::CommandId;
 use viewkit::event::{ContextMenuItem, ContextMenuRequest, EventContext, EventResult, ViewEvent};
 use viewkit::platform::{Key, KeyModifiers, PointerButton};
 use viewkit::prelude::*;
@@ -16,8 +17,13 @@ use viewkit::view::{Constraints, MeasureContext, PaintContext};
 
 static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
-type Action = Rc<RefCell<Box<dyn FnMut()>>>;
+type Callback = Rc<RefCell<Box<dyn FnMut()>>>;
 type Predicate = Rc<dyn Fn() -> bool>;
+
+enum MenuAction {
+    Callback(Callback),
+    Command(CommandId),
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MenuShortcut {
@@ -71,7 +77,7 @@ pub struct ApplicationMenuItem {
     enabled: Predicate,
     checked: Predicate,
     destructive: bool,
-    action: Action,
+    action: MenuAction,
 }
 
 impl ApplicationMenuItem {
@@ -82,7 +88,20 @@ impl ApplicationMenuItem {
             enabled: Rc::new(|| true),
             checked: Rc::new(|| false),
             destructive: false,
-            action: Rc::new(RefCell::new(Box::new(action))),
+            action: MenuAction::Callback(Rc::new(RefCell::new(Box::new(action)))),
+        }
+    }
+
+    /// Creates an item which sends a semantic command through the focused
+    /// responder chain instead of binding directly to a callback.
+    pub fn command(label: impl Into<String>, command: CommandId) -> Self {
+        Self {
+            label: label.into(),
+            shortcut: None,
+            enabled: Rc::new(|| true),
+            checked: Rc::new(|| false),
+            destructive: false,
+            action: MenuAction::Command(command),
         }
     }
 
@@ -122,19 +141,53 @@ impl ApplicationMenuItem {
         self
     }
 
-    fn invoke(&self) -> bool {
-        if !(self.enabled)() {
+    fn responder_status<'a>(
+        &self,
+        context: &'a EventContext<'_>,
+    ) -> Option<&'a viewkit::command::CommandStatus> {
+        match &self.action {
+            MenuAction::Command(command) => context.command_status(*command),
+            MenuAction::Callback(_) => None,
+        }
+    }
+
+    fn is_enabled(&self, context: &EventContext<'_>) -> bool {
+        (self.enabled)()
+            && match &self.action {
+                MenuAction::Command(_) => self
+                    .responder_status(context)
+                    .is_some_and(|status| status.enabled),
+                MenuAction::Callback(_) => true,
+            }
+    }
+
+    fn invoke(&self, context: &mut EventContext<'_>) -> bool {
+        if !self.is_enabled(context) {
             return false;
         }
-        (self.action.borrow_mut())();
+        match &self.action {
+            MenuAction::Callback(action) => (action.borrow_mut())(),
+            MenuAction::Command(command) => context.dispatch_command(*command),
+        }
         true
     }
 
-    fn popup_label(&self) -> String {
+    fn popup_label(&self, context: &EventContext<'_>) -> String {
+        let label = self
+            .responder_status(context)
+            .and_then(|status| status.title.as_deref())
+            .unwrap_or(&self.label);
         match self.shortcut.as_ref() {
-            Some(shortcut) => format!("{}    {}", self.label, shortcut.label),
-            None => self.label.clone(),
+            Some(shortcut) => format!("{}    {}", label, shortcut.label),
+            None => label.to_owned(),
         }
+    }
+
+    fn is_checked(&self, context: &EventContext<'_>) -> bool {
+        (self.checked)()
+            || self
+                .responder_status(context)
+                .is_some_and(|status| status.checked)
     }
 }
 
@@ -168,16 +221,16 @@ impl ApplicationMenu {
         self
     }
 
-    fn popup_items(&self) -> Vec<ContextMenuItem> {
+    fn popup_items(&self, context: &EventContext<'_>) -> Vec<ContextMenuItem> {
         self.entries
             .iter()
             .enumerate()
             .map(|(index, entry)| match entry {
                 ApplicationMenuEntry::Item(item) => ContextMenuItem {
                     command_id: index as u32 + 1,
-                    label: item.popup_label(),
-                    enabled: (item.enabled)(),
-                    checked: (item.checked)(),
+                    label: item.popup_label(context),
+                    enabled: item.is_enabled(context),
+                    checked: item.is_checked(context),
                     destructive: item.destructive,
                     separator: false,
                 },
@@ -193,17 +246,22 @@ impl ApplicationMenu {
             .collect()
     }
 
-    fn invoke(&self, command_id: u32) -> bool {
+    fn invoke(&self, command_id: u32, context: &mut EventContext<'_>) -> bool {
         let Some(index) = command_id.checked_sub(1).map(|index| index as usize) else {
             return false;
         };
         match self.entries.get(index) {
-            Some(ApplicationMenuEntry::Item(item)) => item.invoke(),
+            Some(ApplicationMenuEntry::Item(item)) => item.invoke(context),
             _ => false,
         }
     }
 
-    fn invoke_shortcut(&self, key: Key, modifiers: KeyModifiers) -> bool {
+    fn invoke_shortcut(
+        &self,
+        key: Key,
+        modifiers: KeyModifiers,
+        context: &mut EventContext<'_>,
+    ) -> bool {
         self.entries.iter().any(|entry| match entry {
             ApplicationMenuEntry::Item(item)
                 if item
@@ -211,7 +269,7 @@ impl ApplicationMenu {
                     .as_ref()
                     .is_some_and(|shortcut| shortcut.matches(key, modifiers)) =>
             {
-                item.invoke()
+                item.invoke(context)
             }
             _ => false,
         })
@@ -222,7 +280,6 @@ pub struct ApplicationMenuBar<Content> {
     content: Content,
     menus: Vec<ApplicationMenu>,
     pending_request: Cell<Option<(u64, usize)>>,
-    hovered_menu: Cell<Option<usize>>,
 }
 
 impl<Content> ApplicationMenuBar<Content> {
@@ -231,7 +288,6 @@ impl<Content> ApplicationMenuBar<Content> {
             content,
             menus: Vec::new(),
             pending_request: Cell::new(None),
-            hovered_menu: Cell::new(None),
         }
     }
 
@@ -302,7 +358,7 @@ impl<Content> ApplicationMenuBar<Content> {
         context.show_context_menu(ContextMenuRequest {
             request_id,
             position: Point::new(anchor.origin.x, anchor.origin.y + anchor.size.height),
-            items: menu.popup_items(),
+            items: menu.popup_items(context),
         });
         context.request_redraw();
     }
@@ -334,25 +390,16 @@ impl<Content: View> View for ApplicationMenuBar<Content> {
             .color(RectangleColor::Custom(context.theme.colors.surface_subtle))
             .paint(bar, context);
 
-        for (index, (menu, menu_bounds)) in self
+        for (menu, menu_bounds) in self
             .menus
             .iter()
             .zip(self.menu_bounds(bounds, context.theme))
-            .enumerate()
         {
             let mut accessibility =
                 AccessibilityNode::new(AccessibilityRole::MenuItem, menu_bounds);
             accessibility.label = Some(menu.title.clone());
             accessibility.focusable = true;
             context.record_accessibility(accessibility);
-            if self.hovered_menu.get() == Some(index) {
-                Rectangle::new()
-                    .color(RectangleColor::Custom(
-                        context.theme.menu.item_hovered_background,
-                    ))
-                    .radius(context.theme.menu.item_radius)
-                    .paint(menu_bounds, context);
-            }
             let line_height = context.typography.style(TextRole::Label).line_height
                 * context.text_measurer.font_scale();
             let text_bounds = Rect::new(
@@ -386,7 +433,7 @@ impl<Content: View> View for ApplicationMenuBar<Content> {
             if let Some(command_id) = command_id
                 && let Some(menu) = self.menus.get(menu_index)
             {
-                let _ = menu.invoke(*command_id);
+                let _ = menu.invoke(*command_id, context);
             }
             context.request_redraw();
             return EventResult::Consumed;
@@ -396,7 +443,7 @@ impl<Content: View> View for ApplicationMenuBar<Content> {
             && self
                 .menus
                 .iter()
-                .any(|menu| menu.invoke_shortcut(*key, *modifiers))
+                .any(|menu| menu.invoke_shortcut(*key, *modifiers, context))
         {
             context.request_redraw();
             return EventResult::Consumed;
@@ -405,16 +452,7 @@ impl<Content: View> View for ApplicationMenuBar<Content> {
         let bar = Self::bar_bounds(bounds, context.theme());
         match event {
             ViewEvent::PointerMoved { position } if bar.contains(*position) => {
-                let hovered = self.menu_at(bounds, *position, context.theme());
-                if self.hovered_menu.replace(hovered) != hovered {
-                    context.request_redraw_in(bar);
-                }
                 return EventResult::Consumed;
-            }
-            ViewEvent::PointerLeft => {
-                if self.hovered_menu.take().is_some() {
-                    context.request_redraw_in(bar);
-                }
             }
             ViewEvent::PointerReleased {
                 position,
@@ -450,9 +488,13 @@ mod tests {
             ApplicationMenuItem::new("Save", move || action_calls.set(action_calls.get() + 1))
                 .shortcut(MenuShortcut::command('s', "Ctrl+S")),
         );
+        let theme = Theme::LIGHT;
+        let mut text_measurer = TextMeasurer::new();
+        let mut context = EventContext::new(&theme, &theme.typography, &mut text_measurer);
         assert!(menu.invoke_shortcut(
             Key::Character('S'),
             KeyModifiers::from_bits(KeyModifiers::CONTROL),
+            &mut context,
         ));
         assert_eq!(calls.get(), 1);
     }
@@ -465,7 +507,10 @@ mod tests {
             action_calls.set(action_calls.get() + 1)
         })
         .enabled(false);
-        assert!(!item.invoke());
+        let theme = Theme::LIGHT;
+        let mut text_measurer = TextMeasurer::new();
+        let mut context = EventContext::new(&theme, &theme.typography, &mut text_measurer);
+        assert!(!item.invoke(&mut context));
         assert_eq!(calls.get(), 0);
     }
 

@@ -31,14 +31,36 @@ fn main() -> Result<(), ViewKitError> {
 Desktop integration is grouped by purpose:
 
 - `clipboard`: typed shared clipboard access
+- `content_type`: validated content identifiers, conformance and extension inference
 - `document`: opening documents and managing default applications
-- `DocumentController`: Open, Save, Save As, edited-state tracking and
-  unsaved-changes confirmation for file-backed document windows
-- `viewkit` / `prelude`: windows, layout, controls, events, appearance and accessibility
+- `DocumentController`: Open, Save, Save As, Revert, autosave, edited-state
+  tracking and unsaved-changes confirmation for file-backed document windows
+- `OpenPanel` and `SavePanel`: workspace-owned panels on mochiOS. Files.app
+  performs browsing in a separate trusted process; the calling application
+  receives access only to the selected file for the lifetime of its process
+- `ApplicationMenuItem::command` and `CommandTarget`: menu commands routed
+  through the focused responder branch, with automatic enabled/checked/title
+  validation from the first responder
+- `UndoManager` and `UndoResponder`: grouped application-level undo and redo
+- `RecoveryStore`: atomic snapshots for unsaved document contents
+- `SessionStore`: atomic restoration of independent document windows, paths,
+  recovery identifiers, and logical window frames
+- `viewkit` / `prelude`: windows, layout, controls, events, appearance, per-window
+  accessibility snapshots and the platform bridge boundary
+- `FileDropTarget`: native file Drag & Drop with filtering and observable hover state
 
-These APIs do not grant authority. The application manifest must request the
+Applications can create independent windows with `request_new_window()` and
+provide their configuration and content through `App::window_for` and
+`App::body_for`. A document controller in a multi-window application should use
+`on_close` with `request_close_window(window_id)` so a completed save closes
+only its owning window.
+
+Most APIs do not grant authority. The application manifest must request the
 corresponding capabilities, such as `clipboard.read`, `clipboard.write`,
-`file-association.read`, and `file-association.write`.
+`file-association.read`, and `file-association.write`. File panels are the
+exception: an app declaring `fs.read.user` or `fs.write.user` receives a scoped
+grant for the path that the user selected, never broad access to the home
+directory.
 
 ## C, Clang and Kome
 

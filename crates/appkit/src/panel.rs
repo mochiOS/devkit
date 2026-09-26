@@ -16,7 +16,10 @@ use viewkit::platform::PointerButton;
 use viewkit::prelude::*;
 use viewkit::view::{Constraints, MeasureContext, PaintContext};
 
+use crate::content_type::ContentType;
+
 type SelectionHandler = dyn Fn(&Path) -> Result<(), String>;
+type CancelHandler = dyn Fn();
 
 #[derive(Clone, Debug)]
 pub struct SavePanelOptions {
@@ -25,6 +28,7 @@ pub struct SavePanelOptions {
     pub initial_directory: Option<PathBuf>,
     pub root_directory: Option<PathBuf>,
     pub confirms_replacement: bool,
+    pub allowed_content_types: Vec<ContentType>,
 }
 
 impl Default for SavePanelOptions {
@@ -35,6 +39,7 @@ impl Default for SavePanelOptions {
             initial_directory: None,
             root_directory: None,
             confirms_replacement: true,
+            allowed_content_types: Vec::new(),
         }
     }
 }
@@ -44,6 +49,7 @@ pub struct OpenPanelOptions {
     pub title: String,
     pub initial_directory: Option<PathBuf>,
     pub root_directory: Option<PathBuf>,
+    pub allowed_content_types: Vec<ContentType>,
 }
 
 impl Default for OpenPanelOptions {
@@ -52,6 +58,7 @@ impl Default for OpenPanelOptions {
             title: String::from("Open"),
             initial_directory: None,
             root_directory: None,
+            allowed_content_types: Vec::new(),
         }
     }
 }
@@ -81,7 +88,9 @@ struct PanelState {
     name: TextFieldInteractionState,
     error: RefCell<Option<String>>,
     pending_replace: RefCell<Option<PathBuf>>,
+    allowed_content_types: Vec<ContentType>,
     handler: Rc<SelectionHandler>,
+    cancel_handler: Option<Rc<CancelHandler>>,
 }
 
 impl PanelState {
@@ -98,18 +107,25 @@ impl PanelState {
             return;
         }
         *self.directory.borrow_mut() = path.clone();
-        *self.entries.borrow_mut() = entries(&path, &self.root);
+        *self.entries.borrow_mut() = entries(&path, &self.root, &self.allowed_content_types);
         self.selected.set(None);
         self.scroll.set(0.0);
         self.last_click.borrow_mut().take();
         self.error.borrow_mut().take();
     }
 
-    fn cancel(&self) {
+    fn dismiss(&self) {
         self.visible.set(false);
         self.name.set_focused(false);
         self.error.borrow_mut().take();
         self.pending_replace.borrow_mut().take();
+    }
+
+    fn cancel(&self) {
+        self.dismiss();
+        if let Some(handler) = &self.cancel_handler {
+            handler();
+        }
     }
 
     fn accept(&self) {
@@ -181,7 +197,7 @@ impl PanelState {
         };
 
         match (self.handler)(&destination) {
-            Ok(()) => self.cancel(),
+            Ok(()) => self.dismiss(),
             Err(error) => *self.error.borrow_mut() = Some(error),
         }
     }
@@ -216,7 +232,9 @@ impl FilePanel {
         suggested_name: String,
         initial_directory: Option<PathBuf>,
         root_directory: Option<PathBuf>,
+        allowed_content_types: Vec<ContentType>,
         handler: impl Fn(&Path) -> Result<(), String> + 'static,
+        cancel_handler: Option<Rc<CancelHandler>>,
     ) -> Self {
         let root = canonical_root(root_directory);
         let initial = initial_directory
@@ -230,14 +248,16 @@ impl FilePanel {
             mode,
             root: root.clone(),
             directory: RefCell::new(initial.clone()),
-            entries: RefCell::new(entries(&initial, &root)),
+            entries: RefCell::new(entries(&initial, &root, &allowed_content_types)),
             selected: Cell::new(None),
             scroll: Cell::new(0.0),
             last_click: RefCell::new(None),
             name: name.clone(),
             error: RefCell::new(None),
             pending_replace: RefCell::new(None),
+            allowed_content_types,
             handler: Rc::new(handler),
+            cancel_handler,
         });
 
         let up_state = Rc::clone(&state);
@@ -277,10 +297,96 @@ impl FilePanel {
     }
 
     fn show(&self) {
+        #[cfg(target_os = "mochios")]
+        if std::env::var_os("MOCHIOS_SYSTEM_FILE_PANEL").is_none() {
+            self.show_system_panel();
+            return;
+        }
         self.state.error.borrow_mut().take();
         self.state.pending_replace.borrow_mut().take();
         self.state.name.set_focused(self.state.mode != Mode::Open);
         self.state.visible.set(true);
+    }
+
+    #[cfg(target_os = "mochios")]
+    fn show_system_panel(&self) {
+        let executable = match std::env::var("MOCHI_EXECUTABLE_PATH") {
+            Ok(path) => path,
+            Err(_) => {
+                *self.state.error.borrow_mut() =
+                    Some(String::from("Application identity is unavailable."));
+                return;
+            }
+        };
+        let directory = self.state.directory.borrow().to_string_lossy().into_owned();
+        let content_types = self
+            .state
+            .allowed_content_types
+            .iter()
+            .map(ContentType::identifier)
+            .collect::<Vec<_>>();
+        let mode = if self.state.mode == Mode::Open {
+            mochi_user_platform::workspace::FilePanelMode::Open
+        } else {
+            mochi_user_platform::workspace::FilePanelMode::Save
+        };
+        let suggested_name = self.state.name.value();
+        let mut selection = match mochi_user_platform::workspace::file_panel_begin(
+            mochi_user_platform::workspace::FilePanelOptions {
+                mode,
+                title: &self.title,
+                initial_directory: &directory,
+                suggested_name: &suggested_name,
+                allowed_content_types: &content_types,
+                executable: &executable,
+            },
+        ) {
+            Ok(selection) => selection,
+            Err(_) => {
+                *self.state.error.borrow_mut() =
+                    Some(String::from("The system file panel could not be opened."));
+                return;
+            }
+        };
+
+        loop {
+            let Some(chosen) = selection else {
+                if let Some(handler) = &self.state.cancel_handler {
+                    handler();
+                }
+                return;
+            };
+            match (self.state.handler)(Path::new(&chosen.path)) {
+                Ok(()) => {
+                    if mochi_user_platform::workspace::file_panel_finish(chosen.token, true)
+                        .is_err()
+                    {
+                        *self.state.error.borrow_mut() = Some(String::from(
+                            "The system file panel could not finish the operation.",
+                        ));
+                    }
+                    return;
+                }
+                Err(error) => {
+                    *self.state.error.borrow_mut() = Some(error);
+                    if mochi_user_platform::workspace::file_panel_finish(chosen.token, false)
+                        .is_err()
+                    {
+                        return;
+                    }
+                    selection = match mochi_user_platform::workspace::file_panel_retry(chosen.token)
+                    {
+                        Ok(selection) => selection,
+                        Err(_) => {
+                            *self.state.error.borrow_mut() = Some(String::from(
+                                "The system file panel could not retry the operation.",
+                            ));
+                            return;
+                        }
+                    };
+                }
+            }
+        }
     }
 
     fn set_directory(&self, directory: Option<&Path>) {
@@ -548,6 +654,14 @@ impl SavePanel {
         options: SavePanelOptions,
         handler: impl Fn(&Path) -> Result<(), String> + 'static,
     ) -> Self {
+        Self::new_with_cancel(options, handler, || {})
+    }
+
+    pub fn new_with_cancel(
+        options: SavePanelOptions,
+        handler: impl Fn(&Path) -> Result<(), String> + 'static,
+        cancel_handler: impl Fn() + 'static,
+    ) -> Self {
         Self(Rc::new(FilePanel::new(
             options.title,
             "Save",
@@ -557,7 +671,9 @@ impl SavePanel {
             options.suggested_name,
             options.initial_directory,
             options.root_directory,
+            options.allowed_content_types,
             handler,
+            Some(Rc::new(cancel_handler)),
         )))
     }
 
@@ -604,6 +720,14 @@ impl OpenPanel {
         options: OpenPanelOptions,
         handler: impl Fn(&Path) -> Result<(), String> + 'static,
     ) -> Self {
+        Self::new_with_cancel(options, handler, || {})
+    }
+
+    pub fn new_with_cancel(
+        options: OpenPanelOptions,
+        handler: impl Fn(&Path) -> Result<(), String> + 'static,
+        cancel_handler: impl Fn() + 'static,
+    ) -> Self {
         Self(Rc::new(FilePanel::new(
             options.title,
             "Open",
@@ -611,7 +735,9 @@ impl OpenPanel {
             String::new(),
             options.initial_directory,
             options.root_directory,
+            options.allowed_content_types,
             handler,
+            Some(Rc::new(cancel_handler)),
         )))
     }
 
@@ -662,7 +788,7 @@ fn canonical_root(explicit: Option<PathBuf>) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/"))
 }
 
-fn entries(directory: &Path, root: &Path) -> Vec<Entry> {
+fn entries(directory: &Path, root: &Path, allowed_content_types: &[ContentType]) -> Vec<Entry> {
     let mut entries = fs::read_dir(directory)
         .ok()
         .into_iter()
@@ -674,6 +800,14 @@ fn entries(directory: &Path, root: &Path) -> Vec<Entry> {
                 && fs::canonicalize(&path)
                     .ok()
                     .is_none_or(|canonical| !canonical.starts_with(root))
+            {
+                return None;
+            }
+            if metadata.is_file()
+                && !allowed_content_types.is_empty()
+                && !allowed_content_types
+                    .iter()
+                    .any(|allowed| ContentType::for_path(&path).conforms_to(allowed))
             {
                 return None;
             }
@@ -793,6 +927,30 @@ mod tests {
         open_panel.0.state.cancel();
         assert!(!open_action_panel.is_visible());
 
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn cancellation_handler_runs_only_for_user_cancellation() {
+        let root = temporary_directory("panel-cancel");
+        let cancellations = Rc::new(Cell::new(0));
+        let cancellation_count = Rc::clone(&cancellations);
+        let panel = OpenPanel::new_with_cancel(
+            OpenPanelOptions {
+                initial_directory: Some(root.clone()),
+                root_directory: Some(root.clone()),
+                ..OpenPanelOptions::default()
+            },
+            |_| Ok(()),
+            move || cancellation_count.set(cancellation_count.get() + 1),
+        );
+        panel.show();
+        panel.0.state.cancel();
+        assert_eq!(cancellations.get(), 1);
+
+        panel.show();
+        panel.0.state.dismiss();
+        assert_eq!(cancellations.get(), 1);
         fs::remove_dir_all(root).unwrap();
     }
 

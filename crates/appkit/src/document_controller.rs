@@ -9,6 +9,8 @@ use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use viewkit::command::CommandStatus;
+use viewkit::command::standard as commands;
 use viewkit::event::{EventContext, EventResult, ViewEvent};
 use viewkit::prelude::*;
 use viewkit::view::{Constraints, MeasureContext, PaintContext};
@@ -74,12 +76,19 @@ enum PendingAction {
     Close,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SaveCurrentResult {
+    Saved,
+    NeedsSaveAs,
+}
+
 struct ControllerState {
     info: RefCell<DocumentInfo>,
     saved_revision: Cell<u64>,
     status: RefCell<Option<String>>,
     confirmation_visible: Cell<bool>,
     pending: Cell<PendingAction>,
+    close: RefCell<Rc<dyn Fn()>>,
 }
 
 struct Operations {
@@ -115,6 +124,7 @@ impl DocumentController {
             status: RefCell::new(None),
             confirmation_visible: Cell::new(false),
             pending: Cell::new(PendingAction::None),
+            close: RefCell::new(Rc::new(request_exit)),
         });
         let operations = Rc::new(Operations {
             revision,
@@ -141,7 +151,8 @@ impl DocumentController {
         let save_state = Rc::clone(&state);
         let save_operations = Rc::clone(&operations);
         let after_save_open_panel = open_panel.clone();
-        let save_panel = SavePanel::new(
+        let save_cancel_state = Rc::clone(&state);
+        let save_panel = SavePanel::new_with_cancel(
             SavePanelOptions {
                 root_directory,
                 ..SavePanelOptions::default()
@@ -150,6 +161,10 @@ impl DocumentController {
                 save_to_path(&save_state, &save_operations, path)?;
                 complete_pending(&save_state, &after_save_open_panel);
                 Ok(())
+            },
+            move || {
+                save_cancel_state.pending.set(PendingAction::None);
+                save_cancel_state.confirmation_visible.set(false);
             },
         );
 
@@ -180,14 +195,14 @@ impl DocumentController {
                 .size(ButtonSize::Small)
                 .style(ButtonStyle::Primary)
                 .on_click(move || {
-                    let path = confirm_state.info.borrow().path.clone();
-                    let Some(path) = path else {
-                        confirm_state.confirmation_visible.set(false);
-                        present_save_panel(&confirm_state, &confirm_save_panel);
-                        return;
-                    };
-                    match save_to_path(&confirm_state, &confirm_operations, &path) {
-                        Ok(()) => complete_pending(&confirm_state, &confirm_open_panel),
+                    match save_current_document(&confirm_state, &confirm_operations) {
+                        Ok(SaveCurrentResult::Saved) => {
+                            complete_pending(&confirm_state, &confirm_open_panel);
+                        }
+                        Ok(SaveCurrentResult::NeedsSaveAs) => {
+                            confirm_state.confirmation_visible.set(false);
+                            present_save_panel(&confirm_state, &confirm_save_panel);
+                        }
                         Err(error) => *confirm_state.status.borrow_mut() = Some(error),
                     }
                 }),
@@ -206,6 +221,14 @@ impl DocumentController {
 
     pub fn info(&self) -> DocumentInfo {
         self.state.info.borrow().clone()
+    }
+
+    /// Sets the action used after this document has been cleared to close.
+    /// Multi-window applications should close only the owning window here.
+    #[must_use]
+    pub fn on_close(self, action: impl Fn() + 'static) -> Self {
+        *self.state.close.borrow_mut() = Rc::new(action);
+        self
     }
 
     pub fn status(&self) -> Option<String> {
@@ -229,17 +252,12 @@ impl DocumentController {
     }
 
     pub fn save(&self) -> bool {
-        let info = self.state.info.borrow().clone();
-        let Some(path) = info.path else {
-            present_save_panel(&self.state, &self.save_panel);
-            return false;
-        };
-        if !info.metadata.writable {
-            *self.state.status.borrow_mut() = Some(String::from("This document cannot be saved"));
-            return false;
-        }
-        match save_to_path(&self.state, &self.operations, &path) {
-            Ok(()) => true,
+        match save_current_document(&self.state, &self.operations) {
+            Ok(SaveCurrentResult::Saved) => true,
+            Ok(SaveCurrentResult::NeedsSaveAs) => {
+                present_save_panel(&self.state, &self.save_panel);
+                false
+            }
             Err(error) => {
                 *self.state.status.borrow_mut() = Some(error);
                 false
@@ -251,6 +269,38 @@ impl DocumentController {
         present_save_panel(&self.state, &self.save_panel);
     }
 
+    /// Saves an already named, writable document without presenting UI.
+    /// Returns `false` for clean, untitled, read-only, or failed saves.
+    pub fn autosave(&self) -> bool {
+        if !self.is_edited() {
+            return false;
+        }
+        matches!(
+            save_current_document(&self.state, &self.operations),
+            Ok(SaveCurrentResult::Saved)
+        )
+    }
+
+    /// Reloads the current on-disk representation and discards local edits.
+    /// Untitled documents cannot be reverted.
+    pub fn revert(&self) -> bool {
+        let Some(path) = self.state.info.borrow().path.clone() else {
+            return false;
+        };
+        match (self.operations.open)(&path) {
+            Ok(metadata) => {
+                *self.state.info.borrow_mut() = DocumentInfo::at(path, metadata);
+                self.state.saved_revision.set((self.operations.revision)());
+                *self.state.status.borrow_mut() = Some(String::from("Reverted"));
+                true
+            }
+            Err(error) => {
+                *self.state.status.borrow_mut() = Some(format!("Unable to revert: {error}"));
+                false
+            }
+        }
+    }
+
     /// Returns `true` when the window may close immediately. A `false` result
     /// means the controller presented its unsaved-changes confirmation.
     pub fn request_close(&self) -> bool {
@@ -260,6 +310,13 @@ impl DocumentController {
             self.confirm(PendingAction::Close);
             false
         }
+    }
+
+    /// Requests close and installs the action used if asynchronous unsaved
+    /// changes handling later approves it.
+    pub fn request_close_with(&self, action: impl Fn() + 'static) -> bool {
+        *self.state.close.borrow_mut() = Rc::new(action);
+        self.request_close()
     }
 
     pub fn is_presenting(&self) -> bool {
@@ -296,6 +353,17 @@ impl View for DocumentController {
     }
 
     fn paint(&self, bounds: Rect, context: &mut PaintContext<'_>) {
+        let info = self.state.info.borrow();
+        context.record_command_status(CommandStatus::new(commands::OPEN, bounds, true));
+        context.record_command_status(CommandStatus::new(commands::SAVE, bounds, self.is_edited()));
+        context.record_command_status(CommandStatus::new(commands::SAVE_AS, bounds, true));
+        context.record_command_status(CommandStatus::new(
+            commands::REVERT,
+            bounds,
+            info.path.is_some(),
+        ));
+        context.record_command_status(CommandStatus::new(commands::CLOSE, bounds, true));
+        drop(info);
         if self.save_panel.is_visible() {
             self.save_panel.paint(bounds, context);
             return;
@@ -353,6 +421,35 @@ impl View for DocumentController {
         event: &ViewEvent,
         context: &mut EventContext<'_>,
     ) -> EventResult {
+        if !self.is_presenting()
+            && let ViewEvent::Command { command, .. } = event
+        {
+            let handled = if *command == commands::OPEN {
+                self.open();
+                true
+            } else if *command == commands::SAVE {
+                let _ = self.save();
+                true
+            } else if *command == commands::SAVE_AS {
+                self.save_as();
+                true
+            } else if *command == commands::REVERT {
+                let _ = self.revert();
+                true
+            } else if *command == commands::CLOSE {
+                if self.request_close() {
+                    let close = Rc::clone(&self.state.close.borrow());
+                    close();
+                }
+                true
+            } else {
+                false
+            };
+            if handled {
+                context.request_redraw();
+                return EventResult::Consumed;
+            }
+        }
         if self.save_panel.is_visible() {
             let was_visible = true;
             let result = self.save_panel.handle_event(bounds, event, context);
@@ -444,12 +541,30 @@ fn save_to_path(
     Ok(())
 }
 
+fn save_current_document(
+    state: &ControllerState,
+    operations: &Operations,
+) -> Result<SaveCurrentResult, String> {
+    let info = state.info.borrow().clone();
+    let Some(path) = info.path else {
+        return Ok(SaveCurrentResult::NeedsSaveAs);
+    };
+    if !info.metadata.writable {
+        return Ok(SaveCurrentResult::NeedsSaveAs);
+    }
+    save_to_path(state, operations, &path)?;
+    Ok(SaveCurrentResult::Saved)
+}
+
 fn complete_pending(state: &ControllerState, open_panel: &OpenPanel) {
     state.confirmation_visible.set(false);
     match state.pending.replace(PendingAction::None) {
         PendingAction::None => {}
         PendingAction::Open => present_open_panel(state, open_panel),
-        PendingAction::Close => request_exit(),
+        PendingAction::Close => {
+            let close = Rc::clone(&state.close.borrow());
+            close();
+        }
     }
 }
 
@@ -506,6 +621,89 @@ mod tests {
         let controller = controller(revision, &root);
         assert!(!controller.save());
         assert!(controller.save_panel.is_visible());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn non_writable_document_save_uses_save_as_without_writing_in_place() {
+        let root = temporary_directory();
+        let path = root.join("unsupported.bin");
+        fs::write(&path, b"original").unwrap();
+        let writes = Rc::new(Cell::new(0));
+        let save_writes = Rc::clone(&writes);
+        let controller = DocumentController::new(
+            DocumentInfo::at(
+                path.clone(),
+                DocumentMetadata::new("Binary", "Unsupported").writable(false),
+            ),
+            Some(root.clone()),
+            || 1,
+            |_| Ok(DocumentMetadata::new("Binary", "Unsupported").writable(false)),
+            move |_| {
+                save_writes.set(save_writes.get() + 1);
+                Ok(DocumentMetadata::new("Binary", "UTF-8"))
+            },
+        );
+
+        assert!(!controller.save());
+        assert!(controller.save_panel.is_visible());
+        assert_eq!(writes.get(), 0);
+        assert_eq!(fs::read(path).unwrap(), b"original");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn close_command_closes_only_through_the_configured_window_action() {
+        let root = temporary_directory();
+        let closed = Rc::new(Cell::new(false));
+        let close_flag = Rc::clone(&closed);
+        let controller = controller(Rc::new(Cell::new(0)), &root).on_close(move || {
+            close_flag.set(true);
+        });
+        let theme = Theme::LIGHT;
+        let mut text_measurer = viewkit::typography::TextMeasurer::new();
+        let mut context = EventContext::new(&theme, &theme.typography, &mut text_measurer);
+
+        assert_eq!(
+            controller.handle_event(
+                Rect::new(0.0, 0.0, 800.0, 600.0),
+                &ViewEvent::Command {
+                    command: commands::CLOSE,
+                    target: None,
+                },
+                &mut context,
+            ),
+            EventResult::Consumed
+        );
+        assert!(closed.get());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn revert_reloads_the_current_path_and_resets_edited_state() {
+        let root = temporary_directory();
+        let path = root.join("document.txt");
+        fs::write(&path, "disk").unwrap();
+        let revision = Rc::new(Cell::new(2));
+        let open_revision = Rc::clone(&revision);
+        let current_revision = Rc::clone(&revision);
+        let controller = DocumentController::new(
+            DocumentInfo::at(path.clone(), DocumentMetadata::new("Plain Text", "UTF-8")),
+            Some(root.clone()),
+            move || current_revision.get(),
+            move |opened| {
+                assert_eq!(opened, path);
+                open_revision.set(3);
+                Ok(DocumentMetadata::new("Plain Text", "UTF-8"))
+            },
+            |_| Ok(DocumentMetadata::new("Plain Text", "UTF-8")),
+        );
+        revision.set(4);
+        assert!(controller.is_edited());
+
+        assert!(controller.revert());
+        assert!(!controller.is_edited());
+        assert_eq!(controller.status().as_deref(), Some("Reverted"));
         fs::remove_dir_all(root).unwrap();
     }
 }
