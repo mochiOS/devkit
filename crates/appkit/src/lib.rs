@@ -9,6 +9,8 @@
 pub mod alert;
 pub mod clipboard;
 pub mod content_type;
+#[cfg(feature = "ui")]
+pub mod control_center;
 pub mod document;
 #[cfg(feature = "ui")]
 pub mod document_controller;
@@ -33,6 +35,8 @@ pub use undo_responder::UndoResponder;
 
 #[cfg(feature = "ui")]
 pub use alert::Alert;
+#[cfg(feature = "ui")]
+pub use control_center::{ControlCenterCard, ControlCenterCardRow, ControlCenterItem};
 #[cfg(feature = "ui")]
 pub use document_controller::{DocumentController, DocumentInfo, DocumentMetadata};
 
@@ -59,6 +63,8 @@ pub mod prelude {
 
     #[cfg(feature = "ui")]
     pub use crate::alert::Alert;
+    #[cfg(feature = "ui")]
+    pub use crate::control_center::{ControlCenterCard, ControlCenterCardRow, ControlCenterItem};
     #[cfg(feature = "ui")]
     pub use crate::document_controller::{DocumentController, DocumentInfo, DocumentMetadata};
     #[cfg(feature = "ui")]

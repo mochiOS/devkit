@@ -41,6 +41,9 @@ Desktop integration is grouped by purpose:
 - `ApplicationMenuItem::command` and `CommandTarget`: menu commands routed
   through the focused responder branch, with automatic enabled/checked/title
   validation from the first responder
+- `ControlCenterItem` and `ControlCenterCard`: publish compact, declarative card
+  content that Binder renders inside Control Center without loading application
+  code into the desktop shell
 - `UndoManager` and `UndoResponder`: grouped application-level undo and redo
 - `RecoveryStore`: atomic snapshots for unsaved document contents
 - `SessionStore`: atomic restoration of independent document windows, paths,
@@ -57,7 +60,8 @@ only its owning window.
 
 Most APIs do not grant authority. The application manifest must request the
 corresponding capabilities, such as `clipboard.read`, `clipboard.write`,
-`file-association.read`, and `file-association.write`. File panels are the
+`file-association.read`, `file-association.write`, and
+`control-center.register`. File panels are the
 exception: an app declaring `fs.read.user` or `fs.write.user` receives a scoped
 grant for the path that the user selected, never broad access to the home
 directory.

@@ -1779,7 +1779,7 @@ dependencies = [
 [[package]]
 name = "mnu-abi"
 version = "0.1.0"
-source = "git+https://github.com/mochiOS/mnu#d31d5b422fb53ccf7f39259a25eeaff8dea57ef3"
+source = "git+https://github.com/mochiOS/mnu#17ce4c6c8f740336f7cb36e563402ce767854280"
 
 [[package]]
 name = "mochi-user-platform"
@@ -1794,7 +1794,7 @@ dependencies = [
 [[package]]
 name = "mochi-user-platform"
 version = "0.1.0"
-source = "git+https://github.com/mochiOS/syscalls#b32d0736675e179131804cc84ffc4e7c9cbc4655"
+source = "git+https://github.com/mochiOS/syscalls#fbe79fd731bfd699cef64e3dc449cd2d616e8066"
 dependencies = [
  "mnu-abi",
  "mochi-user-syscall",
@@ -1805,7 +1805,7 @@ dependencies = [
 [[package]]
 name = "mochi-user-syscall"
 version = "0.1.0"
-source = "git+https://github.com/mochiOS/syscalls#b32d0736675e179131804cc84ffc4e7c9cbc4655"
+source = "git+https://github.com/mochiOS/syscalls#fbe79fd731bfd699cef64e3dc449cd2d616e8066"
 dependencies = [
  "mnu-abi",
 ]
@@ -1821,7 +1821,7 @@ dependencies = [
 [[package]]
 name = "mochios-capability-protocol"
 version = "0.1.0"
-source = "git+https://github.com/mochiOS/syscalls#b32d0736675e179131804cc84ffc4e7c9cbc4655"
+source = "git+https://github.com/mochiOS/syscalls#fbe79fd731bfd699cef64e3dc449cd2d616e8066"
 
 [[package]]
 name = "mochios-certificate"
@@ -1849,7 +1849,7 @@ version = "0.1.0"
 [[package]]
 name = "mochios-viewkit-gpu-protocol"
 version = "0.1.0"
-source = "git+https://github.com/mochiOS/syscalls#b32d0736675e179131804cc84ffc4e7c9cbc4655"
+source = "git+https://github.com/mochiOS/syscalls#fbe79fd731bfd699cef64e3dc449cd2d616e8066"
 
 [[package]]
 name = "mochios-workspace-protocol"
@@ -1858,7 +1858,7 @@ version = "0.1.0"
 [[package]]
 name = "mochios-workspace-protocol"
 version = "0.1.0"
-source = "git+https://github.com/mochiOS/syscalls#b32d0736675e179131804cc84ffc4e7c9cbc4655"
+source = "git+https://github.com/mochiOS/syscalls#fbe79fd731bfd699cef64e3dc449cd2d616e8066"
 
 [[package]]
 name = "moxcms"
