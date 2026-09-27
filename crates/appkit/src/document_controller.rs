@@ -86,7 +86,7 @@ struct ControllerState {
     info: RefCell<DocumentInfo>,
     saved_revision: Cell<u64>,
     status: RefCell<Option<String>>,
-    confirmation_visible: Cell<bool>,
+    confirmation_window: Cell<Option<WindowId>>,
     pending: Cell<PendingAction>,
     close: RefCell<Rc<dyn Fn()>>,
 }
@@ -105,9 +105,6 @@ pub struct DocumentController {
     open_panel: OpenPanel,
     save_panel: SavePanel,
     alert: Alert,
-    cancel: Rc<Button>,
-    discard: Rc<Button>,
-    save: Rc<Button>,
 }
 
 impl DocumentController {
@@ -123,7 +120,7 @@ impl DocumentController {
             info: RefCell::new(info),
             saved_revision: Cell::new(revision()),
             status: RefCell::new(None),
-            confirmation_visible: Cell::new(false),
+            confirmation_window: Cell::new(None),
             pending: Cell::new(PendingAction::None),
             close: RefCell::new(Rc::new(request_exit)),
         });
@@ -166,52 +163,8 @@ impl DocumentController {
             },
             move || {
                 save_cancel_state.pending.set(PendingAction::None);
-                save_cancel_state.confirmation_visible.set(false);
+                save_cancel_state.confirmation_window.set(None);
             },
-        );
-
-        let cancel_state = Rc::clone(&state);
-        let cancel = Rc::new(
-            Button::new("Cancel")
-                .size(ButtonSize::Small)
-                .on_click(move || {
-                    cancel_state.confirmation_visible.set(false);
-                    cancel_state.pending.set(PendingAction::None);
-                }),
-        );
-
-        let discard_state = Rc::clone(&state);
-        let discard_open_panel = open_panel.clone();
-        let discard = Rc::new(
-            Button::new("Don't Save")
-                .size(ButtonSize::Small)
-                .on_click(move || complete_pending(&discard_state, &discard_open_panel)),
-        );
-
-        let confirm_state = Rc::clone(&state);
-        let confirm_operations = Rc::clone(&operations);
-        let confirm_save_panel = save_panel.clone();
-        let confirm_open_panel = open_panel.clone();
-        let confirm_alert = alert.clone();
-        let save = Rc::new(
-            Button::new("Save")
-                .size(ButtonSize::Small)
-                .style(ButtonStyle::Primary)
-                .on_click(move || {
-                    match save_current_document(&confirm_state, &confirm_operations) {
-                        Ok(SaveCurrentResult::Saved) => {
-                            complete_pending(&confirm_state, &confirm_open_panel);
-                        }
-                        Ok(SaveCurrentResult::NeedsSaveAs) => {
-                            confirm_state.confirmation_visible.set(false);
-                            present_save_panel(&confirm_state, &confirm_save_panel);
-                        }
-                        Err(error) => {
-                            *confirm_state.status.borrow_mut() = Some(error.clone());
-                            confirm_alert.present_error("The document could not be saved.", error);
-                        }
-                    }
-                }),
         );
 
         Self {
@@ -220,9 +173,6 @@ impl DocumentController {
             open_panel,
             save_panel,
             alert,
-            cancel,
-            discard,
-            save,
         }
     }
 
@@ -333,30 +283,55 @@ impl DocumentController {
 
     pub fn is_presenting(&self) -> bool {
         self.alert.is_visible()
-            || self.state.confirmation_visible.get()
+            || self.state.confirmation_window.get().is_some()
             || self.save_panel.is_visible()
             || self.open_panel.is_visible()
     }
 
     fn confirm(&self, action: PendingAction) {
+        if self.state.confirmation_window.get().is_some() {
+            return;
+        }
         self.state.pending.set(action);
-        self.state.confirmation_visible.set(true);
-    }
+        let name = self.state.info.borrow().display_name.clone();
+        let message = format!("Your changes to {name} will be lost if you don't save them.");
 
-    fn dialog_geometry(&self, bounds: Rect, theme: &Theme) -> (Rect, Rect, Rect, Rect) {
-        let width = (bounds.size.width - 64.0).clamp(400.0, 520.0);
-        let height = 176.0_f32.min((bounds.size.height - 32.0).max(0.0));
-        let dialog = Rect::new(
-            bounds.origin.x + (bounds.size.width - width) / 2.0,
-            bounds.origin.y + (bounds.size.height - height) / 2.0,
-            width,
-            height,
+        let save_state = Rc::clone(&self.state);
+        let save_operations = Rc::clone(&self.operations);
+        let save_panel = self.save_panel.clone();
+        let save_open_panel = self.open_panel.clone();
+        let save_alert = self.alert.clone();
+        let discard_state = Rc::clone(&self.state);
+        let discard_open_panel = self.open_panel.clone();
+        let cancel_state = Rc::clone(&self.state);
+        let window = request_document_confirmation_window(
+            "Save changes?",
+            message,
+            move || {
+                save_state.confirmation_window.set(None);
+                match save_current_document(&save_state, &save_operations) {
+                    Ok(SaveCurrentResult::Saved) => {
+                        complete_pending(&save_state, &save_open_panel);
+                    }
+                    Ok(SaveCurrentResult::NeedsSaveAs) => {
+                        present_save_panel(&save_state, &save_panel);
+                    }
+                    Err(error) => {
+                        *save_state.status.borrow_mut() = Some(error.clone());
+                        save_alert.present_error("The document could not be saved.", error);
+                    }
+                }
+            },
+            move || {
+                discard_state.confirmation_window.set(None);
+                complete_pending(&discard_state, &discard_open_panel);
+            },
+            move || {
+                cancel_state.confirmation_window.set(None);
+                cancel_state.pending.set(PendingAction::None);
+            },
         );
-        let button_y = dialog.origin.y + height - theme.spacing.large - 32.0;
-        let save = Rect::new(dialog.origin.x + width - 100.0, button_y, 80.0, 32.0);
-        let discard = Rect::new(save.origin.x - 108.0, button_y, 96.0, 32.0);
-        let cancel = Rect::new(discard.origin.x - 88.0, button_y, 76.0, 32.0);
-        (dialog, cancel, discard, save)
+        self.state.confirmation_window.set(Some(window));
     }
 }
 
@@ -387,49 +362,7 @@ impl View for DocumentController {
         }
         if self.open_panel.is_visible() {
             self.open_panel.paint(bounds, context);
-            return;
         }
-        if !self.state.confirmation_visible.get() {
-            return;
-        }
-
-        let (dialog, cancel, discard, save) = self.dialog_geometry(bounds, context.theme);
-        Rectangle::new()
-            .color(RectangleColor::Custom(context.theme.shell.scrim))
-            .paint(bounds, context);
-        Rectangle::new()
-            .color(RectangleColor::Custom(context.theme.dialog.background))
-            .radius(context.theme.dialog.radius)
-            .border(BorderStyle::custom(
-                context.theme.dialog.border,
-                context.theme.dialog.stroke_width,
-            ))
-            .paint(dialog, context);
-        Text::styled("Save changes?", TextRole::TitleSmall).paint(
-            Rect::new(
-                dialog.origin.x + 20.0,
-                dialog.origin.y + 20.0,
-                dialog.size.width - 40.0,
-                28.0,
-            ),
-            context,
-        );
-        let name = self.state.info.borrow().display_name.clone();
-        Text::body(format!(
-            "Your changes to {name} will be lost if you don't save them."
-        ))
-        .paint(
-            Rect::new(
-                dialog.origin.x + 20.0,
-                dialog.origin.y + 58.0,
-                dialog.size.width - 40.0,
-                44.0,
-            ),
-            context,
-        );
-        self.cancel.paint(cancel, context);
-        self.discard.paint(discard, context);
-        self.save.paint(save, context);
     }
 
     fn handle_event(
@@ -484,31 +417,7 @@ impl View for DocumentController {
         if self.open_panel.is_visible() {
             return self.open_panel.handle_event(bounds, event, context);
         }
-        if !self.state.confirmation_visible.get() {
-            return EventResult::Ignored;
-        }
-        if matches!(
-            event,
-            ViewEvent::KeyPressed {
-                key: Key::Escape,
-                ..
-            }
-        ) {
-            self.state.confirmation_visible.set(false);
-            self.state.pending.set(PendingAction::None);
-            context.request_redraw();
-            return EventResult::Consumed;
-        }
-        let (_, cancel, discard, save) = self.dialog_geometry(bounds, context.theme());
-        let result = self
-            .cancel
-            .handle_event(cancel, event, context)
-            .merge(self.discard.handle_event(discard, event, context))
-            .merge(self.save.handle_event(save, event, context));
-        if result.is_consumed() {
-            context.request_redraw();
-        }
-        EventResult::Consumed
+        EventResult::Ignored
     }
 }
 
@@ -577,7 +486,7 @@ fn save_current_document(
 }
 
 fn complete_pending(state: &ControllerState, open_panel: &OpenPanel) {
-    state.confirmation_visible.set(false);
+    state.confirmation_window.set(None);
     match state.pending.replace(PendingAction::None) {
         PendingAction::None => {}
         PendingAction::Open => present_open_panel(state, open_panel),
