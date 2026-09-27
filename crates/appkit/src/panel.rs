@@ -368,10 +368,12 @@ impl FilePanel {
                     return;
                 }
                 Err(error) => {
+                    let reported = mochi_user_platform::workspace::file_panel_finish_with_error(
+                        chosen.token,
+                        Some(&error),
+                    );
                     *self.state.error.borrow_mut() = Some(error);
-                    if mochi_user_platform::workspace::file_panel_finish(chosen.token, false)
-                        .is_err()
-                    {
+                    if reported.is_err() {
                         return;
                     }
                     selection = match mochi_user_platform::workspace::file_panel_retry(chosen.token)
