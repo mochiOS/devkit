@@ -32,7 +32,7 @@ fn create_mock_app(app_dir: &Path, args: &MockPkgArgs) -> Result<()> {
     fs::create_dir_all(app_dir.join("assets"))
         .with_context(|| format!("failed to create assets dir: {}", app_dir.display()))?;
 
-    write_about_toml(app_dir, args)?;
+    write_manifest_toml(app_dir, args)?;
     write_entry_elf_mock(app_dir)?;
     write_icon_mock(app_dir)?;
     write_readme(app_dir)?;
@@ -40,20 +40,27 @@ fn create_mock_app(app_dir: &Path, args: &MockPkgArgs) -> Result<()> {
     Ok(())
 }
 
-fn write_about_toml(app_dir: &Path, args: &MockPkgArgs) -> Result<()> {
-    let about = format!(
-        r#"name = "{}"
-bundle_id = "{}"
+fn write_manifest_toml(app_dir: &Path, args: &MockPkgArgs) -> Result<()> {
+    let manifest = format!(
+        r#"format = 1
+
+[package]
+name = "{}"
+id = "{}"
 version = "{}"
-developer = "{}"
+vendor = "{}"
+kind = "application"
+
+[application]
 entry = "entry.elf"
 description = "Mock package for mochiOS devkit tests"
 icon = "assets/icon.png"
+resources = ["assets/icon.png"]
 "#,
         args.name, args.bundle_id, args.version, args.developer
     );
 
-    fs::write(app_dir.join("about.toml"), about).context("failed to write about.toml")
+    fs::write(app_dir.join("manifest.toml"), manifest).context("failed to write manifest.toml")
 }
 
 fn write_entry_elf_mock(app_dir: &Path) -> Result<()> {

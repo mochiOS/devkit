@@ -62,8 +62,17 @@ pub fn run(args: PackArgs) -> Result<()> {
 struct MpkgManifest {
     format: u32,
     package: MpkgPackage,
+    application: MpkgApplication,
     file: Vec<MpkgFile>,
     binary: Vec<MpkgBinary>,
+}
+
+#[derive(Debug, Serialize)]
+struct MpkgApplication {
+    entry: String,
+    description: String,
+    icon: String,
+    resources: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -155,6 +164,12 @@ fn stage_application_payload(
             kind: "application".to_string(),
             architecture: "x86_64".to_string(),
             abi: "mochios-1".to_string(),
+        },
+        application: MpkgApplication {
+            entry: manifest.app.entry.clone(),
+            description: manifest.package.description.clone(),
+            icon: manifest.app.icon.clone(),
+            resources: manifest.resources.files.clone(),
         },
         file: files,
         binary: vec![MpkgBinary {

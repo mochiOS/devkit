@@ -38,28 +38,28 @@ pub struct Capabilities {
 }
 
 #[derive(Debug, Serialize)]
-pub struct AboutToml {
-    pub name: String,
-    pub bundle_id: String,
-    pub version: String,
-    pub developer: String,
-    pub entry: String,
-    pub description: String,
-    pub icon: String,
-    pub resources: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
 pub struct RuntimeManifestToml {
-    pub app: RuntimeApp,
+    pub format: u32,
+    pub package: RuntimePackage,
+    pub application: RuntimeApplication,
     pub capabilities: RuntimeCapabilities,
 }
 
 #[derive(Debug, Serialize)]
-pub struct RuntimeApp {
+pub struct RuntimePackage {
     pub id: String,
     pub name: String,
+    pub version: String,
+    pub vendor: String,
+    pub kind: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RuntimeApplication {
     pub entry: String,
+    pub description: String,
+    pub icon: String,
+    pub resources: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -77,28 +77,21 @@ pub fn read_kome_manifest(project_dir: &Path) -> Result<KomeManifest> {
     toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))
 }
 
-pub fn make_about_toml(manifest: &KomeManifest) -> AboutToml {
-    AboutToml {
-        name: manifest.package.name.clone(),
-        bundle_id: manifest.package.id.clone(),
-        version: manifest.package.version.clone(),
-        developer: manifest.package.developer.clone(),
-        entry: manifest.app.entry.clone(),
-        description: manifest.package.description.clone(),
-        icon: manifest.app.icon.clone(),
-        resources: manifest.resources.files.clone(),
-    }
-}
-
 pub fn make_runtime_manifest(manifest: &KomeManifest) -> RuntimeManifestToml {
     RuntimeManifestToml {
-        app: RuntimeApp {
+        format: 1,
+        package: RuntimePackage {
             id: manifest.package.id.clone(),
             name: manifest.package.name.clone(),
-            entry: format!(
-                "/applications/{}.app/{}",
-                manifest.package.name, manifest.app.entry
-            ),
+            version: manifest.package.version.clone(),
+            vendor: manifest.package.developer.clone(),
+            kind: String::from("application"),
+        },
+        application: RuntimeApplication {
+            entry: manifest.app.entry.clone(),
+            description: manifest.package.description.clone(),
+            icon: manifest.app.icon.clone(),
+            resources: manifest.resources.files.clone(),
         },
         capabilities: RuntimeCapabilities {
             required: manifest.capabilities.required.clone(),

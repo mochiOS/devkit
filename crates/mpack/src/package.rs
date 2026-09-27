@@ -12,7 +12,7 @@ use tempfile::NamedTempFile;
 use crate::{
     app_files,
     cli::PackArgs,
-    manifest::{self, AboutToml, RuntimeManifestToml},
+    manifest::{self, RuntimeManifestToml},
 };
 
 pub fn pack(args: PackArgs) -> Result<()> {
@@ -50,10 +50,9 @@ pub fn pack(args: PackArgs) -> Result<()> {
 
     let files = app_files::collect_package_files(&project_dir, &build_dir, &manifest)?;
 
-    let about = manifest::make_about_toml(&manifest);
     let runtime_manifest = manifest::make_runtime_manifest(&manifest);
 
-    write_package(&output, &files, &about, &runtime_manifest)?;
+    write_package(&output, &files, &runtime_manifest)?;
 
     println!("packed: {}", output.display());
     println!("name: {}", manifest.package.name);
@@ -66,7 +65,6 @@ pub fn pack(args: PackArgs) -> Result<()> {
 fn write_package(
     output: &Path,
     files: &[app_files::PackageFile],
-    about: &AboutToml,
     runtime_manifest: &RuntimeManifestToml,
 ) -> Result<()> {
     let temp = NamedTempFile::new().context("failed to create temporary package")?;
@@ -76,13 +74,6 @@ fn write_package(
 
         let encoder = GzEncoder::new(file, Compression::default());
         let mut builder = Builder::new(encoder);
-
-        append_bytes(
-            &mut builder,
-            Path::new("about.toml"),
-            toml::to_string_pretty(about)?.as_bytes(),
-            0o644,
-        )?;
 
         append_bytes(
             &mut builder,

@@ -57,8 +57,6 @@ pub fn create(args: LinuxArgs) -> Result<()> {
         "mksquashfs",
     )?;
 
-    let about = about_toml(&args);
-    fs::write(payload.join("about.toml"), about.as_bytes())?;
     if let Some(icon) = &args.icon {
         fs::copy(icon, payload.join("appicon.png"))
             .with_context(|| format!("failed to copy {}", icon.display()))?;
@@ -221,25 +219,12 @@ fn create_runtime_directories(rootfs: &Path) -> Result<()> {
     Ok(())
 }
 
-fn about_toml(args: &LinuxArgs) -> String {
-    format!(
-        "name = {name:?}\nbundle-id = {bundle:?}\nversion = {version:?}\ndeveloper = {vendor:?}\nentry = {entry:?}\ndescription = \"Linux application hosted by mBoot\"\nicon = {icon:?}\n",
-        name = args.name,
-        bundle = args.bundle_id,
-        version = args.version,
-        vendor = args.vendor,
-        entry = format!("linux:{}", args.bundle_id),
-        icon = args.icon.as_ref().map_or("", |_| "appicon.png"),
-    )
-}
-
 fn manifest_toml(args: &LinuxArgs, payload: &Path) -> Result<String> {
     let rootfs = file_record(
         "linux-rootfs",
         "$/rootfs.squashfs",
         &payload.join("rootfs.squashfs"),
     )?;
-    let about = file_record("about", "$/about.toml", &payload.join("about.toml"))?;
     let icon = match &args.icon {
         Some(_) => file_record("icon", "$/appicon.png", &payload.join("appicon.png"))?,
         None => String::new(),
@@ -253,12 +238,15 @@ fn manifest_toml(args: &LinuxArgs, payload: &Path) -> Result<String> {
     let portal_write = toml_array(&args.portal_write_paths);
     let network = args.network.as_ref().map_or(String::new(), |mode| format!("network = {mode:?}\n"));
     Ok(format!(
-        "format = 1\n\n[package]\nid = {bundle:?}\nname = {name:?}\nversion = {version:?}\nvendor = {vendor:?}\nkind = \"application\"\narchitecture = \"x86_64\"\nabi = \"mboot-linux-1\"\n\n[linux]\nentrypoint = {entrypoint:?}\nrootfs_file = \"linux-rootfs\"\n{network}writable_paths = [\n{writable}]\nportal_read_paths = [\n{portal_read}]\nportal_write_paths = [\n{portal_write}]\n\n{rootfs}{about}{icon}",
+        "format = 1\n\n[package]\nid = {bundle:?}\nname = {name:?}\nversion = {version:?}\nvendor = {vendor:?}\nkind = \"application\"\narchitecture = \"x86_64\"\nabi = \"mboot-linux-1\"\n\n[application]\nentry = {app_entry:?}\ndescription = \"Linux application hosted by mBoot\"\nicon = {app_icon:?}\nresources = [{app_resources}]\n\n[linux]\nentrypoint = {entrypoint:?}\nrootfs_file = \"linux-rootfs\"\n{network}writable_paths = [\n{writable}]\nportal_read_paths = [\n{portal_read}]\nportal_write_paths = [\n{portal_write}]\n\n{rootfs}{icon}",
         bundle = args.bundle_id,
         name = args.name,
         version = args.version,
         vendor = args.vendor,
         entrypoint = args.entrypoint,
+        app_entry = format!("linux:{}", args.bundle_id),
+        app_icon = args.icon.as_ref().map_or("", |_| "appicon.png"),
+        app_resources = args.icon.as_ref().map_or("", |_| "\"appicon.png\""),
     ))
 }
 

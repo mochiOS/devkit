@@ -534,12 +534,15 @@ fn validate_manifest_shape(manifest: &toml::Value) -> Result<()> {
     if !is_valid_package_id(package_id) {
         bail!("package.id contains invalid characters");
     }
-    required_non_empty_string(package, "name", "package.name")?;
+    let package_name = required_non_empty_string(package, "name", "package.name")?;
     required_non_empty_string(package, "version", "package.version")?;
 
     if let Some(kind) = package.get("kind").and_then(toml::Value::as_str) {
         if !matches!(kind, "binary" | "application") {
             bail!("unsupported package kind");
+        }
+        if kind == "application" {
+            validate_application_metadata(manifest, package_id, package_name)?;
         }
     }
 
@@ -547,6 +550,102 @@ fn validate_manifest_shape(manifest: &toml::Value) -> Result<()> {
     validate_manifest_files(manifest)?;
     validate_install_targets(manifest)?;
     Ok(())
+}
+
+fn validate_application_metadata(
+    manifest: &toml::Value,
+    package_id: &str,
+    package_name: &str,
+) -> Result<()> {
+    if package_name.len() > 64
+        || matches!(package_name, "." | "..")
+        || package_name
+            .bytes()
+            .any(|byte| byte == b'/' || byte == b'\\' || byte == 0 || byte.is_ascii_control())
+    {
+        bail!("package.name is invalid for an application bundle");
+    }
+    let application = manifest
+        .get("application")
+        .and_then(toml::Value::as_table)
+        .ok_or_else(|| anyhow!("application package is missing [application]"))?;
+    let entry = required_non_empty_string(application, "entry", "application.entry")?;
+    let linux = manifest.get("linux").is_some();
+    if (linux && entry != format!("linux:{package_id}"))
+        || (!linux && !is_normalized_relative_path(entry))
+    {
+        bail!("application.entry is invalid");
+    }
+    if let Some(icon) = application.get("icon").and_then(toml::Value::as_str) {
+        if !icon.is_empty() && !is_normalized_relative_path(icon) {
+            bail!("application.icon is invalid");
+        }
+    }
+    for key in [
+        "resources",
+        "document_roles",
+        "document_content_types",
+        "document_extensions",
+    ] {
+        let Some(values) = application.get(key) else {
+            continue;
+        };
+        let values = values
+            .as_array()
+            .ok_or_else(|| anyhow!("application.{key} must be an array"))?;
+        for value in values {
+            let value = value
+                .as_str()
+                .ok_or_else(|| anyhow!("application.{key} entries must be strings"))?;
+            if value.is_empty()
+                || (key == "resources" && !is_normalized_relative_path(value))
+            {
+                bail!("application.{key} contains an invalid entry");
+            }
+        }
+    }
+    if let Some(items) = application.get("control_center_items") {
+        let items = items
+            .as_array()
+            .ok_or_else(|| anyhow!("application.control_center_items must be an array"))?;
+        if items.len() > 8 {
+            bail!("application.control_center_items contains too many items");
+        }
+        let mut ids = BTreeSet::new();
+        for item in items {
+            let item = item
+                .as_table()
+                .ok_or_else(|| anyhow!("Control Center item must be a table"))?;
+            let id = required_non_empty_string(item, "id", "Control Center item id")?;
+            let title = required_non_empty_string(item, "title", "Control Center item title")?;
+            let symbol = required_non_empty_string(item, "symbol", "Control Center item symbol")?;
+            let action = required_non_empty_string(item, "action", "Control Center item action")?;
+            if id.len() > 64
+                || !id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+                || !ids.insert(id)
+                || title.len() > 40
+                || symbol.len() > 64
+                || action != "open-application"
+            {
+                bail!("application.control_center_items contains an invalid item");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn is_normalized_relative_path(path: &str) -> bool {
+    !path.is_empty()
+        && !path.starts_with('/')
+        && !path.ends_with('/')
+        && !path.contains("//")
+        && !path.contains('\\')
+        && !path.as_bytes().contains(&0)
+        && path
+            .split('/')
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
 }
 
 fn validate_manifest_binaries(manifest: &toml::Value) -> Result<()> {
@@ -1606,7 +1705,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join(", ");
         let manifest = format!(
-            "format = 1\n\n[package]\nid = \"org.example.application\"\nname = \"Example\"\nversion = \"0.1.0\"\nkind = \"application\"\n\n[[file]]\nid = \"entry\"\npath = \"$/entry.elf\"\ndigest = \"sha256:{}\"\nsize = {}\nmode = \"0755\"\n\n[[binary]]\npath = \"/applications/Example.app/entry.elf\"\nfile = \"entry\"\nkind = \"application\"\nrequires = [{}]\n",
+            "format = 1\n\n[package]\nid = \"org.example.application\"\nname = \"Example\"\nversion = \"0.1.0\"\nkind = \"application\"\n\n[application]\nentry = \"entry.elf\"\ndescription = \"Example\"\nicon = \"\"\nresources = []\n\n[[file]]\nid = \"entry\"\npath = \"$/entry.elf\"\ndigest = \"sha256:{}\"\nsize = {}\nmode = \"0755\"\n\n[[binary]]\npath = \"/applications/Example.app/entry.elf\"\nfile = \"entry\"\nkind = \"application\"\nrequires = [{}]\n",
             hex(&Sha256::digest(payload)),
             payload.len(),
             requires
