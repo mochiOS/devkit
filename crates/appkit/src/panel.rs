@@ -16,6 +16,7 @@ use viewkit::platform::PointerButton;
 use viewkit::prelude::*;
 use viewkit::view::{Constraints, MeasureContext, PaintContext};
 
+use crate::Alert;
 use crate::content_type::ContentType;
 
 type SelectionHandler = dyn Fn(&Path) -> Result<(), String>;
@@ -87,6 +88,7 @@ struct PanelState {
     last_click: RefCell<Option<(usize, Instant)>>,
     name: TextFieldInteractionState,
     error: RefCell<Option<String>>,
+    alert: Alert,
     pending_replace: RefCell<Option<PathBuf>>,
     allowed_content_types: Vec<ContentType>,
     handler: Rc<SelectionHandler>,
@@ -118,6 +120,7 @@ impl PanelState {
         self.visible.set(false);
         self.name.set_focused(false);
         self.error.borrow_mut().take();
+        self.alert.dismiss();
         self.pending_replace.borrow_mut().take();
     }
 
@@ -198,7 +201,9 @@ impl PanelState {
 
         match (self.handler)(&destination) {
             Ok(()) => self.dismiss(),
-            Err(error) => *self.error.borrow_mut() = Some(error),
+            Err(error) => self
+                .alert
+                .present_error(operation_error_title(self.mode), error),
         }
     }
 }
@@ -254,6 +259,7 @@ impl FilePanel {
             last_click: RefCell::new(None),
             name: name.clone(),
             error: RefCell::new(None),
+            alert: Alert::new(),
             pending_replace: RefCell::new(None),
             allowed_content_types,
             handler: Rc::new(handler),
@@ -303,6 +309,7 @@ impl FilePanel {
             return;
         }
         self.state.error.borrow_mut().take();
+        self.state.alert.dismiss();
         self.state.pending_replace.borrow_mut().take();
         self.state.name.set_focused(self.state.mode != Mode::Open);
         self.state.visible.set(true);
@@ -331,7 +338,7 @@ impl FilePanel {
             mochi_user_platform::workspace::FilePanelMode::Save
         };
         let suggested_name = self.state.name.value();
-        let mut selection = match mochi_user_platform::workspace::file_panel_begin(
+        let selection = match mochi_user_platform::workspace::file_panel_begin(
             mochi_user_platform::workspace::FilePanelOptions {
                 mode,
                 title: &self.title,
@@ -343,50 +350,44 @@ impl FilePanel {
         ) {
             Ok(selection) => selection,
             Err(_) => {
-                *self.state.error.borrow_mut() =
-                    Some(String::from("The system file panel could not be opened."));
+                self.state.alert.present_error(
+                    operation_error_title(self.state.mode),
+                    "The system file panel could not be opened.",
+                );
                 return;
             }
         };
 
-        loop {
-            let Some(chosen) = selection else {
-                if let Some(handler) = &self.state.cancel_handler {
-                    handler();
+        let Some(chosen) = selection else {
+            if let Some(handler) = &self.state.cancel_handler {
+                handler();
+            }
+            return;
+        };
+        match (self.state.handler)(Path::new(&chosen.path)) {
+            Ok(()) => {
+                if mochi_user_platform::workspace::file_panel_finish(chosen.token, true).is_err() {
+                    self.state.alert.present_error(
+                        operation_error_title(self.state.mode),
+                        "The system file panel could not finish the operation.",
+                    );
                 }
-                return;
-            };
-            match (self.state.handler)(Path::new(&chosen.path)) {
-                Ok(()) => {
-                    if mochi_user_platform::workspace::file_panel_finish(chosen.token, true)
-                        .is_err()
-                    {
-                        *self.state.error.borrow_mut() = Some(String::from(
-                            "The system file panel could not finish the operation.",
-                        ));
-                    }
+            }
+            Err(error) => {
+                let reported = mochi_user_platform::workspace::file_panel_finish_with_error(
+                    chosen.token,
+                    Some(&error),
+                );
+                if reported.is_err() {
+                    self.state.alert.present_error(
+                        operation_error_title(self.state.mode),
+                        "The system file panel could not finish the operation.",
+                    );
                     return;
                 }
-                Err(error) => {
-                    let reported = mochi_user_platform::workspace::file_panel_finish_with_error(
-                        chosen.token,
-                        Some(&error),
-                    );
-                    *self.state.error.borrow_mut() = Some(error);
-                    if reported.is_err() {
-                        return;
-                    }
-                    selection = match mochi_user_platform::workspace::file_panel_retry(chosen.token)
-                    {
-                        Ok(selection) => selection,
-                        Err(_) => {
-                            *self.state.error.borrow_mut() = Some(String::from(
-                                "The system file panel could not retry the operation.",
-                            ));
-                            return;
-                        }
-                    };
-                }
+                self.state
+                    .alert
+                    .present_error(operation_error_title(self.state.mode), error);
             }
         }
     }
@@ -400,7 +401,7 @@ impl FilePanel {
     }
 
     fn is_visible(&self) -> bool {
-        self.state.visible.get()
+        self.state.visible.get() || self.state.alert.is_visible()
     }
 
     fn geometry(&self, bounds: Rect) -> Geometry {
@@ -471,6 +472,10 @@ impl View for FilePanel {
     }
 
     fn paint(&self, bounds: Rect, context: &mut PaintContext<'_>) {
+        if !self.state.visible.get() {
+            self.state.alert.paint(bounds, context);
+            return;
+        }
         let geometry = self.geometry(bounds);
         Rectangle::new()
             .color(RectangleColor::Custom(context.theme.shell.scrim))
@@ -545,6 +550,7 @@ impl View for FilePanel {
         }
         self.cancel.paint(geometry.cancel, context);
         self.accept.paint(geometry.accept, context);
+        self.state.alert.paint(bounds, context);
     }
 
     fn handle_event(
@@ -553,6 +559,9 @@ impl View for FilePanel {
         event: &ViewEvent,
         context: &mut EventContext<'_>,
     ) -> EventResult {
+        if self.state.alert.is_visible() {
+            return self.state.alert.handle_event(bounds, event, context);
+        }
         let geometry = self.geometry(bounds);
         if matches!(
             event,
@@ -645,6 +654,13 @@ impl View for FilePanel {
         } else {
             EventResult::Consumed
         }
+    }
+}
+
+fn operation_error_title(mode: Mode) -> &'static str {
+    match mode {
+        Mode::Open => "The document could not be opened.",
+        Mode::Save { .. } => "The document could not be saved.",
     }
 }
 
@@ -895,6 +911,26 @@ mod tests {
         panel.0.state.accept();
         assert_eq!(calls.get(), 1);
         assert!(!panel.is_visible());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn operation_failure_presents_an_error_alert_and_keeps_the_panel() {
+        let root = temporary_directory("save-error-alert");
+        let panel = SavePanel::new(
+            SavePanelOptions {
+                suggested_name: String::from("notes.txt"),
+                initial_directory: Some(root.clone()),
+                root_directory: Some(root.clone()),
+                ..SavePanelOptions::default()
+            },
+            |_| Err(String::from("The disk is full.")),
+        );
+        panel.show();
+        panel.0.state.accept();
+
+        assert!(panel.0.state.alert.is_visible());
+        assert!(panel.0.state.visible.get());
         fs::remove_dir_all(root).unwrap();
     }
 

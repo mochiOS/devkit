@@ -5,6 +5,8 @@
 //! capability-checked modules. Applications still need to declare the matching
 //! capabilities in their manifest; using this SDK never bypasses system policy.
 
+#[cfg(feature = "ui")]
+pub mod alert;
 pub mod clipboard;
 pub mod content_type;
 pub mod document;
@@ -30,6 +32,8 @@ pub use undo::UndoManager;
 pub use undo_responder::UndoResponder;
 
 #[cfg(feature = "ui")]
+pub use alert::Alert;
+#[cfg(feature = "ui")]
 pub use document_controller::{DocumentController, DocumentInfo, DocumentMetadata};
 
 #[cfg(feature = "ui")]
@@ -53,6 +57,8 @@ pub mod prelude {
     #[cfg(feature = "ui")]
     pub use crate::undo_responder::UndoResponder;
 
+    #[cfg(feature = "ui")]
+    pub use crate::alert::Alert;
     #[cfg(feature = "ui")]
     pub use crate::document_controller::{DocumentController, DocumentInfo, DocumentMetadata};
     #[cfg(feature = "ui")]

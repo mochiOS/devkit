@@ -15,7 +15,7 @@ use viewkit::event::{EventContext, EventResult, ViewEvent};
 use viewkit::prelude::*;
 use viewkit::view::{Constraints, MeasureContext, PaintContext};
 
-use crate::{OpenPanel, OpenPanelOptions, SavePanel, SavePanelOptions, request_exit};
+use crate::{Alert, OpenPanel, OpenPanelOptions, SavePanel, SavePanelOptions, request_exit};
 
 type RevisionProvider = dyn Fn() -> u64;
 type DocumentOperation = dyn Fn(&Path) -> Result<DocumentMetadata, String>;
@@ -104,6 +104,7 @@ pub struct DocumentController {
     operations: Rc<Operations>,
     open_panel: OpenPanel,
     save_panel: SavePanel,
+    alert: Alert,
     cancel: Rc<Button>,
     discard: Rc<Button>,
     save: Rc<Button>,
@@ -131,6 +132,7 @@ impl DocumentController {
             open: Rc::new(open),
             save: Rc::new(save),
         });
+        let alert = Alert::new();
 
         let open_state = Rc::clone(&state);
         let open_operations = Rc::clone(&operations);
@@ -190,6 +192,7 @@ impl DocumentController {
         let confirm_operations = Rc::clone(&operations);
         let confirm_save_panel = save_panel.clone();
         let confirm_open_panel = open_panel.clone();
+        let confirm_alert = alert.clone();
         let save = Rc::new(
             Button::new("Save")
                 .size(ButtonSize::Small)
@@ -203,7 +206,10 @@ impl DocumentController {
                             confirm_state.confirmation_visible.set(false);
                             present_save_panel(&confirm_state, &confirm_save_panel);
                         }
-                        Err(error) => *confirm_state.status.borrow_mut() = Some(error),
+                        Err(error) => {
+                            *confirm_state.status.borrow_mut() = Some(error.clone());
+                            confirm_alert.present_error("The document could not be saved.", error);
+                        }
                     }
                 }),
         );
@@ -213,6 +219,7 @@ impl DocumentController {
             operations,
             open_panel,
             save_panel,
+            alert,
             cancel,
             discard,
             save,
@@ -259,7 +266,9 @@ impl DocumentController {
                 false
             }
             Err(error) => {
-                *self.state.status.borrow_mut() = Some(error);
+                *self.state.status.borrow_mut() = Some(error.clone());
+                self.alert
+                    .present_error("The document could not be saved.", error);
                 false
             }
         }
@@ -295,7 +304,10 @@ impl DocumentController {
                 true
             }
             Err(error) => {
-                *self.state.status.borrow_mut() = Some(format!("Unable to revert: {error}"));
+                let error = format!("Unable to revert: {error}");
+                *self.state.status.borrow_mut() = Some(error.clone());
+                self.alert
+                    .present_error("The document could not be reverted.", error);
                 false
             }
         }
@@ -320,7 +332,8 @@ impl DocumentController {
     }
 
     pub fn is_presenting(&self) -> bool {
-        self.state.confirmation_visible.get()
+        self.alert.is_visible()
+            || self.state.confirmation_visible.get()
             || self.save_panel.is_visible()
             || self.open_panel.is_visible()
     }
@@ -364,6 +377,10 @@ impl View for DocumentController {
         ));
         context.record_command_status(CommandStatus::new(commands::CLOSE, bounds, true));
         drop(info);
+        if self.alert.is_visible() {
+            self.alert.paint(bounds, context);
+            return;
+        }
         if self.save_panel.is_visible() {
             self.save_panel.paint(bounds, context);
             return;
@@ -421,6 +438,9 @@ impl View for DocumentController {
         event: &ViewEvent,
         context: &mut EventContext<'_>,
     ) -> EventResult {
+        if self.alert.is_visible() {
+            return self.alert.handle_event(bounds, event, context);
+        }
         if !self.is_presenting()
             && let ViewEvent::Command { command, .. } = event
         {
@@ -649,6 +669,28 @@ mod tests {
         assert!(controller.save_panel.is_visible());
         assert_eq!(writes.get(), 0);
         assert_eq!(fs::read(path).unwrap(), b"original");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn failed_direct_save_presents_an_error_alert() {
+        let root = temporary_directory();
+        let path = root.join("document.txt");
+        let controller = DocumentController::new(
+            DocumentInfo::at(path, DocumentMetadata::new("Plain Text", "UTF-8")),
+            Some(root.clone()),
+            || 1,
+            |_| Ok(DocumentMetadata::new("Plain Text", "UTF-8")),
+            |_| Err(String::from("The disk is full.")),
+        );
+
+        assert!(!controller.save());
+        assert!(controller.alert.is_visible());
+        assert!(controller.is_presenting());
+        assert_eq!(
+            controller.status().as_deref(),
+            Some("Unable to save: The disk is full.")
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
