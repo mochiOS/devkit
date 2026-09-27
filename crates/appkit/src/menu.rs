@@ -9,7 +9,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use viewkit::accessibility::{AccessibilityNode, AccessibilityRole};
-use viewkit::command::CommandId;
+use viewkit::command::{CommandId, standard as commands};
 use viewkit::event::{ContextMenuItem, ContextMenuRequest, EventContext, EventResult, ViewEvent};
 use viewkit::platform::{Key, KeyModifiers, PointerButton};
 use viewkit::prelude::*;
@@ -207,6 +207,41 @@ impl ApplicationMenu {
             title: title.into(),
             entries: Vec::new(),
         }
+    }
+
+    /// Creates the standard responder-chain Edit menu used by document apps.
+    ///
+    /// Each item is validated by the currently focused ViewKit control, so
+    /// unavailable operations are disabled without application-specific state.
+    pub fn standard_edit() -> Self {
+        Self::new("Edit")
+            .item(
+                ApplicationMenuItem::command("Undo", commands::UNDO)
+                    .shortcut(MenuShortcut::command('z', "Ctrl+Z")),
+            )
+            .item(
+                ApplicationMenuItem::command("Redo", commands::REDO)
+                    .shortcut(MenuShortcut::command('z', "Ctrl+Shift+Z").shift()),
+            )
+            .separator()
+            .item(
+                ApplicationMenuItem::command("Cut", commands::CUT)
+                    .shortcut(MenuShortcut::command('x', "Ctrl+X")),
+            )
+            .item(
+                ApplicationMenuItem::command("Copy", commands::COPY)
+                    .shortcut(MenuShortcut::command('c', "Ctrl+C")),
+            )
+            .item(
+                ApplicationMenuItem::command("Paste", commands::PASTE)
+                    .shortcut(MenuShortcut::command('v', "Ctrl+V")),
+            )
+            .item(ApplicationMenuItem::command("Delete", commands::DELETE))
+            .separator()
+            .item(
+                ApplicationMenuItem::command("Select All", commands::SELECT_ALL)
+                    .shortcut(MenuShortcut::command('a', "Ctrl+A")),
+            )
     }
 
     #[must_use]
@@ -512,6 +547,33 @@ mod tests {
         let mut context = EventContext::new(&theme, &theme.typography, &mut text_measurer);
         assert!(!item.invoke(&mut context));
         assert_eq!(calls.get(), 0);
+    }
+
+    #[test]
+    fn standard_edit_menu_exposes_the_complete_responder_command_set() {
+        let menu = ApplicationMenu::standard_edit();
+        let theme = Theme::LIGHT;
+        let mut text_measurer = TextMeasurer::new();
+        let context = EventContext::new(&theme, &theme.typography, &mut text_measurer);
+        let labels = menu
+            .popup_items(&context)
+            .into_iter()
+            .filter(|item| !item.separator)
+            .map(|item| item.label)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            labels,
+            [
+                "Undo    Ctrl+Z",
+                "Redo    Ctrl+Shift+Z",
+                "Cut    Ctrl+X",
+                "Copy    Ctrl+C",
+                "Paste    Ctrl+V",
+                "Delete",
+                "Select All    Ctrl+A",
+            ]
+        );
     }
 
     #[test]
