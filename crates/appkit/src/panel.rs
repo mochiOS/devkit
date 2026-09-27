@@ -349,10 +349,18 @@ impl FilePanel {
             },
         ) {
             Ok(selection) => selection,
-            Err(_) => {
+            Err(error) if error.raw() == mochi_user_platform::syscall::ENOSPC as i64 => {
+                // Workspace already owns a panel for this application. Do not
+                // cover that live window with a contradictory launch alert.
+                return;
+            }
+            Err(error) => {
                 self.state.alert.present_error(
                     operation_error_title(self.state.mode),
-                    "The system file panel could not be opened.",
+                    format!(
+                        "The system file panel could not be opened (error {}).",
+                        error.raw()
+                    ),
                 );
                 return;
             }
