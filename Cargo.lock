@@ -1826,6 +1826,7 @@ source = "git+https://github.com/mochiOS/syscalls#fbe79fd731bfd699cef64e3dc449cd
 [[package]]
 name = "mochios-certificate"
 version = "0.1.0"
+source = "git+https://github.com/mochiOS/syscalls?rev=af217f5ca6a585110aabac813eb46dff8ccb7bfc#af217f5ca6a585110aabac813eb46dff8ccb7bfc"
 dependencies = [
  "ed25519-dalek",
  "sha2",

@@ -18,6 +18,7 @@ pub mod error;
 pub mod ffi;
 #[cfg(feature = "ui")]
 pub mod menu;
+pub mod notification;
 #[cfg(feature = "ui")]
 pub mod panel;
 pub mod recovery;
@@ -42,6 +43,7 @@ pub use document_controller::{DocumentController, DocumentInfo, DocumentMetadata
 
 #[cfg(feature = "ui")]
 pub use menu::{ApplicationMenu, ApplicationMenuBar, ApplicationMenuItem, MenuShortcut};
+pub use notification::UserNotification;
 #[cfg(feature = "ui")]
 pub use panel::{OpenPanel, OpenPanelOptions, SavePanel, SavePanelOptions};
 #[cfg(feature = "ui")]
@@ -69,6 +71,7 @@ pub mod prelude {
     pub use crate::document_controller::{DocumentController, DocumentInfo, DocumentMetadata};
     #[cfg(feature = "ui")]
     pub use crate::menu::{ApplicationMenu, ApplicationMenuBar, ApplicationMenuItem, MenuShortcut};
+    pub use crate::notification::UserNotification;
     #[cfg(feature = "ui")]
     pub use crate::panel::{OpenPanel, OpenPanelOptions, SavePanel, SavePanelOptions};
     #[cfg(feature = "ui")]
