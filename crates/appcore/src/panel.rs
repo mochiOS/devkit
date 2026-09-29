@@ -874,7 +874,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let path = std::env::temp_dir().join(format!(
-            "mochios-appkit-{name}-{}-{unique}",
+            "mochios-appcore-{name}-{}-{unique}",
             std::process::id()
         ));
         fs::create_dir_all(&path).unwrap();

@@ -1,5 +1,5 @@
 [package]
-name = "mochios-appkit"
+name = "mochios-appcore"
 description = "The application framework for mochiOS"
 version = "0.1.0"
 edition = "2024"
@@ -7,7 +7,7 @@ license = "Apache-2.0"
 repository = "https://github.com/mochiOS/devkit"
 
 [lib]
-name = "appkit"
+name = "appcore"
 crate-type = ["rlib", "staticlib", "cdylib"]
 
 [features]

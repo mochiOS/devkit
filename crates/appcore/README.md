@@ -1,4 +1,4 @@
-# AppKit
+# AppCore
 
 This crate is the supported application-facing entry point for mochiOS. It
 combines ViewKit with capability-checked desktop integration instead of making
@@ -7,7 +7,7 @@ each application depend on service protocols directly.
 ## Rust
 
 ```rust,ignore
-use appkit::prelude::*;
+use appcore::prelude::*;
 
 struct ExampleApp;
 
@@ -24,7 +24,7 @@ impl App for ExampleApp {
 }
 
 fn main() -> Result<(), ViewKitError> {
-    appkit::run::<ExampleApp>()
+    appcore::run::<ExampleApp>()
 }
 ```
 
