@@ -95,3 +95,23 @@ ABI rules:
 
 The ViewKit ABI has its own independent version. Consumers must check both
 `mochios_abi_version()` and `vk_abi_version()` when loading shared libraries.
+
+Kome projects load AppCore as a system package and use its thin wrappers:
+
+```toml
+[dependencies]
+appcore = { system = true }
+```
+
+```kome
+fn main() {
+    let status = Clipboard.text("Copied from Kome")
+}
+```
+
+## Release
+
+Run `crates/appcore/scripts/release.pl` from the DevKit repository. It builds
+AppCore in release mode and writes `{arch}-appcore-{version}.tar.zst` together
+with `SHA256SUMS` to `target/release`. The archive can be extracted directly to
+`~/.kome/appcore` and contains the Kome package, native libraries, and C headers.
