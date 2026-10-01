@@ -1957,6 +1957,112 @@ pub unsafe extern "C" fn mochios_application_session_window_count(
     unsafe { session.as_ref() }.map_or(0, |session| session.0.windows.len())
 }
 
+fn session_window(
+    session: *const ApplicationSessionHandle,
+    index: usize,
+) -> Result<&'static crate::RestorableWindow, Status> {
+    let session = unsafe { session.as_ref() }.ok_or(Status::NullPointer)?;
+    let window = session
+        .0
+        .windows
+        .get(index)
+        .ok_or(Status::InvalidArgument)?;
+    Ok(unsafe { &*(window as *const crate::RestorableWindow) })
+}
+
+/// Stores a restored window identifier in the result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_application_session_window_identifier(
+    session: *const ApplicationSessionHandle,
+    index: usize,
+) -> i32 {
+    ffi_status(|| {
+        remember_string(Some(&session_window(session, index)?.identifier));
+        Ok(())
+    })
+}
+
+/// Stores a restored window document path in the result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_application_session_window_path(
+    session: *const ApplicationSessionHandle,
+    index: usize,
+) -> i32 {
+    ffi_status(|| {
+        remember_string(
+            session_window(session, index)?
+                .document_path
+                .as_deref()
+                .and_then(|path| path.to_str()),
+        );
+        Ok(())
+    })
+}
+
+/// Stores a restored window recovery identifier in the result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_application_session_window_recovery_identifier(
+    session: *const ApplicationSessionHandle,
+    index: usize,
+) -> i32 {
+    ffi_status(|| {
+        remember_string(
+            session_window(session, index)?
+                .recovery_identifier
+                .as_deref(),
+        );
+        Ok(())
+    })
+}
+
+/// Returns whether a restored window contains frame geometry.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_application_session_window_has_frame(
+    session: *const ApplicationSessionHandle,
+    index: usize,
+) -> u8 {
+    session_window(session, index).is_ok_and(|window| window.frame.is_some()) as u8
+}
+
+macro_rules! session_frame_getter {
+    ($name:ident, $field:ident) => {
+        #[doc = "Returns one restored window frame coordinate."]
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn $name(
+            session: *const ApplicationSessionHandle,
+            index: usize,
+        ) -> f32 {
+            session_window(session, index)
+                .ok()
+                .and_then(|window| window.frame)
+                .map_or(0.0, |frame| frame.$field)
+        }
+    };
+}
+
+session_frame_getter!(mochios_application_session_window_x, x);
+session_frame_getter!(mochios_application_session_window_y, y);
+session_frame_getter!(mochios_application_session_window_width, width);
+session_frame_getter!(mochios_application_session_window_height, height);
+
+/// Returns whether a restored window was maximized.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_application_session_window_maximized(
+    session: *const ApplicationSessionHandle,
+    index: usize,
+) -> u8 {
+    session_window(session, index).is_ok_and(|window| window.maximized) as u8
+}
+
+/// Returns whether a restored window was fullscreen.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_application_session_window_fullscreen(
+    session: *const ApplicationSessionHandle,
+    index: usize,
+) -> u8 {
+    session_window(session, index).is_ok_and(|window| window.fullscreen) as u8
+}
+
 /// Clears persisted session state and stores whether it existed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mochios_session_store_clear(store: *mut SessionStoreHandle) -> i32 {

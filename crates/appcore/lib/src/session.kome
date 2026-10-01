@@ -7,6 +7,16 @@ extern "C" from "appcore" {
 	fn mochios_session_store_save(store: *mut MochiosSessionStore, session: *mut MochiosApplicationSession) -> i32
 	fn mochios_session_store_load(store: *mut MochiosSessionStore) -> *mut MochiosApplicationSession
 	fn mochios_application_session_window_count(session: *mut MochiosApplicationSession) -> usize
+	fn mochios_application_session_window_identifier(session: *mut MochiosApplicationSession, index: usize) -> i32
+	fn mochios_application_session_window_path(session: *mut MochiosApplicationSession, index: usize) -> i32
+	fn mochios_application_session_window_recovery_identifier(session: *mut MochiosApplicationSession, index: usize) -> i32
+	fn mochios_application_session_window_has_frame(session: *mut MochiosApplicationSession, index: usize) -> u8
+	fn mochios_application_session_window_x(session: *mut MochiosApplicationSession, index: usize) -> f32
+	fn mochios_application_session_window_y(session: *mut MochiosApplicationSession, index: usize) -> f32
+	fn mochios_application_session_window_width(session: *mut MochiosApplicationSession, index: usize) -> f32
+	fn mochios_application_session_window_height(session: *mut MochiosApplicationSession, index: usize) -> f32
+	fn mochios_application_session_window_maximized(session: *mut MochiosApplicationSession, index: usize) -> u8
+	fn mochios_application_session_window_fullscreen(session: *mut MochiosApplicationSession, index: usize) -> u8
 	fn mochios_session_store_clear(store: *mut MochiosSessionStore) -> i32
 	fn mochios_application_session_destroy(session: *mut MochiosApplicationSession)
 	fn mochios_session_store_destroy(store: *mut MochiosSessionStore)
@@ -28,6 +38,21 @@ for ApplicationSession {
 	fn addWindow(self, window: RestorableWindow) -> i32 { return mochios_application_session_add_window_utf8(self.raw, __kome_string_data(window.identifier), __kome_string_len(window.identifier), __kome_string_data(window.documentPath), __kome_string_len(window.documentPath), __kome_string_data(window.recoveryIdentifier), __kome_string_len(window.recoveryIdentifier), window.hasFrame, window.frame.x, window.frame.y, window.frame.width, window.frame.height, window.maximized, window.fullscreen) }
 	// Returns the number of stored windows.
 	fn windowCount(self) -> usize { return mochios_application_session_window_count(self.raw) }
+	// Returns one restored window by index.
+	fn window(self, index: usize) -> AppCoreResult<RestorableWindow> {
+		let status = mochios_application_session_window_identifier(self.raw, index)
+		if status != 0 { return AppCoreResult<RestorableWindow> { status: status, value: null } }
+		let identifier = __appCoreLastString()
+		mochios_application_session_window_path(self.raw, index)
+		var path = ""
+		if mochios_last_result_has_value() != 0 { path = __appCoreLastString() }
+		mochios_application_session_window_recovery_identifier(self.raw, index)
+		var recovery = ""
+		if mochios_last_result_has_value() != 0 { recovery = __appCoreLastString() }
+		let frame = WindowFrame { x: mochios_application_session_window_x(self.raw, index), y: mochios_application_session_window_y(self.raw, index), width: mochios_application_session_window_width(self.raw, index), height: mochios_application_session_window_height(self.raw, index) }
+		let window = RestorableWindow { identifier: identifier, documentPath: path, recoveryIdentifier: recovery, hasFrame: mochios_application_session_window_has_frame(self.raw, index) != 0, frame: frame, maximized: mochios_application_session_window_maximized(self.raw, index) != 0, fullscreen: mochios_application_session_window_fullscreen(self.raw, index) != 0 }
+		return AppCoreResult<RestorableWindow> { status: status, value: window }
+	}
 	// Releases the native session.
 	fn close(self) { mochios_application_session_destroy(self.raw) }
 }

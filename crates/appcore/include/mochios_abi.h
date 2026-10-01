@@ -118,6 +118,16 @@ int32_t mochios_application_session_add_window_utf8(MochiosApplicationSession *s
 int32_t mochios_session_store_save(MochiosSessionStore *store, const MochiosApplicationSession *session);
 MochiosApplicationSession *mochios_session_store_load(MochiosSessionStore *store);
 size_t mochios_application_session_window_count(const MochiosApplicationSession *session);
+int32_t mochios_application_session_window_identifier(const MochiosApplicationSession *session, size_t index);
+int32_t mochios_application_session_window_path(const MochiosApplicationSession *session, size_t index);
+int32_t mochios_application_session_window_recovery_identifier(const MochiosApplicationSession *session, size_t index);
+uint8_t mochios_application_session_window_has_frame(const MochiosApplicationSession *session, size_t index);
+float mochios_application_session_window_x(const MochiosApplicationSession *session, size_t index);
+float mochios_application_session_window_y(const MochiosApplicationSession *session, size_t index);
+float mochios_application_session_window_width(const MochiosApplicationSession *session, size_t index);
+float mochios_application_session_window_height(const MochiosApplicationSession *session, size_t index);
+uint8_t mochios_application_session_window_maximized(const MochiosApplicationSession *session, size_t index);
+uint8_t mochios_application_session_window_fullscreen(const MochiosApplicationSession *session, size_t index);
 int32_t mochios_session_store_clear(MochiosSessionStore *store);
 void mochios_application_session_destroy(MochiosApplicationSession *session);
 void mochios_session_store_destroy(MochiosSessionStore *store);
