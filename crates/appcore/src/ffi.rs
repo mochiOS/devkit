@@ -1317,6 +1317,175 @@ pub unsafe extern "C" fn mochios_recovery_store_destroy(handle: *mut RecoverySto
     }
 }
 
+/// Owned session store used by Kome.
+pub struct SessionStoreHandle(crate::SessionStore);
+
+/// Owned application session used by Kome.
+pub struct ApplicationSessionHandle(crate::ApplicationSession);
+
+/// Creates a session store for a UTF-8 path.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_session_store_create_utf8(
+    data: *const u8,
+    length: usize,
+) -> *mut SessionStoreHandle {
+    ffi_pointer(|| {
+        Ok(SessionStoreHandle(crate::SessionStore::new(unsafe {
+            string(StringView {
+                data,
+                length: length as u64,
+            })?
+        })))
+    })
+}
+
+/// Creates an empty application session.
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_application_session_create() -> *mut ApplicationSessionHandle {
+    ffi_pointer(|| {
+        Ok(ApplicationSessionHandle(crate::ApplicationSession {
+            windows: Vec::new(),
+        }))
+    })
+}
+
+/// Appends one restorable window to a session.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_application_session_add_window_utf8(
+    session: *mut ApplicationSessionHandle,
+    identifier_data: *const u8,
+    identifier_length: usize,
+    path_data: *const u8,
+    path_length: usize,
+    recovery_data: *const u8,
+    recovery_length: usize,
+    has_frame: u8,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    maximized: u8,
+    fullscreen: u8,
+) -> i32 {
+    ffi_status(|| {
+        let session = unsafe { session.as_mut() }.ok_or(Status::NullPointer)?;
+        let identifier = unsafe {
+            string(StringView {
+                data: identifier_data,
+                length: identifier_length as u64,
+            })?
+        };
+        let path = unsafe {
+            string(StringView {
+                data: path_data,
+                length: path_length as u64,
+            })?
+        };
+        let recovery = unsafe {
+            string(StringView {
+                data: recovery_data,
+                length: recovery_length as u64,
+            })?
+        };
+        session.0.windows.push(crate::RestorableWindow {
+            identifier: identifier.to_owned(),
+            document_path: (!path.is_empty()).then(|| PathBuf::from(path)),
+            recovery_identifier: (!recovery.is_empty()).then(|| recovery.to_owned()),
+            frame: (has_frame != 0).then(|| crate::WindowFrame::new(x, y, width, height)),
+            maximized: maximized != 0,
+            fullscreen: fullscreen != 0,
+        });
+        Ok(())
+    })
+}
+
+/// Saves an application session atomically.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_session_store_save(
+    store: *mut SessionStoreHandle,
+    session: *const ApplicationSessionHandle,
+) -> i32 {
+    ffi_status(|| {
+        unsafe { store.as_ref() }
+            .ok_or(Status::NullPointer)?
+            .0
+            .save(&unsafe { session.as_ref() }.ok_or(Status::NullPointer)?.0)
+            .map_err(map_io_error)
+    })
+}
+
+/// Loads an application session and records whether it exists.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_session_store_load(
+    store: *mut SessionStoreHandle,
+) -> *mut ApplicationSessionHandle {
+    LAST_RESULT_PRESENT.with(|slot| slot.set(0));
+    let Some(store) = (unsafe { store.as_ref() }) else {
+        LAST_STATUS.with(|slot| slot.set(Status::NullPointer as i32));
+        return ptr::null_mut();
+    };
+    match catch_unwind(AssertUnwindSafe(|| store.0.load())) {
+        Ok(Ok(Some(session))) => {
+            LAST_STATUS.with(|slot| slot.set(0));
+            LAST_RESULT_PRESENT.with(|slot| slot.set(1));
+            Box::into_raw(Box::new(ApplicationSessionHandle(session)))
+        }
+        Ok(Ok(None)) => {
+            LAST_STATUS.with(|slot| slot.set(0));
+            ptr::null_mut()
+        }
+        Ok(Err(error)) => {
+            LAST_STATUS.with(|slot| slot.set(map_io_error(error) as i32));
+            ptr::null_mut()
+        }
+        Err(_) => {
+            LAST_STATUS.with(|slot| slot.set(Status::Panic as i32));
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Returns the number of windows in a session.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_application_session_window_count(
+    session: *const ApplicationSessionHandle,
+) -> usize {
+    unsafe { session.as_ref() }.map_or(0, |session| session.0.windows.len())
+}
+
+/// Clears persisted session state and stores whether it existed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_session_store_clear(store: *mut SessionStoreHandle) -> i32 {
+    remember_u64(0);
+    ffi_status(|| {
+        let removed = unsafe { store.as_ref() }
+            .ok_or(Status::NullPointer)?
+            .0
+            .clear()
+            .map_err(map_io_error)?;
+        remember_u64(removed as u64);
+        Ok(())
+    })
+}
+
+/// Destroys an application session.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_application_session_destroy(
+    session: *mut ApplicationSessionHandle,
+) {
+    if !session.is_null() {
+        drop(unsafe { Box::from_raw(session) });
+    }
+}
+
+/// Destroys a session store.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_session_store_destroy(store: *mut SessionStoreHandle) {
+    if !store.is_null() {
+        drop(unsafe { Box::from_raw(store) });
+    }
+}
+
 #[cfg(feature = "ui")]
 #[unsafe(no_mangle)]
 pub extern "C" fn mochios_application_request_exit() -> i32 {

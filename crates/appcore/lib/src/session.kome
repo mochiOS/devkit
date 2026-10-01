@@ -1,1 +1,49 @@
-// Kome bindings for AppCore session restoration.
+extern "C" from "appcore" {
+	struct MochiosSessionStore
+	struct MochiosApplicationSession
+	fn mochios_session_store_create_utf8(data: *const u8, length: usize) -> *mut MochiosSessionStore
+	fn mochios_application_session_create() -> *mut MochiosApplicationSession
+	fn mochios_application_session_add_window_utf8(session: *mut MochiosApplicationSession, identifierData: *const u8, identifierLength: usize, pathData: *const u8, pathLength: usize, recoveryData: *const u8, recoveryLength: usize, hasFrame: bool, x: f32, y: f32, width: f32, height: f32, maximized: bool, fullscreen: bool) -> i32
+	fn mochios_session_store_save(store: *mut MochiosSessionStore, session: *mut MochiosApplicationSession) -> i32
+	fn mochios_session_store_load(store: *mut MochiosSessionStore) -> *mut MochiosApplicationSession
+	fn mochios_application_session_window_count(session: *mut MochiosApplicationSession) -> usize
+	fn mochios_session_store_clear(store: *mut MochiosSessionStore) -> i32
+	fn mochios_application_session_destroy(session: *mut MochiosApplicationSession)
+	fn mochios_session_store_destroy(store: *mut MochiosSessionStore)
+}
+
+// The last known logical-pixel frame of a document window.
+struct WindowFrame { x: f32, y: f32, width: f32, height: f32 }
+
+// One independently restorable document window.
+struct RestorableWindow { identifier: String, documentPath: String, recoveryIdentifier: String, hasFrame: bool, frame: WindowFrame, maximized: bool, fullscreen: bool }
+
+// An opaque collection of windows restored together.
+struct ApplicationSession { raw: *mut MochiosApplicationSession }
+
+for ApplicationSession {
+	// Creates an empty session.
+	fn make() -> ApplicationSession { return ApplicationSession { raw: mochios_application_session_create() } }
+	// Appends a restorable window.
+	fn addWindow(self, window: RestorableWindow) -> i32 { return mochios_application_session_add_window_utf8(self.raw, __kome_string_data(window.identifier), __kome_string_len(window.identifier), __kome_string_data(window.documentPath), __kome_string_len(window.documentPath), __kome_string_data(window.recoveryIdentifier), __kome_string_len(window.recoveryIdentifier), window.hasFrame, window.frame.x, window.frame.y, window.frame.width, window.frame.height, window.maximized, window.fullscreen) }
+	// Returns the number of stored windows.
+	fn windowCount(self) -> usize { return mochios_application_session_window_count(self.raw) }
+	// Releases the native session.
+	fn close(self) { mochios_application_session_destroy(self.raw) }
+}
+
+// Atomically persists one application's restoration state.
+struct SessionStore { raw: *mut MochiosSessionStore }
+
+for SessionStore {
+	// Creates a session store.
+	fn make(path: String) -> SessionStore { return SessionStore { raw: mochios_session_store_create_utf8(__kome_string_data(path), __kome_string_len(path)) } }
+	// Saves a session.
+	fn save(self, session: ApplicationSession) -> i32 { return mochios_session_store_save(self.raw, session.raw) }
+	// Loads a session.
+	fn load(self) -> AppCoreResult<ApplicationSession> { let raw = mochios_session_store_load(self.raw) let status = AppCore.lastStatus() if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<ApplicationSession> { status: status, value: null } } return AppCoreResult<ApplicationSession> { status: status, value: ApplicationSession { raw: raw } } }
+	// Clears persisted session state.
+	fn clear(self) -> AppCoreResult<bool> { let status = mochios_session_store_clear(self.raw) if status != 0 { return AppCoreResult<bool> { status: status, value: null } } return AppCoreResult<bool> { status: status, value: mochios_last_result_u64() != 0 } }
+	// Releases the native store.
+	fn close(self) { mochios_session_store_destroy(self.raw) }
+}

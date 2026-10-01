@@ -38,6 +38,8 @@ typedef struct MochiosOpenPanel MochiosOpenPanel;
 typedef struct MochiosSavePanel MochiosSavePanel;
 typedef struct MochiosRecoveryStore MochiosRecoveryStore;
 typedef struct MochiosRecoveryRecord MochiosRecoveryRecord;
+typedef struct MochiosSessionStore MochiosSessionStore;
+typedef struct MochiosApplicationSession MochiosApplicationSession;
 
 #ifdef __cplusplus
 extern "C" {
@@ -108,6 +110,15 @@ uint64_t mochios_recovery_record_revision(const MochiosRecoveryRecord *record);
 int32_t mochios_recovery_record_text_contents(const MochiosRecoveryRecord *record);
 void mochios_recovery_record_destroy(MochiosRecoveryRecord *record);
 void mochios_recovery_store_destroy(MochiosRecoveryStore *store);
+MochiosSessionStore *mochios_session_store_create_utf8(const uint8_t *data, size_t length);
+MochiosApplicationSession *mochios_application_session_create(void);
+int32_t mochios_application_session_add_window_utf8(MochiosApplicationSession *session, const uint8_t *identifier_data, size_t identifier_length, const uint8_t *path_data, size_t path_length, const uint8_t *recovery_data, size_t recovery_length, uint8_t has_frame, float x, float y, float width, float height, uint8_t maximized, uint8_t fullscreen);
+int32_t mochios_session_store_save(MochiosSessionStore *store, const MochiosApplicationSession *session);
+MochiosApplicationSession *mochios_session_store_load(MochiosSessionStore *store);
+size_t mochios_application_session_window_count(const MochiosApplicationSession *session);
+int32_t mochios_session_store_clear(MochiosSessionStore *store);
+void mochios_application_session_destroy(MochiosApplicationSession *session);
+void mochios_session_store_destroy(MochiosSessionStore *store);
 int32_t mochios_application_request_exit(void);
 int32_t mochios_application_request_close_key_window(void);
 int32_t mochios_application_request_quit(void);
