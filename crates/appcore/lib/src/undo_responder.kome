@@ -1,1 +1,37 @@
-// Kome bindings for AppCore undo responder integration.
+// A semantic command accepted by an undo responder.
+struct UndoCommand {
+	value: u8,
+}
+
+for UndoCommand {
+	const UNDO: UndoCommand = UndoCommand { value: 1 }
+	const REDO: UndoCommand = UndoCommand { value: 2 }
+}
+
+// Routes semantic undo and redo commands to an UndoManager.
+struct UndoResponder {
+	manager: UndoManager,
+}
+
+for UndoResponder {
+	// Creates a responder backed by an undo manager.
+	fn make(manager: UndoManager) -> UndoResponder {
+		return UndoResponder { manager: manager }
+	}
+
+	// Returns the manager used by this responder.
+	fn undoManager(self) -> UndoManager {
+		return self.manager
+	}
+
+	// Handles an undo or redo command.
+	fn handle(self, command: UndoCommand) -> AppCoreResult<bool> {
+		if command.value == UndoCommand.UNDO.value {
+			return self.manager.undo()
+		}
+		if command.value == UndoCommand.REDO.value {
+			return self.manager.redo()
+		}
+		return AppCoreResult<bool> { status: 3, value: null }
+	}
+}
