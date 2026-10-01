@@ -7,8 +7,8 @@ source = "lib/src/lib.kome"
 sources = [
 	"lib/src/result.kome",
 	"lib/src/viewkit.kome",
-	"lib/src/clipboard.kome",
 	"lib/src/content_type.kome",
+	"lib/src/clipboard.kome",
 	"lib/src/document.kome",
 	"lib/src/notification.kome",
 	"lib/src/control_center.kome",

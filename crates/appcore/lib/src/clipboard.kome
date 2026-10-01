@@ -1,9 +1,52 @@
 extern "C" from "appcore" {
+	struct MochiosClipboardWrite
+	struct MochiosClipboardContent
 	// Replaces the shared clipboard contents with UTF-8 text.
 	fn mochios_clipboard_set_text_utf8(data: *const u8, length: usize) -> i32
 
 	// Reads shared clipboard text into the AppCore result buffer.
 	fn mochios_clipboard_read_text_utf8() -> i32
+	fn mochios_clipboard_write_create_utf8(contentTypeData: *const u8, contentTypeLength: usize) -> *mut MochiosClipboardWrite
+	fn mochios_clipboard_write_push(handle: *mut MochiosClipboardWrite, byte: u8) -> i32
+	fn mochios_clipboard_write_commit(handle: *mut MochiosClipboardWrite) -> i32
+	fn mochios_clipboard_write_destroy(handle: *mut MochiosClipboardWrite)
+	fn mochios_clipboard_read_content() -> *mut MochiosClipboardContent
+	fn mochios_clipboard_content_type(handle: *mut MochiosClipboardContent) -> i32
+	fn mochios_clipboard_content_length(handle: *mut MochiosClipboardContent) -> usize
+	fn mochios_clipboard_content_byte(handle: *mut MochiosClipboardContent, index: usize) -> u8
+	fn mochios_clipboard_content_destroy(handle: *mut MochiosClipboardContent)
+}
+
+// Owned clipboard bytes with an explicit MIME content type.
+struct ClipboardContent {
+	raw: *mut MochiosClipboardContent,
+}
+
+for ClipboardContent {
+	// Returns the MIME content type.
+	fn contentType(self) -> AppCoreResult<String> {
+		let status = mochios_clipboard_content_type(self.raw)
+		if status != 0 { return AppCoreResult<String> { status: status, value: null } }
+		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
+	}
+
+	// Returns the number of content bytes.
+	fn count(self) -> usize {
+		return mochios_clipboard_content_length(self.raw)
+	}
+
+	// Returns one byte by index.
+	fn byte(self, index: usize) -> AppCoreResult<u8> {
+		let value = mochios_clipboard_content_byte(self.raw, index)
+		let status = AppCore.lastStatus()
+		if status != 0 { return AppCoreResult<u8> { status: status, value: null } }
+		return AppCoreResult<u8> { status: status, value: value }
+	}
+
+	// Releases the native clipboard content.
+	fn close(self) {
+		mochios_clipboard_content_destroy(self.raw)
+	}
 }
 
 // Provides capability-checked access to the shared workspace clipboard.
@@ -22,5 +65,32 @@ for Clipboard {
 			return AppCoreResult<String> { status: status, value: null }
 		}
 		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
+	}
+
+	// Replaces the clipboard with bytes and an explicit MIME content type.
+	fn set(contentType: ContentType, bytes: u8[]) -> i32 {
+		let handle = mochios_clipboard_write_create_utf8(__kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier))
+		let createStatus = AppCore.lastStatus()
+		if createStatus != 0 { return createStatus }
+		for byte in bytes {
+			let pushStatus = mochios_clipboard_write_push(handle, byte)
+			if pushStatus != 0 {
+				mochios_clipboard_write_destroy(handle)
+				return pushStatus
+			}
+		}
+		let status = mochios_clipboard_write_commit(handle)
+		mochios_clipboard_write_destroy(handle)
+		return status
+	}
+
+	// Reads arbitrary clipboard content.
+	fn content() -> AppCoreResult<ClipboardContent> {
+		let raw = mochios_clipboard_read_content()
+		let status = AppCore.lastStatus()
+		if status != 0 || mochios_last_result_has_value() == 0 {
+			return AppCoreResult<ClipboardContent> { status: status, value: null }
+		}
+		return AppCoreResult<ClipboardContent> { status: status, value: ClipboardContent { raw: raw } }
 	}
 }

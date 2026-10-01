@@ -377,6 +377,161 @@ pub unsafe extern "C" fn mochios_clipboard_copy_text(
     })
 }
 
+/// Mutable clipboard payload builder used by the Kome ABI.
+pub struct ClipboardWriteHandle {
+    content_type: String,
+    bytes: Vec<u8>,
+}
+
+/// Owned clipboard content returned through the Kome ABI.
+pub struct ClipboardContentHandle {
+    content_type: String,
+    bytes: Vec<u8>,
+}
+
+/// Creates an empty clipboard payload with an explicit content type.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_clipboard_write_create_utf8(
+    content_type_data: *const u8,
+    content_type_length: usize,
+) -> *mut ClipboardWriteHandle {
+    ffi_pointer(|| {
+        let content_type = unsafe {
+            string(StringView {
+                data: content_type_data,
+                length: content_type_length as u64,
+            })?
+        };
+        if content_type.is_empty() {
+            return Err(Status::InvalidArgument);
+        }
+        Ok(ClipboardWriteHandle {
+            content_type: content_type.to_owned(),
+            bytes: Vec::new(),
+        })
+    })
+}
+
+/// Appends one byte to a clipboard payload builder.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_clipboard_write_push(
+    handle: *mut ClipboardWriteHandle,
+    byte: u8,
+) -> i32 {
+    ffi_status(|| {
+        unsafe { handle.as_mut() }
+            .ok_or(Status::NullPointer)?
+            .bytes
+            .push(byte);
+        Ok(())
+    })
+}
+
+/// Replaces the shared clipboard with the accumulated payload.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_clipboard_write_commit(handle: *mut ClipboardWriteHandle) -> i32 {
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        clipboard::set(&handle.content_type, &handle.bytes).map_err(map_error)
+    })
+}
+
+/// Destroys a clipboard payload builder.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_clipboard_write_destroy(handle: *mut ClipboardWriteHandle) {
+    if !handle.is_null() {
+        drop(unsafe { Box::from_raw(handle) });
+    }
+}
+
+/// Reads the shared clipboard as an owned content handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_clipboard_read_content() -> *mut ClipboardContentHandle {
+    LAST_RESULT_PRESENT.with(|slot| slot.set(0));
+    remember_system_error(0);
+    match catch_unwind(AssertUnwindSafe(clipboard::content)) {
+        Ok(Ok(Some((content_type, bytes)))) => {
+            LAST_STATUS.with(|slot| slot.set(Status::Ok as i32));
+            LAST_RESULT_PRESENT.with(|slot| slot.set(1));
+            Box::into_raw(Box::new(ClipboardContentHandle {
+                content_type,
+                bytes,
+            }))
+        }
+        Ok(Ok(None)) => {
+            LAST_STATUS.with(|slot| slot.set(Status::Ok as i32));
+            ptr::null_mut()
+        }
+        Ok(Err(error)) => {
+            let status = map_error(error);
+            LAST_STATUS.with(|slot| slot.set(status as i32));
+            ptr::null_mut()
+        }
+        Err(_) => {
+            LAST_STATUS.with(|slot| slot.set(Status::Panic as i32));
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Stores the clipboard content type in the result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_clipboard_content_type(
+    handle: *const ClipboardContentHandle,
+) -> i32 {
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        remember_string(Some(&handle.content_type));
+        Ok(())
+    })
+}
+
+/// Returns the number of bytes in clipboard content.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_clipboard_content_length(
+    handle: *const ClipboardContentHandle,
+) -> usize {
+    unsafe { handle.as_ref() }.map_or(0, |handle| handle.bytes.len())
+}
+
+/// Returns one clipboard byte and reports invalid indexes through last status.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_clipboard_content_byte(
+    handle: *const ClipboardContentHandle,
+    index: usize,
+) -> u8 {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        unsafe { handle.as_ref() }
+            .ok_or(Status::NullPointer)?
+            .bytes
+            .get(index)
+            .copied()
+            .ok_or(Status::InvalidArgument)
+    }));
+    match result {
+        Ok(Ok(byte)) => {
+            LAST_STATUS.with(|slot| slot.set(Status::Ok as i32));
+            byte
+        }
+        Ok(Err(status)) => {
+            LAST_STATUS.with(|slot| slot.set(status as i32));
+            0
+        }
+        Err(_) => {
+            LAST_STATUS.with(|slot| slot.set(Status::Panic as i32));
+            0
+        }
+    }
+}
+
+/// Destroys owned clipboard content.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_clipboard_content_destroy(handle: *mut ClipboardContentHandle) {
+    if !handle.is_null() {
+        drop(unsafe { Box::from_raw(handle) });
+    }
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mochios_association_set(
     extension: StringView,
@@ -2586,5 +2741,28 @@ mod tests {
             Status::InvalidArgument as i32
         );
         unsafe { mochios_recovery_identifiers_destroy(identifiers) };
+    }
+
+    #[test]
+    fn clipboard_binary_handles_copy_bytes_across_the_abi() {
+        let write = unsafe {
+            mochios_clipboard_write_create_utf8(b"image/png".as_ptr(), b"image/png".len())
+        };
+        assert!(!write.is_null());
+        assert_eq!(unsafe { mochios_clipboard_write_push(write, 0x89) }, 0);
+        assert_eq!(unsafe { mochios_clipboard_write_push(write, b'P') }, 0);
+        assert_eq!(unsafe { &*write }.bytes, [0x89, b'P']);
+        unsafe { mochios_clipboard_write_destroy(write) };
+
+        let content = Box::into_raw(Box::new(ClipboardContentHandle {
+            content_type: "application/octet-stream".to_owned(),
+            bytes: vec![0, 127, 255],
+        }));
+        assert_eq!(unsafe { mochios_clipboard_content_length(content) }, 3);
+        assert_eq!(unsafe { mochios_clipboard_content_byte(content, 2) }, 255);
+        assert_eq!(mochios_last_status(), 0);
+        assert_eq!(unsafe { mochios_clipboard_content_byte(content, 3) }, 0);
+        assert_eq!(mochios_last_status(), Status::InvalidArgument as i32);
+        unsafe { mochios_clipboard_content_destroy(content) };
     }
 }

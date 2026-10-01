@@ -44,6 +44,8 @@ typedef struct MochiosApplicationSession MochiosApplicationSession;
 typedef struct MochiosUndoManager MochiosUndoManager;
 typedef struct MochiosDocumentController MochiosDocumentController;
 typedef struct MochiosAssociationHandlers MochiosAssociationHandlers;
+typedef struct MochiosClipboardWrite MochiosClipboardWrite;
+typedef struct MochiosClipboardContent MochiosClipboardContent;
 
 #ifdef __cplusplus
 extern "C" {
@@ -62,6 +64,15 @@ int32_t mochios_clipboard_set_text(MochiosStringView text);
 int32_t mochios_clipboard_set_text_utf8(const uint8_t *data, size_t length);
 int32_t mochios_clipboard_read_text_utf8(void);
 int32_t mochios_clipboard_copy_text(MochiosMutableBuffer output, uint64_t *required_length, uint8_t *has_text);
+MochiosClipboardWrite *mochios_clipboard_write_create_utf8(const uint8_t *content_type_data, size_t content_type_length);
+int32_t mochios_clipboard_write_push(MochiosClipboardWrite *handle, uint8_t byte);
+int32_t mochios_clipboard_write_commit(MochiosClipboardWrite *handle);
+void mochios_clipboard_write_destroy(MochiosClipboardWrite *handle);
+MochiosClipboardContent *mochios_clipboard_read_content(void);
+int32_t mochios_clipboard_content_type(const MochiosClipboardContent *handle);
+size_t mochios_clipboard_content_length(const MochiosClipboardContent *handle);
+uint8_t mochios_clipboard_content_byte(const MochiosClipboardContent *handle, size_t index);
+void mochios_clipboard_content_destroy(MochiosClipboardContent *handle);
 
 int32_t mochios_content_type_parse_utf8(const uint8_t *data, size_t length);
 int32_t mochios_content_type_for_path_utf8(const uint8_t *data, size_t length);
