@@ -1,0 +1,8 @@
+[package]
+name = "appcore-smoke"
+
+[application]
+source = "src/main.kome"
+
+[dependencies]
+appcore = { path = "../.." }
