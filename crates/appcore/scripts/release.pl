@@ -46,7 +46,7 @@ require_file($static_library);
 
 my $stage = tempdir('appcore-release-XXXXXX', TMPDIR => 1, CLEANUP => 1);
 stage_file('Kome.toml', $stage);
-stage_file(File::Spec->catfile('lib', 'src', 'lib.kome'), $stage);
+stage_kome_sources($stage);
 stage_file(File::Spec->catfile('include', 'mochios.h'), $stage);
 stage_file(File::Spec->catfile('include', 'mochios_abi.h'), $stage);
 stage_file('README.md', $stage);
@@ -137,6 +137,20 @@ sub stage_file {
         File::Spec->catfile($appcore_root, $relative),
         File::Spec->catfile($stage, $relative),
     );
+}
+
+sub stage_kome_sources {
+    my ($stage) = @_;
+    my $source_directory = File::Spec->catdir($appcore_root, 'lib', 'src');
+    opendir my $directory, $source_directory
+        or die "failed to read $source_directory: $!\n";
+    my @sources = sort grep { /\.kome\z/ && -f File::Spec->catfile($source_directory, $_) }
+        readdir $directory;
+    closedir $directory or die "failed to close $source_directory: $!\n";
+    @sources or die "no Kome library sources were found in $source_directory\n";
+    for my $source (@sources) {
+        stage_file(File::Spec->catfile('lib', 'src', $source), $stage);
+    }
 }
 
 sub copy_file {
