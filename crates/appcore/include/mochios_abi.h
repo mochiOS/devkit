@@ -38,6 +38,7 @@ typedef struct MochiosOpenPanel MochiosOpenPanel;
 typedef struct MochiosSavePanel MochiosSavePanel;
 typedef struct MochiosRecoveryStore MochiosRecoveryStore;
 typedef struct MochiosRecoveryRecord MochiosRecoveryRecord;
+typedef struct MochiosRecoveryIdentifiers MochiosRecoveryIdentifiers;
 typedef struct MochiosSessionStore MochiosSessionStore;
 typedef struct MochiosApplicationSession MochiosApplicationSession;
 typedef struct MochiosUndoManager MochiosUndoManager;
@@ -111,6 +112,10 @@ MochiosRecoveryStore *mochios_recovery_store_create_utf8(const uint8_t *data, si
 int32_t mochios_recovery_store_save_utf8(MochiosRecoveryStore *store, const uint8_t *identifier_data, size_t identifier_length, const uint8_t *original_path_data, size_t original_path_length, const uint8_t *content_type_data, size_t content_type_length, uint64_t revision, const uint8_t *contents_data, size_t contents_length);
 MochiosRecoveryRecord *mochios_recovery_store_load_utf8(MochiosRecoveryStore *store, const uint8_t *identifier_data, size_t identifier_length);
 int32_t mochios_recovery_store_remove_utf8(MochiosRecoveryStore *store, const uint8_t *identifier_data, size_t identifier_length);
+MochiosRecoveryIdentifiers *mochios_recovery_store_identifiers(MochiosRecoveryStore *store);
+size_t mochios_recovery_identifiers_count(const MochiosRecoveryIdentifiers *identifiers);
+int32_t mochios_recovery_identifiers_get(const MochiosRecoveryIdentifiers *identifiers, size_t index);
+void mochios_recovery_identifiers_destroy(MochiosRecoveryIdentifiers *identifiers);
 int32_t mochios_recovery_record_identifier(const MochiosRecoveryRecord *record);
 int32_t mochios_recovery_record_original_path(const MochiosRecoveryRecord *record);
 int32_t mochios_recovery_record_content_type(const MochiosRecoveryRecord *record);

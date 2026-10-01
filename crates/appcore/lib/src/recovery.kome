@@ -1,11 +1,16 @@
 extern "C" from "appcore" {
 	struct MochiosRecoveryStore
 	struct MochiosRecoveryRecord
+	struct MochiosRecoveryIdentifiers
 
 	fn mochios_recovery_store_create_utf8(data: *const u8, length: usize) -> *mut MochiosRecoveryStore
 	fn mochios_recovery_store_save_utf8(store: *mut MochiosRecoveryStore, identifierData: *const u8, identifierLength: usize, originalPathData: *const u8, originalPathLength: usize, contentTypeData: *const u8, contentTypeLength: usize, revision: u64, contentsData: *const u8, contentsLength: usize) -> i32
 	fn mochios_recovery_store_load_utf8(store: *mut MochiosRecoveryStore, identifierData: *const u8, identifierLength: usize) -> *mut MochiosRecoveryRecord
 	fn mochios_recovery_store_remove_utf8(store: *mut MochiosRecoveryStore, identifierData: *const u8, identifierLength: usize) -> i32
+	fn mochios_recovery_store_identifiers(store: *mut MochiosRecoveryStore) -> *mut MochiosRecoveryIdentifiers
+	fn mochios_recovery_identifiers_count(identifiers: *mut MochiosRecoveryIdentifiers) -> usize
+	fn mochios_recovery_identifiers_get(identifiers: *mut MochiosRecoveryIdentifiers, index: usize) -> i32
+	fn mochios_recovery_identifiers_destroy(identifiers: *mut MochiosRecoveryIdentifiers)
 	fn mochios_recovery_record_identifier(record: *mut MochiosRecoveryRecord) -> i32
 	fn mochios_recovery_record_original_path(record: *mut MochiosRecoveryRecord) -> i32
 	fn mochios_recovery_record_content_type(record: *mut MochiosRecoveryRecord) -> i32
@@ -13,6 +18,32 @@ extern "C" from "appcore" {
 	fn mochios_recovery_record_text_contents(record: *mut MochiosRecoveryRecord) -> i32
 	fn mochios_recovery_record_destroy(record: *mut MochiosRecoveryRecord)
 	fn mochios_recovery_store_destroy(store: *mut MochiosRecoveryStore)
+}
+
+// An owned collection of sorted recovery identifiers.
+struct RecoveryIdentifiers {
+	raw: *mut MochiosRecoveryIdentifiers,
+}
+
+for RecoveryIdentifiers {
+	// Returns the number of identifiers in this collection.
+	fn count(self) -> usize {
+		return mochios_recovery_identifiers_count(self.raw)
+	}
+
+	// Returns one identifier by index.
+	fn identifier(self, index: usize) -> AppCoreResult<String> {
+		let status = mochios_recovery_identifiers_get(self.raw, index)
+		if status != 0 {
+			return AppCoreResult<String> { status: status, value: null }
+		}
+		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
+	}
+
+	// Releases the native identifier collection.
+	fn close(self) {
+		mochios_recovery_identifiers_destroy(self.raw)
+	}
 }
 
 // One UTF-8 document recovery snapshot.
@@ -74,6 +105,16 @@ for RecoveryStore {
 			return AppCoreResult<bool> { status: status, value: null }
 		}
 		return AppCoreResult<bool> { status: status, value: mochios_last_result_u64() != 0 }
+	}
+
+	// Loads all sorted recovery identifiers.
+	fn identifiers(self) -> AppCoreResult<RecoveryIdentifiers> {
+		let raw = mochios_recovery_store_identifiers(self.raw)
+		let status = AppCore.lastStatus()
+		if status != 0 {
+			return AppCoreResult<RecoveryIdentifiers> { status: status, value: null }
+		}
+		return AppCoreResult<RecoveryIdentifiers> { status: status, value: RecoveryIdentifiers { raw: raw } }
 	}
 
 	// Releases the native recovery store.

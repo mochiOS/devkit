@@ -1193,6 +1193,9 @@ pub struct RecoveryStoreHandle(crate::RecoveryStore);
 /// Owned recovery record returned to the Kome wrapper.
 pub struct RecoveryRecordHandle(crate::RecoveryRecord);
 
+/// Owned recovery identifier list exposed through the C ABI.
+pub struct RecoveryIdentifiersHandle(Vec<String>);
+
 /// Creates a recovery store rooted at a UTF-8 path.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mochios_recovery_store_create_utf8(
@@ -1317,6 +1320,53 @@ pub unsafe extern "C" fn mochios_recovery_store_remove_utf8(
         remember_u64(removed as u64);
         Ok(())
     })
+}
+
+/// Loads the sorted recovery identifiers stored below this directory.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_recovery_store_identifiers(
+    store: *mut RecoveryStoreHandle,
+) -> *mut RecoveryIdentifiersHandle {
+    ffi_pointer(|| {
+        let identifiers = unsafe { store.as_ref() }
+            .ok_or(Status::NullPointer)?
+            .0
+            .identifiers()
+            .map_err(map_io_error)?;
+        Ok(RecoveryIdentifiersHandle(identifiers))
+    })
+}
+
+/// Returns the number of recovery identifiers in a collection.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_recovery_identifiers_count(
+    identifiers: *const RecoveryIdentifiersHandle,
+) -> usize {
+    unsafe { identifiers.as_ref() }.map_or(0, |identifiers| identifiers.0.len())
+}
+
+/// Stores one recovery identifier in the result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_recovery_identifiers_get(
+    identifiers: *const RecoveryIdentifiersHandle,
+    index: usize,
+) -> i32 {
+    ffi_status(|| {
+        let identifiers = unsafe { identifiers.as_ref() }.ok_or(Status::NullPointer)?;
+        let identifier = identifiers.0.get(index).ok_or(Status::InvalidArgument)?;
+        remember_string(Some(identifier));
+        Ok(())
+    })
+}
+
+/// Destroys a recovery identifier collection.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_recovery_identifiers_destroy(
+    identifiers: *mut RecoveryIdentifiersHandle,
+) {
+    if !identifiers.is_null() {
+        drop(unsafe { Box::from_raw(identifiers) });
+    }
 }
 
 /// Stores a recovery record identifier in the UTF-8 result buffer.
@@ -2413,5 +2463,30 @@ mod tests {
             Status::InvalidArgument as i32
         );
         unsafe { mochios_association_handlers_destroy(handlers) };
+    }
+
+    #[test]
+    fn recovery_identifier_collection_checks_bounds() {
+        let identifiers = Box::into_raw(Box::new(RecoveryIdentifiersHandle(vec![
+            "document-1".to_owned(),
+            "document-2".to_owned(),
+        ])));
+        assert_eq!(
+            unsafe { mochios_recovery_identifiers_count(identifiers) },
+            2
+        );
+        assert_eq!(
+            unsafe { mochios_recovery_identifiers_get(identifiers, 1) },
+            0
+        );
+        assert_eq!(
+            LAST_RESULT_STRING.with(|value| value.borrow().clone()),
+            b"document-2"
+        );
+        assert_eq!(
+            unsafe { mochios_recovery_identifiers_get(identifiers, 2) },
+            Status::InvalidArgument as i32
+        );
+        unsafe { mochios_recovery_identifiers_destroy(identifiers) };
     }
 }
