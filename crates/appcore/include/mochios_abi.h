@@ -42,6 +42,7 @@ typedef struct MochiosSessionStore MochiosSessionStore;
 typedef struct MochiosApplicationSession MochiosApplicationSession;
 typedef struct MochiosUndoManager MochiosUndoManager;
 typedef struct MochiosDocumentController MochiosDocumentController;
+typedef struct MochiosAssociationHandlers MochiosAssociationHandlers;
 
 #ifdef __cplusplus
 extern "C" {
@@ -73,6 +74,11 @@ int32_t mochios_association_resolve(MochiosStringView extension, MochiosStringVi
 int32_t mochios_association_set_utf8(const uint8_t *extension_data, size_t extension_length, const uint8_t *content_type_data, size_t content_type_length, const uint8_t *bundle_id_data, size_t bundle_id_length, uint16_t role_bits);
 int32_t mochios_association_remove_utf8(const uint8_t *extension_data, size_t extension_length, const uint8_t *content_type_data, size_t content_type_length, uint16_t role_bits);
 int32_t mochios_association_resolve_utf8(const uint8_t *extension_data, size_t extension_length, const uint8_t *content_type_data, size_t content_type_length, uint16_t role_bits);
+MochiosAssociationHandlers *mochios_association_handlers_utf8(const uint8_t *extension_data, size_t extension_length, const uint8_t *content_type_data, size_t content_type_length, uint16_t role_bits);
+size_t mochios_association_handlers_count(const MochiosAssociationHandlers *handlers);
+int32_t mochios_association_handlers_bundle_id(const MochiosAssociationHandlers *handlers, size_t index);
+int32_t mochios_association_handlers_name(const MochiosAssociationHandlers *handlers, size_t index);
+void mochios_association_handlers_destroy(MochiosAssociationHandlers *handlers);
 
 int32_t mochios_document_open(MochiosStringView path, MochiosStringView content_type, uint16_t role_bits, uint64_t *process_id);
 int32_t mochios_document_open_with(MochiosStringView path, MochiosStringView content_type, MochiosStringView bundle_id, uint16_t role_bits, uint64_t *process_id);

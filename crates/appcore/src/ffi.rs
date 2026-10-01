@@ -528,6 +528,90 @@ pub unsafe extern "C" fn mochios_association_resolve_utf8(
     })
 }
 
+/// Owned document association handler list exposed through the C ABI.
+pub struct AssociationHandlersHandle(Vec<crate::document::AssociationHandler>);
+
+/// Resolves all applications registered for a document key and role.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_association_handlers_utf8(
+    extension_data: *const u8,
+    extension_length: usize,
+    content_type_data: *const u8,
+    content_type_length: usize,
+    role_bits: u16,
+) -> *mut AssociationHandlersHandle {
+    ffi_pointer(|| {
+        let handlers = document::handlers(
+            unsafe {
+                string(StringView {
+                    data: extension_data,
+                    length: extension_length as u64,
+                })?
+            },
+            unsafe {
+                string(StringView {
+                    data: content_type_data,
+                    length: content_type_length as u64,
+                })?
+            },
+            roles(role_bits)?,
+        )
+        .map_err(map_error)?;
+        Ok(AssociationHandlersHandle(handlers))
+    })
+}
+
+/// Returns the number of resolved document handlers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_association_handlers_count(
+    handlers: *const AssociationHandlersHandle,
+) -> usize {
+    unsafe { handlers.as_ref() }.map_or(0, |handlers| handlers.0.len())
+}
+
+fn association_handler(
+    handlers: *const AssociationHandlersHandle,
+    index: usize,
+) -> Result<&'static crate::document::AssociationHandler, Status> {
+    let handlers = unsafe { handlers.as_ref() }.ok_or(Status::NullPointer)?;
+    let handler = handlers.0.get(index).ok_or(Status::InvalidArgument)?;
+    Ok(unsafe { &*(handler as *const crate::document::AssociationHandler) })
+}
+
+/// Stores a resolved handler bundle identifier in the result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_association_handlers_bundle_id(
+    handlers: *const AssociationHandlersHandle,
+    index: usize,
+) -> i32 {
+    ffi_status(|| {
+        remember_string(Some(&association_handler(handlers, index)?.bundle_id));
+        Ok(())
+    })
+}
+
+/// Stores a resolved handler display name in the result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_association_handlers_name(
+    handlers: *const AssociationHandlersHandle,
+    index: usize,
+) -> i32 {
+    ffi_status(|| {
+        remember_string(Some(&association_handler(handlers, index)?.name));
+        Ok(())
+    })
+}
+
+/// Destroys a resolved document handler list.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_association_handlers_destroy(
+    handlers: *mut AssociationHandlersHandle,
+) {
+    if !handlers.is_null() {
+        drop(unsafe { Box::from_raw(handlers) });
+    }
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mochios_document_open(
     path: StringView,
@@ -2300,5 +2384,34 @@ mod tests {
         );
         assert_eq!(mochios_last_result_u64(), DOCUMENT_ACTION_CLOSE);
         unsafe { mochios_document_controller_destroy(controller) };
+    }
+
+    #[test]
+    fn association_handler_collection_exposes_each_field() {
+        let handlers = Box::into_raw(Box::new(AssociationHandlersHandle(vec![
+            crate::document::AssociationHandler {
+                bundle_id: "org.mochios.Editor".to_owned(),
+                name: "Editor".to_owned(),
+            },
+        ])));
+        assert_eq!(unsafe { mochios_association_handlers_count(handlers) }, 1);
+        assert_eq!(
+            unsafe { mochios_association_handlers_bundle_id(handlers, 0) },
+            0
+        );
+        assert_eq!(
+            LAST_RESULT_STRING.with(|value| value.borrow().clone()),
+            b"org.mochios.Editor"
+        );
+        assert_eq!(unsafe { mochios_association_handlers_name(handlers, 0) }, 0);
+        assert_eq!(
+            LAST_RESULT_STRING.with(|value| value.borrow().clone()),
+            b"Editor"
+        );
+        assert_eq!(
+            unsafe { mochios_association_handlers_name(handlers, 1) },
+            Status::InvalidArgument as i32
+        );
+        unsafe { mochios_association_handlers_destroy(handlers) };
     }
 }

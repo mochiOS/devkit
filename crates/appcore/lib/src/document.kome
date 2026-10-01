@@ -1,4 +1,5 @@
 extern "C" from "appcore" {
+	struct MochiosAssociationHandlers
 	// Sets a default document association.
 	fn mochios_association_set_utf8(extensionData: *const u8, extensionLength: usize, contentTypeData: *const u8, contentTypeLength: usize, bundleIdData: *const u8, bundleIdLength: usize, roles: u16) -> i32
 
@@ -7,12 +8,54 @@ extern "C" from "appcore" {
 
 	// Resolves a default document association.
 	fn mochios_association_resolve_utf8(extensionData: *const u8, extensionLength: usize, contentTypeData: *const u8, contentTypeLength: usize, roles: u16) -> i32
+	fn mochios_association_handlers_utf8(extensionData: *const u8, extensionLength: usize, contentTypeData: *const u8, contentTypeLength: usize, roles: u16) -> *mut MochiosAssociationHandlers
+	fn mochios_association_handlers_count(handlers: *mut MochiosAssociationHandlers) -> usize
+	fn mochios_association_handlers_bundle_id(handlers: *mut MochiosAssociationHandlers, index: usize) -> i32
+	fn mochios_association_handlers_name(handlers: *mut MochiosAssociationHandlers, index: usize) -> i32
+	fn mochios_association_handlers_destroy(handlers: *mut MochiosAssociationHandlers)
 
 	// Opens a document with its default application.
 	fn mochios_document_open_utf8(pathData: *const u8, pathLength: usize, contentTypeData: *const u8, contentTypeLength: usize, roles: u16) -> i32
 
 	// Opens a document with an explicit application.
 	fn mochios_document_open_with_utf8(pathData: *const u8, pathLength: usize, contentTypeData: *const u8, contentTypeLength: usize, bundleIdData: *const u8, bundleIdLength: usize, roles: u16) -> i32
+}
+
+// An application capable of opening a matching document.
+struct AssociationHandler {
+	bundleId: String,
+	name: String,
+}
+
+// An owned collection of resolved document handlers.
+struct AssociationHandlers {
+	raw: *mut MochiosAssociationHandlers,
+}
+
+for AssociationHandlers {
+	// Returns the number of handlers in this collection.
+	fn count(self) -> usize {
+		return mochios_association_handlers_count(self.raw)
+	}
+
+	// Returns one handler by index.
+	fn handler(self, index: usize) -> AppCoreResult<AssociationHandler> {
+		let status = mochios_association_handlers_bundle_id(self.raw, index)
+		if status != 0 {
+			return AppCoreResult<AssociationHandler> { status: status, value: null }
+		}
+		let bundleId = __appCoreLastString()
+		let nameStatus = mochios_association_handlers_name(self.raw, index)
+		if nameStatus != 0 {
+			return AppCoreResult<AssociationHandler> { status: nameStatus, value: null }
+		}
+		return AppCoreResult<AssociationHandler> { status: 0, value: AssociationHandler { bundleId: bundleId, name: __appCoreLastString() } }
+	}
+
+	// Releases the native handler collection.
+	fn close(self) {
+		mochios_association_handlers_destroy(self.raw)
+	}
 }
 
 // Roles used when resolving or updating document associations.
@@ -47,6 +90,16 @@ for Document {
 			return AppCoreResult<String> { status: status, value: null }
 		}
 		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
+	}
+
+	// Resolves every application registered for a document key and role.
+	fn handlers(extension: String, contentType: ContentType, roles: AssociationRoles) -> AppCoreResult<AssociationHandlers> {
+		let raw = mochios_association_handlers_utf8(__kome_string_data(extension), __kome_string_len(extension), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), roles.bits)
+		let status = AppCore.lastStatus()
+		if status != 0 {
+			return AppCoreResult<AssociationHandlers> { status: status, value: null }
+		}
+		return AppCoreResult<AssociationHandlers> { status: status, value: AssociationHandlers { raw: raw } }
 	}
 
 	// Opens a document with its default application.
