@@ -1,1 +1,92 @@
-// Kome bindings for AppCore application menus.
+// A keyboard shortcut label displayed by an application menu item.
+struct MenuShortcut {
+	label: String,
+}
+
+for MenuShortcut {
+	// Creates a shortcut from its platform-facing display label.
+	fn make(label: String) -> MenuShortcut {
+		return MenuShortcut { label: label }
+	}
+}
+
+// One action-bearing entry in an application menu.
+struct ApplicationMenuItem {
+	label: String,
+	shortcut: String,
+	enabled: bool,
+	destructive: bool,
+	actionId: u64,
+}
+
+for ApplicationMenuItem {
+	// Creates an enabled menu item without a keyboard shortcut.
+	fn action(label: String, actionId: u64) -> ApplicationMenuItem {
+		return ApplicationMenuItem { label: label, shortcut: "", enabled: true, destructive: false, actionId: actionId }
+	}
+
+	// Creates an enabled menu item with a keyboard shortcut.
+	fn actionWithShortcut(label: String, shortcut: MenuShortcut, actionId: u64) -> ApplicationMenuItem {
+		return ApplicationMenuItem { label: label, shortcut: shortcut.label, enabled: true, destructive: false, actionId: actionId }
+	}
+
+	// Returns a copy with the requested enabled state.
+	fn withEnabled(self, enabled: bool) -> ApplicationMenuItem {
+		return ApplicationMenuItem { label: self.label, shortcut: self.shortcut, enabled: enabled, destructive: self.destructive, actionId: self.actionId }
+	}
+
+	// Returns a copy with the requested destructive appearance.
+	fn withDestructive(self, destructive: bool) -> ApplicationMenuItem {
+		return ApplicationMenuItem { label: self.label, shortcut: self.shortcut, enabled: self.enabled, destructive: destructive, actionId: self.actionId }
+	}
+
+	// Pushes this item into the active ViewKit tree.
+	fn push(self, runtime: *mut VkRuntime, nodeId: u64) -> i32 {
+		var enabled: u8 = 0
+		var destructive: u8 = 0
+		if self.enabled {
+			enabled = 1
+		}
+		if self.destructive {
+			destructive = 1
+		}
+		return pushViewMenuItem(runtime, nodeId, self.label, self.shortcut, enabled, destructive, self.actionId)
+	}
+}
+
+// Describes one application menu surface.
+struct ApplicationMenu {
+	title: String,
+}
+
+for ApplicationMenu {
+	// Creates an application menu with a title.
+	fn make(title: String) -> ApplicationMenu {
+		return ApplicationMenu { title: title }
+	}
+
+	// Begins the menu's vertical item container in the active ViewKit tree.
+	fn beginItems(self, runtime: *mut VkRuntime, nodeId: u64) -> i32 {
+		return vk_begin_vstack(runtime, nodeId, 0, 3, 0)
+	}
+
+	// Ends the menu's item container.
+	fn endItems(self, runtime: *mut VkRuntime) -> i32 {
+		return vk_end_node(runtime)
+	}
+}
+
+// Builds a horizontal application-menu header row.
+struct ApplicationMenuBar {}
+
+for ApplicationMenuBar {
+	// Begins the menu bar in the active ViewKit tree.
+	fn begin(runtime: *mut VkRuntime, nodeId: u64) -> i32 {
+		return vk_begin_hstack(runtime, nodeId, 2, 1, 0)
+	}
+
+	// Ends the menu bar.
+	fn end(runtime: *mut VkRuntime) -> i32 {
+		return vk_end_node(runtime)
+	}
+}
