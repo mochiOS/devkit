@@ -1,1 +1,134 @@
-// Kome bindings for AppCore document controllers.
+extern "C" from "appcore" {
+	struct MochiosDocumentController
+	fn mochios_document_controller_create_utf8(displayNameData: *const u8, displayNameLength: usize, pathData: *const u8, pathLength: usize, fileTypeData: *const u8, fileTypeLength: usize, encodingData: *const u8, encodingLength: usize, writable: u8, revision: u64) -> *mut MochiosDocumentController
+	fn mochios_document_controller_set_revision(controller: *mut MochiosDocumentController, revision: u64) -> i32
+	fn mochios_document_controller_is_edited(controller: *mut MochiosDocumentController) -> u8
+	fn mochios_document_controller_open(controller: *mut MochiosDocumentController) -> i32
+	fn mochios_document_controller_save(controller: *mut MochiosDocumentController) -> i32
+	fn mochios_document_controller_save_as(controller: *mut MochiosDocumentController) -> i32
+	fn mochios_document_controller_revert(controller: *mut MochiosDocumentController) -> i32
+	fn mochios_document_controller_request_close(controller: *mut MochiosDocumentController) -> i32
+	fn mochios_document_controller_take_action(controller: *mut MochiosDocumentController) -> i32
+	fn mochios_document_controller_complete_utf8(controller: *mut MochiosDocumentController, displayNameData: *const u8, displayNameLength: usize, pathData: *const u8, pathLength: usize, fileTypeData: *const u8, fileTypeLength: usize, encodingData: *const u8, encodingLength: usize, writable: u8, revision: u64) -> i32
+	fn mochios_document_controller_fail_utf8(controller: *mut MochiosDocumentController, messageData: *const u8, messageLength: usize) -> i32
+	fn mochios_document_controller_display_name(controller: *mut MochiosDocumentController) -> i32
+	fn mochios_document_controller_path(controller: *mut MochiosDocumentController) -> i32
+	fn mochios_document_controller_file_type(controller: *mut MochiosDocumentController) -> i32
+	fn mochios_document_controller_encoding(controller: *mut MochiosDocumentController) -> i32
+	fn mochios_document_controller_status(controller: *mut MochiosDocumentController) -> i32
+	fn mochios_document_controller_clear_status(controller: *mut MochiosDocumentController) -> i32
+	fn mochios_document_controller_destroy(controller: *mut MochiosDocumentController)
+}
+
+// Metadata describing a document's stored representation.
+struct DocumentMetadata {
+	fileType: String,
+	encoding: String,
+	writable: bool,
+}
+
+for DocumentMetadata {
+	// Creates writable document metadata.
+	fn make(fileType: String, encoding: String) -> DocumentMetadata {
+		return DocumentMetadata { fileType: fileType, encoding: encoding, writable: true }
+	}
+
+	// Returns a copy with the requested writable state.
+	fn withWritable(self, writable: bool) -> DocumentMetadata {
+		return DocumentMetadata { fileType: self.fileType, encoding: self.encoding, writable: writable }
+	}
+}
+
+// User-visible identity and storage metadata for a document.
+struct DocumentInfo {
+	displayName: String,
+	path: String,
+	metadata: DocumentMetadata,
+}
+
+for DocumentInfo {
+	// Creates metadata for an untitled document.
+	fn untitled(metadata: DocumentMetadata) -> DocumentInfo {
+		return DocumentInfo { displayName: "Untitled", path: "", metadata: metadata }
+	}
+
+	// Creates metadata for a named document.
+	fn at(displayName: String, path: String, metadata: DocumentMetadata) -> DocumentInfo {
+		return DocumentInfo { displayName: displayName, path: path, metadata: metadata }
+	}
+}
+
+// A lifecycle operation that application code must perform.
+struct DocumentControllerAction {
+	value: u64,
+}
+
+for DocumentControllerAction {
+	const OPEN: DocumentControllerAction = DocumentControllerAction { value: 1 }
+	const SAVE: DocumentControllerAction = DocumentControllerAction { value: 2 }
+	const SAVE_AS: DocumentControllerAction = DocumentControllerAction { value: 3 }
+	const REVERT: DocumentControllerAction = DocumentControllerAction { value: 4 }
+	const CLOSE: DocumentControllerAction = DocumentControllerAction { value: 5 }
+}
+
+// Coordinates the lifecycle state of one file-backed document.
+struct DocumentController {
+	raw: *mut MochiosDocumentController,
+}
+
+for DocumentController {
+	// Creates a controller from initial document information.
+	fn make(info: DocumentInfo, revision: u64) -> DocumentController {
+		var writable: u8 = 0
+		if info.metadata.writable { writable = 1 }
+		return DocumentController { raw: mochios_document_controller_create_utf8(__kome_string_data(info.displayName), __kome_string_len(info.displayName), __kome_string_data(info.path), __kome_string_len(info.path), __kome_string_data(info.metadata.fileType), __kome_string_len(info.metadata.fileType), __kome_string_data(info.metadata.encoding), __kome_string_len(info.metadata.encoding), writable, revision) }
+	}
+
+	// Updates the application-owned document revision.
+	fn setRevision(self, revision: u64) -> i32 { return mochios_document_controller_set_revision(self.raw, revision) }
+	// Returns whether the document differs from its saved revision.
+	fn isEdited(self) -> bool { return mochios_document_controller_is_edited(self.raw) != 0 }
+	// Requests an open operation.
+	fn open(self) -> i32 { return mochios_document_controller_open(self.raw) }
+	// Requests a save or save-as operation as appropriate.
+	fn save(self) -> i32 { return mochios_document_controller_save(self.raw) }
+	// Requests a save-as operation.
+	fn saveAs(self) -> i32 { return mochios_document_controller_save_as(self.raw) }
+	// Requests a revert operation.
+	fn revert(self) -> i32 { return mochios_document_controller_revert(self.raw) }
+
+	// Requests close and reports whether the document may close immediately.
+	fn requestClose(self) -> AppCoreResult<bool> {
+		let status = mochios_document_controller_request_close(self.raw)
+		if status != 0 { return AppCoreResult<bool> { status: status, value: null } }
+		return AppCoreResult<bool> { status: status, value: mochios_last_result_u64() != 0 }
+	}
+
+	// Takes the next lifecycle action for application code to perform.
+	fn takeAction(self) -> AppCoreResult<DocumentControllerAction> {
+		let status = mochios_document_controller_take_action(self.raw)
+		if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<DocumentControllerAction> { status: status, value: null } }
+		return AppCoreResult<DocumentControllerAction> { status: status, value: DocumentControllerAction { value: mochios_last_result_u64() } }
+	}
+
+	// Completes a lifecycle action with new saved document information.
+	fn complete(self, info: DocumentInfo, revision: u64) -> i32 {
+		var writable: u8 = 0
+		if info.metadata.writable { writable = 1 }
+		return mochios_document_controller_complete_utf8(self.raw, __kome_string_data(info.displayName), __kome_string_len(info.displayName), __kome_string_data(info.path), __kome_string_len(info.path), __kome_string_data(info.metadata.fileType), __kome_string_len(info.metadata.fileType), __kome_string_data(info.metadata.encoding), __kome_string_len(info.metadata.encoding), writable, revision)
+	}
+
+	// Completes a lifecycle action with an error.
+	fn fail(self, message: String) -> i32 { return mochios_document_controller_fail_utf8(self.raw, __kome_string_data(message), __kome_string_len(message)) }
+
+	// Returns the current document display name.
+	fn displayName(self) -> AppCoreResult<String> { let status = mochios_document_controller_display_name(self.raw) if status != 0 { return AppCoreResult<String> { status: status, value: null } } return AppCoreResult<String> { status: status, value: __appCoreLastString() } }
+	// Returns the current document path when one exists.
+	fn path(self) -> AppCoreResult<String> { let status = mochios_document_controller_path(self.raw) if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<String> { status: status, value: null } } return AppCoreResult<String> { status: status, value: __appCoreLastString() } }
+	// Returns the latest lifecycle error.
+	fn status(self) -> AppCoreResult<String> { let status = mochios_document_controller_status(self.raw) if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<String> { status: status, value: null } } return AppCoreResult<String> { status: status, value: __appCoreLastString() } }
+	// Clears the latest lifecycle error.
+	fn clearStatus(self) -> i32 { return mochios_document_controller_clear_status(self.raw) }
+	// Releases the native controller.
+	fn close(self) { mochios_document_controller_destroy(self.raw) }
+}

@@ -1329,6 +1329,304 @@ pub struct UndoManagerHandle {
     actions: Rc<RefCell<VecDeque<u64>>>,
 }
 
+const DOCUMENT_ACTION_OPEN: u64 = 1;
+const DOCUMENT_ACTION_SAVE: u64 = 2;
+const DOCUMENT_ACTION_SAVE_AS: u64 = 3;
+const DOCUMENT_ACTION_REVERT: u64 = 4;
+const DOCUMENT_ACTION_CLOSE: u64 = 5;
+
+/// Mutable document lifecycle state exposed to Kome applications.
+pub struct DocumentControllerHandle {
+    display_name: String,
+    path: Option<PathBuf>,
+    file_type: String,
+    encoding: String,
+    writable: bool,
+    current_revision: u64,
+    saved_revision: u64,
+    status: Option<String>,
+    actions: VecDeque<u64>,
+}
+
+/// Creates a document controller from its initial metadata and revision.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn mochios_document_controller_create_utf8(
+    display_name_data: *const u8,
+    display_name_length: usize,
+    path_data: *const u8,
+    path_length: usize,
+    file_type_data: *const u8,
+    file_type_length: usize,
+    encoding_data: *const u8,
+    encoding_length: usize,
+    writable: u8,
+    revision: u64,
+) -> *mut DocumentControllerHandle {
+    ffi_pointer(|| {
+        let read = |data, length| unsafe {
+            string(StringView {
+                data,
+                length: length as u64,
+            })
+        };
+        let display_name = read(display_name_data, display_name_length)?;
+        let path = read(path_data, path_length)?;
+        let file_type = read(file_type_data, file_type_length)?;
+        let encoding = read(encoding_data, encoding_length)?;
+        if display_name.is_empty() || file_type.is_empty() || encoding.is_empty() {
+            return Err(Status::InvalidArgument);
+        }
+        Ok(DocumentControllerHandle {
+            display_name: display_name.to_owned(),
+            path: (!path.is_empty()).then(|| PathBuf::from(path)),
+            file_type: file_type.to_owned(),
+            encoding: encoding.to_owned(),
+            writable: writable != 0,
+            current_revision: revision,
+            saved_revision: revision,
+            status: None,
+            actions: VecDeque::new(),
+        })
+    })
+}
+
+/// Updates the application-owned document revision.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_document_controller_set_revision(
+    controller: *mut DocumentControllerHandle,
+    revision: u64,
+) -> i32 {
+    ffi_status(|| {
+        unsafe { controller.as_mut() }
+            .ok_or(Status::NullPointer)?
+            .current_revision = revision;
+        Ok(())
+    })
+}
+
+/// Returns whether the current revision differs from the saved revision.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_document_controller_is_edited(
+    controller: *const DocumentControllerHandle,
+) -> u8 {
+    unsafe { controller.as_ref() }
+        .is_some_and(|value| value.current_revision != value.saved_revision) as u8
+}
+
+fn queue_document_action(controller: *mut DocumentControllerHandle, action: u64) -> i32 {
+    ffi_status(|| {
+        let controller = unsafe { controller.as_mut() }.ok_or(Status::NullPointer)?;
+        controller.actions.push_back(action);
+        Ok(())
+    })
+}
+
+/// Requests that the application open another document.
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_document_controller_open(
+    controller: *mut DocumentControllerHandle,
+) -> i32 {
+    queue_document_action(controller, DOCUMENT_ACTION_OPEN)
+}
+
+/// Requests that the application save the current document.
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_document_controller_save(
+    controller: *mut DocumentControllerHandle,
+) -> i32 {
+    let action = unsafe { controller.as_ref() }
+        .map(|value| {
+            if value.path.is_some() && value.writable {
+                DOCUMENT_ACTION_SAVE
+            } else {
+                DOCUMENT_ACTION_SAVE_AS
+            }
+        })
+        .unwrap_or(DOCUMENT_ACTION_SAVE);
+    queue_document_action(controller, action)
+}
+
+/// Requests that the application choose a new save destination.
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_document_controller_save_as(
+    controller: *mut DocumentControllerHandle,
+) -> i32 {
+    queue_document_action(controller, DOCUMENT_ACTION_SAVE_AS)
+}
+
+/// Requests that the application reload the current document path.
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_document_controller_revert(
+    controller: *mut DocumentControllerHandle,
+) -> i32 {
+    queue_document_action(controller, DOCUMENT_ACTION_REVERT)
+}
+
+/// Requests close immediately when clean or queues confirmation when edited.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_document_controller_request_close(
+    controller: *mut DocumentControllerHandle,
+) -> i32 {
+    ffi_status(|| {
+        let controller = unsafe { controller.as_mut() }.ok_or(Status::NullPointer)?;
+        let may_close = controller.current_revision == controller.saved_revision;
+        if !may_close {
+            controller.actions.push_back(DOCUMENT_ACTION_CLOSE);
+        }
+        remember_u64(may_close as u64);
+        Ok(())
+    })
+}
+
+/// Takes the next lifecycle action requested by the controller.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_document_controller_take_action(
+    controller: *mut DocumentControllerHandle,
+) -> i32 {
+    ffi_status(|| {
+        let action = unsafe { controller.as_mut() }
+            .ok_or(Status::NullPointer)?
+            .actions
+            .pop_front();
+        LAST_RESULT_PRESENT.with(|slot| slot.set(action.is_some() as u8));
+        remember_u64(action.unwrap_or_default());
+        Ok(())
+    })
+}
+
+/// Completes an open, save, save-as, or revert action successfully.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn mochios_document_controller_complete_utf8(
+    controller: *mut DocumentControllerHandle,
+    display_name_data: *const u8,
+    display_name_length: usize,
+    path_data: *const u8,
+    path_length: usize,
+    file_type_data: *const u8,
+    file_type_length: usize,
+    encoding_data: *const u8,
+    encoding_length: usize,
+    writable: u8,
+    revision: u64,
+) -> i32 {
+    ffi_status(|| {
+        let read = |data, length| unsafe {
+            string(StringView {
+                data,
+                length: length as u64,
+            })
+        };
+        let display_name = read(display_name_data, display_name_length)?;
+        let path = read(path_data, path_length)?;
+        let file_type = read(file_type_data, file_type_length)?;
+        let encoding = read(encoding_data, encoding_length)?;
+        if display_name.is_empty() || file_type.is_empty() || encoding.is_empty() {
+            return Err(Status::InvalidArgument);
+        }
+        let controller = unsafe { controller.as_mut() }.ok_or(Status::NullPointer)?;
+        controller.display_name = display_name.to_owned();
+        controller.path = (!path.is_empty()).then(|| PathBuf::from(path));
+        controller.file_type = file_type.to_owned();
+        controller.encoding = encoding.to_owned();
+        controller.writable = writable != 0;
+        controller.current_revision = revision;
+        controller.saved_revision = revision;
+        controller.status = None;
+        Ok(())
+    })
+}
+
+/// Completes the current lifecycle action with an application error message.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_document_controller_fail_utf8(
+    controller: *mut DocumentControllerHandle,
+    message_data: *const u8,
+    message_length: usize,
+) -> i32 {
+    ffi_status(|| {
+        let message = unsafe {
+            string(StringView {
+                data: message_data,
+                length: message_length as u64,
+            })?
+        };
+        if message.is_empty() {
+            return Err(Status::InvalidArgument);
+        }
+        unsafe { controller.as_mut() }
+            .ok_or(Status::NullPointer)?
+            .status = Some(message.to_owned());
+        Ok(())
+    })
+}
+
+macro_rules! document_string_getter {
+    ($name:ident, $field:ident) => {
+        #[doc = "Stores one document metadata string in the thread-local result buffer."]
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn $name(controller: *const DocumentControllerHandle) -> i32 {
+            ffi_status(|| {
+                let controller = unsafe { controller.as_ref() }.ok_or(Status::NullPointer)?;
+                remember_string(Some(&controller.$field));
+                Ok(())
+            })
+        }
+    };
+}
+
+document_string_getter!(mochios_document_controller_display_name, display_name);
+document_string_getter!(mochios_document_controller_file_type, file_type);
+document_string_getter!(mochios_document_controller_encoding, encoding);
+
+/// Stores the optional current document path in the result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_document_controller_path(
+    controller: *const DocumentControllerHandle,
+) -> i32 {
+    ffi_status(|| {
+        let controller = unsafe { controller.as_ref() }.ok_or(Status::NullPointer)?;
+        remember_string(controller.path.as_deref().and_then(|path| path.to_str()));
+        Ok(())
+    })
+}
+
+/// Stores the optional lifecycle error in the result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_document_controller_status(
+    controller: *const DocumentControllerHandle,
+) -> i32 {
+    ffi_status(|| {
+        let controller = unsafe { controller.as_ref() }.ok_or(Status::NullPointer)?;
+        remember_string(controller.status.as_deref());
+        Ok(())
+    })
+}
+
+/// Clears the current lifecycle error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_document_controller_clear_status(
+    controller: *mut DocumentControllerHandle,
+) -> i32 {
+    ffi_status(|| {
+        unsafe { controller.as_mut() }
+            .ok_or(Status::NullPointer)?
+            .status = None;
+        Ok(())
+    })
+}
+
+/// Destroys a document controller.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_document_controller_destroy(
+    controller: *mut DocumentControllerHandle,
+) {
+    if !controller.is_null() {
+        drop(unsafe { Box::from_raw(controller) });
+    }
+}
+
 /// Creates an empty undo manager.
 #[unsafe(no_mangle)]
 pub extern "C" fn mochios_undo_manager_create() -> *mut UndoManagerHandle {
@@ -1846,5 +2144,55 @@ mod tests {
         assert_eq!(unsafe { mochios_undo_manager_take_action(manager) }, 0);
         assert_eq!(mochios_last_result_u64(), 42);
         unsafe { mochios_undo_manager_destroy(manager) };
+    }
+
+    #[test]
+    fn document_controller_tracks_revisions_and_actions() {
+        let controller = unsafe {
+            mochios_document_controller_create_utf8(
+                b"Untitled".as_ptr(),
+                8,
+                ptr::null(),
+                0,
+                b"text/plain".as_ptr(),
+                10,
+                b"utf-8".as_ptr(),
+                5,
+                1,
+                1,
+            )
+        };
+        assert!(!controller.is_null());
+        assert_eq!(
+            unsafe { mochios_document_controller_is_edited(controller) },
+            0
+        );
+        assert_eq!(
+            unsafe { mochios_document_controller_set_revision(controller, 2) },
+            0
+        );
+        assert_eq!(
+            unsafe { mochios_document_controller_is_edited(controller) },
+            1
+        );
+
+        assert_eq!(mochios_document_controller_save(controller), 0);
+        assert_eq!(
+            unsafe { mochios_document_controller_take_action(controller) },
+            0
+        );
+        assert_eq!(mochios_last_result_u64(), DOCUMENT_ACTION_SAVE_AS);
+
+        assert_eq!(
+            unsafe { mochios_document_controller_request_close(controller) },
+            0
+        );
+        assert_eq!(mochios_last_result_u64(), 0);
+        assert_eq!(
+            unsafe { mochios_document_controller_take_action(controller) },
+            0
+        );
+        assert_eq!(mochios_last_result_u64(), DOCUMENT_ACTION_CLOSE);
+        unsafe { mochios_document_controller_destroy(controller) };
     }
 }

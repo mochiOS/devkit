@@ -41,6 +41,7 @@ typedef struct MochiosRecoveryRecord MochiosRecoveryRecord;
 typedef struct MochiosSessionStore MochiosSessionStore;
 typedef struct MochiosApplicationSession MochiosApplicationSession;
 typedef struct MochiosUndoManager MochiosUndoManager;
+typedef struct MochiosDocumentController MochiosDocumentController;
 
 #ifdef __cplusplus
 extern "C" {
@@ -136,6 +137,24 @@ int32_t mochios_undo_manager_set_levels(MochiosUndoManager *manager, size_t leve
 size_t mochios_undo_manager_grouping_level(const MochiosUndoManager *manager);
 int32_t mochios_undo_manager_take_action(MochiosUndoManager *manager);
 void mochios_undo_manager_destroy(MochiosUndoManager *manager);
+MochiosDocumentController *mochios_document_controller_create_utf8(const uint8_t *display_name_data, size_t display_name_length, const uint8_t *path_data, size_t path_length, const uint8_t *file_type_data, size_t file_type_length, const uint8_t *encoding_data, size_t encoding_length, uint8_t writable, uint64_t revision);
+int32_t mochios_document_controller_set_revision(MochiosDocumentController *controller, uint64_t revision);
+uint8_t mochios_document_controller_is_edited(const MochiosDocumentController *controller);
+int32_t mochios_document_controller_open(MochiosDocumentController *controller);
+int32_t mochios_document_controller_save(MochiosDocumentController *controller);
+int32_t mochios_document_controller_save_as(MochiosDocumentController *controller);
+int32_t mochios_document_controller_revert(MochiosDocumentController *controller);
+int32_t mochios_document_controller_request_close(MochiosDocumentController *controller);
+int32_t mochios_document_controller_take_action(MochiosDocumentController *controller);
+int32_t mochios_document_controller_complete_utf8(MochiosDocumentController *controller, const uint8_t *display_name_data, size_t display_name_length, const uint8_t *path_data, size_t path_length, const uint8_t *file_type_data, size_t file_type_length, const uint8_t *encoding_data, size_t encoding_length, uint8_t writable, uint64_t revision);
+int32_t mochios_document_controller_fail_utf8(MochiosDocumentController *controller, const uint8_t *message_data, size_t message_length);
+int32_t mochios_document_controller_display_name(const MochiosDocumentController *controller);
+int32_t mochios_document_controller_path(const MochiosDocumentController *controller);
+int32_t mochios_document_controller_file_type(const MochiosDocumentController *controller);
+int32_t mochios_document_controller_encoding(const MochiosDocumentController *controller);
+int32_t mochios_document_controller_status(const MochiosDocumentController *controller);
+int32_t mochios_document_controller_clear_status(MochiosDocumentController *controller);
+void mochios_document_controller_destroy(MochiosDocumentController *controller);
 int32_t mochios_application_request_exit(void);
 int32_t mochios_application_request_close_key_window(void);
 int32_t mochios_application_request_quit(void);
