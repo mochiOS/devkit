@@ -40,6 +40,7 @@ typedef struct MochiosRecoveryStore MochiosRecoveryStore;
 typedef struct MochiosRecoveryRecord MochiosRecoveryRecord;
 typedef struct MochiosSessionStore MochiosSessionStore;
 typedef struct MochiosApplicationSession MochiosApplicationSession;
+typedef struct MochiosUndoManager MochiosUndoManager;
 
 #ifdef __cplusplus
 extern "C" {
@@ -119,6 +120,22 @@ size_t mochios_application_session_window_count(const MochiosApplicationSession 
 int32_t mochios_session_store_clear(MochiosSessionStore *store);
 void mochios_application_session_destroy(MochiosApplicationSession *session);
 void mochios_session_store_destroy(MochiosSessionStore *store);
+MochiosUndoManager *mochios_undo_manager_create(void);
+int32_t mochios_undo_manager_begin_group_utf8(MochiosUndoManager *manager, const uint8_t *name_data, size_t name_length);
+int32_t mochios_undo_manager_end_group(MochiosUndoManager *manager);
+int32_t mochios_undo_manager_set_action_name_utf8(MochiosUndoManager *manager, const uint8_t *name_data, size_t name_length);
+int32_t mochios_undo_manager_register_utf8(MochiosUndoManager *manager, const uint8_t *name_data, size_t name_length, uint64_t undo_action, uint64_t redo_action);
+uint8_t mochios_undo_manager_can_undo(const MochiosUndoManager *manager);
+uint8_t mochios_undo_manager_can_redo(const MochiosUndoManager *manager);
+int32_t mochios_undo_manager_undo_action_name(const MochiosUndoManager *manager);
+int32_t mochios_undo_manager_redo_action_name(const MochiosUndoManager *manager);
+int32_t mochios_undo_manager_undo(MochiosUndoManager *manager);
+int32_t mochios_undo_manager_redo(MochiosUndoManager *manager);
+int32_t mochios_undo_manager_remove_all(MochiosUndoManager *manager);
+int32_t mochios_undo_manager_set_levels(MochiosUndoManager *manager, size_t levels);
+size_t mochios_undo_manager_grouping_level(const MochiosUndoManager *manager);
+int32_t mochios_undo_manager_take_action(MochiosUndoManager *manager);
+void mochios_undo_manager_destroy(MochiosUndoManager *manager);
 int32_t mochios_application_request_exit(void);
 int32_t mochios_application_request_close_key_window(void);
 int32_t mochios_application_request_quit(void);

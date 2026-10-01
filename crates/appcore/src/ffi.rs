@@ -6,9 +6,9 @@
 //! ever crosses the ABI boundary.
 
 use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
-#[cfg(feature = "ui")]
 use std::rc::Rc;
 use std::{ptr, slice, str};
 
@@ -1323,6 +1323,212 @@ pub struct SessionStoreHandle(crate::SessionStore);
 /// Owned application session used by Kome.
 pub struct ApplicationSessionHandle(crate::ApplicationSession);
 
+/// Native undo manager exposed through the stable C ABI.
+pub struct UndoManagerHandle {
+    manager: crate::UndoManager,
+    actions: Rc<RefCell<VecDeque<u64>>>,
+}
+
+/// Creates an empty undo manager.
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_undo_manager_create() -> *mut UndoManagerHandle {
+    ffi_pointer(|| {
+        Ok(UndoManagerHandle {
+            manager: crate::UndoManager::new(),
+            actions: Rc::new(RefCell::new(VecDeque::new())),
+        })
+    })
+}
+
+/// Starts an atomic undo group.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_undo_manager_begin_group_utf8(
+    manager: *mut UndoManagerHandle,
+    name_data: *const u8,
+    name_length: usize,
+) -> i32 {
+    ffi_status(|| {
+        let manager = unsafe { manager.as_ref() }.ok_or(Status::NullPointer)?;
+        let name = unsafe {
+            string(StringView {
+                data: name_data,
+                length: name_length as u64,
+            })?
+        };
+        manager.manager.begin_group(name);
+        Ok(())
+    })
+}
+
+/// Finishes the current undo group and remembers whether one was open.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_undo_manager_end_group(manager: *mut UndoManagerHandle) -> i32 {
+    ffi_status(|| {
+        let manager = unsafe { manager.as_ref() }.ok_or(Status::NullPointer)?;
+        remember_u64(manager.manager.end_group() as u64);
+        Ok(())
+    })
+}
+
+/// Changes the name of the currently open undo group.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_undo_manager_set_action_name_utf8(
+    manager: *mut UndoManagerHandle,
+    name_data: *const u8,
+    name_length: usize,
+) -> i32 {
+    ffi_status(|| {
+        let manager = unsafe { manager.as_ref() }.ok_or(Status::NullPointer)?;
+        let name = unsafe {
+            string(StringView {
+                data: name_data,
+                length: name_length as u64,
+            })?
+        };
+        manager.manager.set_action_name(name);
+        Ok(())
+    })
+}
+
+/// Registers one reversible action using application-owned action tokens.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_undo_manager_register_utf8(
+    manager: *mut UndoManagerHandle,
+    name_data: *const u8,
+    name_length: usize,
+    undo_action: u64,
+    redo_action: u64,
+) -> i32 {
+    ffi_status(|| {
+        let manager = unsafe { manager.as_ref() }.ok_or(Status::NullPointer)?;
+        let name = unsafe {
+            string(StringView {
+                data: name_data,
+                length: name_length as u64,
+            })?
+        };
+        let undo_actions = Rc::clone(&manager.actions);
+        let redo_actions = Rc::clone(&manager.actions);
+        manager.manager.register(
+            name,
+            move || undo_actions.borrow_mut().push_back(undo_action),
+            move || redo_actions.borrow_mut().push_back(redo_action),
+        );
+        Ok(())
+    })
+}
+
+/// Returns whether an undo operation is available.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_undo_manager_can_undo(manager: *const UndoManagerHandle) -> u8 {
+    unsafe { manager.as_ref() }.is_some_and(|manager| manager.manager.can_undo()) as u8
+}
+
+/// Returns whether a redo operation is available.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_undo_manager_can_redo(manager: *const UndoManagerHandle) -> u8 {
+    unsafe { manager.as_ref() }.is_some_and(|manager| manager.manager.can_redo()) as u8
+}
+
+/// Stores the current undo action name in the thread-local result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_undo_manager_undo_action_name(
+    manager: *const UndoManagerHandle,
+) -> i32 {
+    ffi_status(|| {
+        let manager = unsafe { manager.as_ref() }.ok_or(Status::NullPointer)?;
+        remember_string(manager.manager.undo_action_name().as_deref());
+        Ok(())
+    })
+}
+
+/// Stores the current redo action name in the thread-local result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_undo_manager_redo_action_name(
+    manager: *const UndoManagerHandle,
+) -> i32 {
+    ffi_status(|| {
+        let manager = unsafe { manager.as_ref() }.ok_or(Status::NullPointer)?;
+        remember_string(manager.manager.redo_action_name().as_deref());
+        Ok(())
+    })
+}
+
+/// Performs the latest undo operation and remembers whether it ran.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_undo_manager_undo(manager: *mut UndoManagerHandle) -> i32 {
+    ffi_status(|| {
+        let manager = unsafe { manager.as_ref() }.ok_or(Status::NullPointer)?;
+        remember_u64(manager.manager.undo() as u64);
+        Ok(())
+    })
+}
+
+/// Performs the latest redo operation and remembers whether it ran.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_undo_manager_redo(manager: *mut UndoManagerHandle) -> i32 {
+    ffi_status(|| {
+        let manager = unsafe { manager.as_ref() }.ok_or(Status::NullPointer)?;
+        remember_u64(manager.manager.redo() as u64);
+        Ok(())
+    })
+}
+
+/// Removes all undo and redo history.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_undo_manager_remove_all(manager: *mut UndoManagerHandle) -> i32 {
+    ffi_status(|| {
+        unsafe { manager.as_ref() }
+            .ok_or(Status::NullPointer)?
+            .manager
+            .remove_all_actions();
+        Ok(())
+    })
+}
+
+/// Sets the maximum number of committed undo groups.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_undo_manager_set_levels(
+    manager: *mut UndoManagerHandle,
+    levels: usize,
+) -> i32 {
+    ffi_status(|| {
+        unsafe { manager.as_ref() }
+            .ok_or(Status::NullPointer)?
+            .manager
+            .set_levels_of_undo(levels);
+        Ok(())
+    })
+}
+
+/// Returns the current nested undo grouping level.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_undo_manager_grouping_level(
+    manager: *const UndoManagerHandle,
+) -> usize {
+    unsafe { manager.as_ref() }.map_or(0, |manager| manager.manager.grouping_level())
+}
+
+/// Takes the next action token emitted by undo or redo.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_undo_manager_take_action(manager: *mut UndoManagerHandle) -> i32 {
+    ffi_status(|| {
+        let manager = unsafe { manager.as_ref() }.ok_or(Status::NullPointer)?;
+        let action = manager.actions.borrow_mut().pop_front();
+        LAST_RESULT_PRESENT.with(|slot| slot.set(action.is_some() as u8));
+        remember_u64(action.unwrap_or_default());
+        Ok(())
+    })
+}
+
+/// Destroys an undo manager.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_undo_manager_destroy(manager: *mut UndoManagerHandle) {
+    if !manager.is_null() {
+        drop(unsafe { Box::from_raw(manager) });
+    }
+}
+
 /// Creates a session store for a UTF-8 path.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mochios_session_store_create_utf8(
@@ -1618,5 +1824,27 @@ mod tests {
             unsafe { mochios_clipboard_set_text_utf8(invalid.as_ptr(), invalid.len()) },
             Status::InvalidUtf8 as i32
         );
+    }
+
+    #[test]
+    fn undo_manager_emits_application_action_tokens() {
+        let manager = mochios_undo_manager_create();
+        assert!(!manager.is_null());
+        assert_eq!(
+            unsafe { mochios_undo_manager_register_utf8(manager, b"Typing".as_ptr(), 6, 41, 42) },
+            Status::Ok as i32
+        );
+        assert_eq!(unsafe { mochios_undo_manager_can_undo(manager) }, 1);
+
+        assert_eq!(unsafe { mochios_undo_manager_undo(manager) }, 0);
+        assert_eq!(mochios_last_result_u64(), 1);
+        assert_eq!(unsafe { mochios_undo_manager_take_action(manager) }, 0);
+        assert_eq!(mochios_last_result_has_value(), 1);
+        assert_eq!(mochios_last_result_u64(), 41);
+
+        assert_eq!(unsafe { mochios_undo_manager_redo(manager) }, 0);
+        assert_eq!(unsafe { mochios_undo_manager_take_action(manager) }, 0);
+        assert_eq!(mochios_last_result_u64(), 42);
+        unsafe { mochios_undo_manager_destroy(manager) };
     }
 }
