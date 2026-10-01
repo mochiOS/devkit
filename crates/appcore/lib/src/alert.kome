@@ -1,1 +1,50 @@
-// Kome bindings for AppCore alerts.
+extern "C" from "appcore" {
+	struct MochiosAlert
+
+	// Creates an application alert.
+	fn mochios_alert_create() -> *mut MochiosAlert
+
+	// Presents an error in the alert window.
+	fn mochios_alert_present_error_utf8(alert: *mut MochiosAlert, titleData: *const u8, titleLength: usize, messageData: *const u8, messageLength: usize) -> i32
+
+	// Dismisses the alert window.
+	fn mochios_alert_dismiss(alert: *mut MochiosAlert) -> i32
+
+	// Returns whether the alert window is visible.
+	fn mochios_alert_is_visible(alert: *mut MochiosAlert) -> u8
+
+	// Destroys an application alert.
+	fn mochios_alert_destroy(alert: *mut MochiosAlert)
+}
+
+// A standard, application-modal error alert.
+struct Alert {
+	raw: *mut MochiosAlert,
+}
+
+for Alert {
+	// Creates an application alert.
+	fn make() -> Alert {
+		return Alert { raw: mochios_alert_create() }
+	}
+
+	// Presents an error, replacing any currently presented error.
+	fn presentError(self, title: String, message: String) -> i32 {
+		return mochios_alert_present_error_utf8(self.raw, __kome_string_data(title), __kome_string_len(title), __kome_string_data(message), __kome_string_len(message))
+	}
+
+	// Dismisses the alert.
+	fn dismiss(self) -> i32 {
+		return mochios_alert_dismiss(self.raw)
+	}
+
+	// Returns whether the alert is visible.
+	fn isVisible(self) -> bool {
+		return mochios_alert_is_visible(self.raw) != 0
+	}
+
+	// Releases the native alert.
+	fn close(self) {
+		mochios_alert_destroy(self.raw)
+	}
+}

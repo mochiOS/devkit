@@ -1,1 +1,132 @@
-// Kome bindings for AppCore open and save panels.
+extern "C" from "appcore" {
+	struct MochiosOpenPanel
+	struct MochiosSavePanel
+
+	// Creates an open panel.
+	fn mochios_open_panel_create_utf8(titleData: *const u8, titleLength: usize, initialData: *const u8, initialLength: usize, rootData: *const u8, rootLength: usize) -> *mut MochiosOpenPanel
+	fn mochios_open_panel_show(panel: *mut MochiosOpenPanel) -> i32
+	fn mochios_open_panel_is_visible(panel: *mut MochiosOpenPanel) -> u8
+	fn mochios_open_panel_take_selection(panel: *mut MochiosOpenPanel) -> i32
+	fn mochios_open_panel_take_cancelled(panel: *mut MochiosOpenPanel) -> u8
+	fn mochios_open_panel_destroy(panel: *mut MochiosOpenPanel)
+
+	// Creates a save panel.
+	fn mochios_save_panel_create_utf8(titleData: *const u8, titleLength: usize, suggestedData: *const u8, suggestedLength: usize, initialData: *const u8, initialLength: usize, rootData: *const u8, rootLength: usize, confirmsReplacement: bool) -> *mut MochiosSavePanel
+	fn mochios_save_panel_show(panel: *mut MochiosSavePanel) -> i32
+	fn mochios_save_panel_is_visible(panel: *mut MochiosSavePanel) -> u8
+	fn mochios_save_panel_take_selection(panel: *mut MochiosSavePanel) -> i32
+	fn mochios_save_panel_take_cancelled(panel: *mut MochiosSavePanel) -> u8
+	fn mochios_save_panel_destroy(panel: *mut MochiosSavePanel)
+}
+
+// Configuration used when creating an open panel.
+struct OpenPanelOptions {
+	title: String,
+	initialDirectory: String,
+	rootDirectory: String,
+}
+
+for OpenPanelOptions {
+	// Returns the standard open-panel configuration.
+	fn defaults() -> OpenPanelOptions {
+		return OpenPanelOptions { title: "Open", initialDirectory: "", rootDirectory: "" }
+	}
+}
+
+// A workspace-owned document open panel.
+struct OpenPanel {
+	raw: *mut MochiosOpenPanel,
+}
+
+for OpenPanel {
+	// Creates an open panel.
+	fn make(options: OpenPanelOptions) -> OpenPanel {
+		return OpenPanel { raw: mochios_open_panel_create_utf8(__kome_string_data(options.title), __kome_string_len(options.title), __kome_string_data(options.initialDirectory), __kome_string_len(options.initialDirectory), __kome_string_data(options.rootDirectory), __kome_string_len(options.rootDirectory)) }
+	}
+
+	// Presents the panel.
+	fn show(self) -> i32 {
+		return mochios_open_panel_show(self.raw)
+	}
+
+	// Returns whether the panel is visible.
+	fn isVisible(self) -> bool {
+		return mochios_open_panel_is_visible(self.raw) != 0
+	}
+
+	// Takes the most recent selected path.
+	fn takeSelection(self) -> AppCoreResult<String> {
+		let status = mochios_open_panel_take_selection(self.raw)
+		if status != 0 || mochios_last_result_has_value() == 0 {
+			return AppCoreResult<String> { status: status, value: null }
+		}
+		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
+	}
+
+	// Returns and clears the user-cancellation flag.
+	fn takeCancelled(self) -> bool {
+		return mochios_open_panel_take_cancelled(self.raw) != 0
+	}
+
+	// Releases the native panel.
+	fn close(self) {
+		mochios_open_panel_destroy(self.raw)
+	}
+}
+
+// Configuration used when creating a save panel.
+struct SavePanelOptions {
+	title: String,
+	suggestedName: String,
+	initialDirectory: String,
+	rootDirectory: String,
+	confirmsReplacement: bool,
+}
+
+for SavePanelOptions {
+	// Returns the standard save-panel configuration.
+	fn defaults() -> SavePanelOptions {
+		return SavePanelOptions { title: "Save As", suggestedName: "Untitled", initialDirectory: "", rootDirectory: "", confirmsReplacement: true }
+	}
+}
+
+// A workspace-owned document save panel.
+struct SavePanel {
+	raw: *mut MochiosSavePanel,
+}
+
+for SavePanel {
+	// Creates a save panel.
+	fn make(options: SavePanelOptions) -> SavePanel {
+		return SavePanel { raw: mochios_save_panel_create_utf8(__kome_string_data(options.title), __kome_string_len(options.title), __kome_string_data(options.suggestedName), __kome_string_len(options.suggestedName), __kome_string_data(options.initialDirectory), __kome_string_len(options.initialDirectory), __kome_string_data(options.rootDirectory), __kome_string_len(options.rootDirectory), options.confirmsReplacement) }
+	}
+
+	// Presents the panel.
+	fn show(self) -> i32 {
+		return mochios_save_panel_show(self.raw)
+	}
+
+	// Returns whether the panel is visible.
+	fn isVisible(self) -> bool {
+		return mochios_save_panel_is_visible(self.raw) != 0
+	}
+
+	// Takes the most recent selected path.
+	fn takeSelection(self) -> AppCoreResult<String> {
+		let status = mochios_save_panel_take_selection(self.raw)
+		if status != 0 || mochios_last_result_has_value() == 0 {
+			return AppCoreResult<String> { status: status, value: null }
+		}
+		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
+	}
+
+	// Returns and clears the user-cancellation flag.
+	fn takeCancelled(self) -> bool {
+		return mochios_save_panel_take_cancelled(self.raw) != 0
+	}
+
+	// Releases the native panel.
+	fn close(self) {
+		mochios_save_panel_destroy(self.raw)
+	}
+}

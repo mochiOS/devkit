@@ -32,12 +32,18 @@ typedef struct MochiosMutableBuffer {
     uint64_t capacity;
 } MochiosMutableBuffer;
 
+typedef struct MochiosControlCenterItem MochiosControlCenterItem;
+typedef struct MochiosAlert MochiosAlert;
+typedef struct MochiosOpenPanel MochiosOpenPanel;
+typedef struct MochiosSavePanel MochiosSavePanel;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 uint32_t mochios_abi_version(void);
 int64_t mochios_last_system_error(void);
+int32_t mochios_last_status(void);
 MochiosStringView mochios_status_name(int32_t status);
 uint8_t mochios_last_result_has_value(void);
 const uint8_t *mochios_last_result_string_data(void);
@@ -67,6 +73,28 @@ int32_t mochios_document_open_with(MochiosStringView path, MochiosStringView con
 int32_t mochios_document_open_utf8(const uint8_t *path_data, size_t path_length, const uint8_t *content_type_data, size_t content_type_length, uint16_t role_bits);
 int32_t mochios_document_open_with_utf8(const uint8_t *path_data, size_t path_length, const uint8_t *content_type_data, size_t content_type_length, const uint8_t *bundle_id_data, size_t bundle_id_length, uint16_t role_bits);
 int32_t mochios_notification_deliver_utf8(const uint8_t *bundle_id_data, size_t bundle_id_length, const uint8_t *title_data, size_t title_length, const uint8_t *body_data, size_t body_length);
+MochiosControlCenterItem *mochios_control_center_item_create_utf8(const uint8_t *bundle_id_data, size_t bundle_id_length, const uint8_t *item_id_data, size_t item_id_length);
+int32_t mochios_control_center_item_set_title_utf8(MochiosControlCenterItem *item, const uint8_t *data, size_t length);
+int32_t mochios_control_center_item_add_row_utf8(MochiosControlCenterItem *item, const uint8_t *label_data, size_t label_length, const uint8_t *value_data, size_t value_length);
+int32_t mochios_control_center_item_publish(MochiosControlCenterItem *item);
+void mochios_control_center_item_destroy(MochiosControlCenterItem *item);
+MochiosAlert *mochios_alert_create(void);
+int32_t mochios_alert_present_error_utf8(MochiosAlert *alert, const uint8_t *title_data, size_t title_length, const uint8_t *message_data, size_t message_length);
+int32_t mochios_alert_dismiss(MochiosAlert *alert);
+uint8_t mochios_alert_is_visible(const MochiosAlert *alert);
+void mochios_alert_destroy(MochiosAlert *alert);
+MochiosOpenPanel *mochios_open_panel_create_utf8(const uint8_t *title_data, size_t title_length, const uint8_t *initial_data, size_t initial_length, const uint8_t *root_data, size_t root_length);
+int32_t mochios_open_panel_show(MochiosOpenPanel *panel);
+uint8_t mochios_open_panel_is_visible(const MochiosOpenPanel *panel);
+int32_t mochios_open_panel_take_selection(MochiosOpenPanel *panel);
+uint8_t mochios_open_panel_take_cancelled(MochiosOpenPanel *panel);
+void mochios_open_panel_destroy(MochiosOpenPanel *panel);
+MochiosSavePanel *mochios_save_panel_create_utf8(const uint8_t *title_data, size_t title_length, const uint8_t *suggested_data, size_t suggested_length, const uint8_t *initial_data, size_t initial_length, const uint8_t *root_data, size_t root_length, uint8_t confirms_replacement);
+int32_t mochios_save_panel_show(MochiosSavePanel *panel);
+uint8_t mochios_save_panel_is_visible(const MochiosSavePanel *panel);
+int32_t mochios_save_panel_take_selection(MochiosSavePanel *panel);
+uint8_t mochios_save_panel_take_cancelled(MochiosSavePanel *panel);
+void mochios_save_panel_destroy(MochiosSavePanel *panel);
 int32_t mochios_application_request_exit(void);
 int32_t mochios_application_request_close_key_window(void);
 int32_t mochios_application_request_quit(void);

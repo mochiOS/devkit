@@ -4,6 +4,9 @@ extern "C" from "appcore" {
 
 	// Returns the native system error saved by the latest failed call.
 	fn mochios_last_system_error() -> i64
+
+	// Returns the status produced by the latest AppCore ABI call.
+	fn mochios_last_status() -> i32
 }
 
 // Provides process-wide AppCore information.
@@ -18,5 +21,10 @@ for AppCore {
 	// Returns the native system error saved by the latest failed call.
 	fn lastSystemError() -> i64 {
 		return mochios_last_system_error()
+	}
+
+	// Returns the status produced by the latest AppCore operation.
+	fn lastStatus() -> i32 {
+		return mochios_last_status()
 	}
 }

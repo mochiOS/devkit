@@ -7,6 +7,10 @@
 
 use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
+#[cfg(feature = "ui")]
+use std::path::PathBuf;
+#[cfg(feature = "ui")]
+use std::rc::Rc;
 use std::{ptr, slice, str};
 
 use crate::document::AssociationRoles;
@@ -47,6 +51,7 @@ pub struct MutableBuffer {
 
 thread_local! {
     static LAST_SYSTEM_ERROR: Cell<i64> = const { Cell::new(0) };
+    static LAST_STATUS: Cell<i32> = const { Cell::new(Status::Ok as i32) };
     static LAST_RESULT_STRING: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
     static LAST_RESULT_PRESENT: Cell<u8> = const { Cell::new(0) };
     static LAST_RESULT_U64: Cell<u64> = const { Cell::new(0) };
@@ -70,9 +75,30 @@ fn map_error(error: Error) -> Status {
 
 fn ffi_status(operation: impl FnOnce() -> Result<(), Status>) -> i32 {
     remember_system_error(0);
-    catch_unwind(AssertUnwindSafe(operation))
+    let status = catch_unwind(AssertUnwindSafe(operation))
         .map(|result| result.map_or_else(|status| status as i32, |_| Status::Ok as i32))
-        .unwrap_or(Status::Panic as i32)
+        .unwrap_or(Status::Panic as i32);
+    LAST_STATUS.with(|slot| slot.set(status));
+    status
+}
+
+fn ffi_pointer<T>(operation: impl FnOnce() -> Result<T, Status>) -> *mut T {
+    remember_system_error(0);
+    let result = catch_unwind(AssertUnwindSafe(operation));
+    match result {
+        Ok(Ok(value)) => {
+            LAST_STATUS.with(|slot| slot.set(Status::Ok as i32));
+            Box::into_raw(Box::new(value))
+        }
+        Ok(Err(status)) => {
+            LAST_STATUS.with(|slot| slot.set(status as i32));
+            ptr::null_mut()
+        }
+        Err(_) => {
+            LAST_STATUS.with(|slot| slot.set(Status::Panic as i32));
+            ptr::null_mut()
+        }
+    }
 }
 
 fn remember_string(value: Option<&str>) {
@@ -137,6 +163,12 @@ pub extern "C" fn mochios_abi_version() -> u32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn mochios_last_system_error() -> i64 {
     LAST_SYSTEM_ERROR.with(Cell::get)
+}
+
+/// Returns the status produced by the latest AppCore ABI call on this thread.
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_last_status() -> i32 {
+    LAST_STATUS.with(Cell::get)
 }
 
 /// Returns whether the latest UTF-8 result contains a value.
@@ -646,6 +678,425 @@ pub unsafe extern "C" fn mochios_notification_deliver_utf8(
         remember_u64(identifier);
         Ok(())
     })
+}
+
+/// Mutable builder owned by the Kome Control Center wrapper.
+#[cfg(feature = "ui")]
+pub struct ControlCenterItemHandle {
+    bundle_id: String,
+    item_id: String,
+    title: String,
+    rows: Vec<(String, String)>,
+}
+
+/// Creates a Control Center item builder from UTF-8 identifiers.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_control_center_item_create_utf8(
+    bundle_id_data: *const u8,
+    bundle_id_length: usize,
+    item_id_data: *const u8,
+    item_id_length: usize,
+) -> *mut ControlCenterItemHandle {
+    ffi_pointer(|| {
+        Ok(ControlCenterItemHandle {
+            bundle_id: unsafe {
+                string(StringView {
+                    data: bundle_id_data,
+                    length: bundle_id_length as u64,
+                })?
+            }
+            .to_owned(),
+            item_id: unsafe {
+                string(StringView {
+                    data: item_id_data,
+                    length: item_id_length as u64,
+                })?
+            }
+            .to_owned(),
+            title: String::new(),
+            rows: Vec::new(),
+        })
+    })
+}
+
+/// Sets the title on a Control Center item builder.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_control_center_item_set_title_utf8(
+    handle: *mut ControlCenterItemHandle,
+    data: *const u8,
+    length: usize,
+) -> i32 {
+    ffi_status(|| {
+        let handle = unsafe { handle.as_mut() }.ok_or(Status::NullPointer)?;
+        handle.title = unsafe {
+            string(StringView {
+                data,
+                length: length as u64,
+            })?
+        }
+        .to_owned();
+        Ok(())
+    })
+}
+
+/// Appends a row to a Control Center item builder.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_control_center_item_add_row_utf8(
+    handle: *mut ControlCenterItemHandle,
+    label_data: *const u8,
+    label_length: usize,
+    value_data: *const u8,
+    value_length: usize,
+) -> i32 {
+    ffi_status(|| {
+        let handle = unsafe { handle.as_mut() }.ok_or(Status::NullPointer)?;
+        let label = unsafe {
+            string(StringView {
+                data: label_data,
+                length: label_length as u64,
+            })?
+        }
+        .to_owned();
+        let value = unsafe {
+            string(StringView {
+                data: value_data,
+                length: value_length as u64,
+            })?
+        }
+        .to_owned();
+        handle.rows.push((label, value));
+        Ok(())
+    })
+}
+
+/// Publishes the current Control Center item builder.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_control_center_item_publish(
+    handle: *mut ControlCenterItemHandle,
+) -> i32 {
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        let mut card = crate::ControlCenterCard::new(&handle.title);
+        for (label, value) in &handle.rows {
+            card = card.row(label, value);
+        }
+        crate::ControlCenterItem::register(&handle.bundle_id, &handle.item_id)
+            .card(card)
+            .publish()
+            .map_err(map_error)
+    })
+}
+
+/// Destroys a Control Center item builder.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_control_center_item_destroy(handle: *mut ControlCenterItemHandle) {
+    if !handle.is_null() {
+        drop(unsafe { Box::from_raw(handle) });
+    }
+}
+
+/// Owned AppCore alert used by the Kome wrapper.
+#[cfg(feature = "ui")]
+pub struct AlertHandle(crate::Alert);
+
+/// Creates an application alert.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_alert_create() -> *mut AlertHandle {
+    ffi_pointer(|| Ok(AlertHandle(crate::Alert::new())))
+}
+
+/// Presents an error using an application alert.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_alert_present_error_utf8(
+    handle: *mut AlertHandle,
+    title_data: *const u8,
+    title_length: usize,
+    message_data: *const u8,
+    message_length: usize,
+) -> i32 {
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        handle.0.present_error(
+            unsafe {
+                string(StringView {
+                    data: title_data,
+                    length: title_length as u64,
+                })?
+            },
+            unsafe {
+                string(StringView {
+                    data: message_data,
+                    length: message_length as u64,
+                })?
+            },
+        );
+        Ok(())
+    })
+}
+
+/// Dismisses an application alert.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_alert_dismiss(handle: *mut AlertHandle) -> i32 {
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        handle.0.dismiss();
+        Ok(())
+    })
+}
+
+/// Returns whether an application alert is visible.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_alert_is_visible(handle: *const AlertHandle) -> u8 {
+    unsafe { handle.as_ref() }.is_some_and(|handle| handle.0.is_visible()) as u8
+}
+
+/// Destroys an application alert.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_alert_destroy(handle: *mut AlertHandle) {
+    if !handle.is_null() {
+        drop(unsafe { Box::from_raw(handle) });
+    }
+}
+
+/// Owned open panel used by the Kome wrapper.
+#[cfg(feature = "ui")]
+pub struct OpenPanelHandle {
+    panel: crate::OpenPanel,
+    selected: Rc<RefCell<Option<String>>>,
+    cancelled: Rc<Cell<bool>>,
+}
+
+/// Creates an open panel from pointer-length UTF-8 options.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_open_panel_create_utf8(
+    title_data: *const u8,
+    title_length: usize,
+    initial_data: *const u8,
+    initial_length: usize,
+    root_data: *const u8,
+    root_length: usize,
+) -> *mut OpenPanelHandle {
+    ffi_pointer(|| {
+        let title = unsafe {
+            string(StringView {
+                data: title_data,
+                length: title_length as u64,
+            })?
+        };
+        let initial = unsafe {
+            string(StringView {
+                data: initial_data,
+                length: initial_length as u64,
+            })?
+        };
+        let root = unsafe {
+            string(StringView {
+                data: root_data,
+                length: root_length as u64,
+            })?
+        };
+        let selected = Rc::new(RefCell::new(None));
+        let selected_callback = Rc::clone(&selected);
+        let cancelled = Rc::new(Cell::new(false));
+        let cancelled_callback = Rc::clone(&cancelled);
+        let panel = crate::OpenPanel::new_with_cancel(
+            crate::OpenPanelOptions {
+                title: title.to_owned(),
+                initial_directory: (!initial.is_empty()).then(|| PathBuf::from(initial)),
+                root_directory: (!root.is_empty()).then(|| PathBuf::from(root)),
+                allowed_content_types: Vec::new(),
+            },
+            move |path| {
+                *selected_callback.borrow_mut() = Some(path.to_string_lossy().into_owned());
+                Ok(())
+            },
+            move || cancelled_callback.set(true),
+        );
+        Ok(OpenPanelHandle {
+            panel,
+            selected,
+            cancelled,
+        })
+    })
+}
+
+/// Presents an open panel.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_open_panel_show(handle: *mut OpenPanelHandle) -> i32 {
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        handle.panel.show();
+        Ok(())
+    })
+}
+
+/// Returns whether an open panel is visible.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_open_panel_is_visible(handle: *const OpenPanelHandle) -> u8 {
+    unsafe { handle.as_ref() }.is_some_and(|handle| handle.panel.is_visible()) as u8
+}
+
+/// Moves the latest open-panel selection into the UTF-8 result buffer.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_open_panel_take_selection(handle: *mut OpenPanelHandle) -> i32 {
+    remember_string(None);
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        let selected = handle.selected.borrow_mut().take();
+        remember_string(selected.as_deref());
+        Ok(())
+    })
+}
+
+/// Returns and clears the open panel's cancellation flag.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_open_panel_take_cancelled(handle: *mut OpenPanelHandle) -> u8 {
+    unsafe { handle.as_ref() }.is_some_and(|handle| handle.cancelled.replace(false)) as u8
+}
+
+/// Destroys an open panel.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_open_panel_destroy(handle: *mut OpenPanelHandle) {
+    if !handle.is_null() {
+        drop(unsafe { Box::from_raw(handle) });
+    }
+}
+
+/// Owned save panel used by the Kome wrapper.
+#[cfg(feature = "ui")]
+pub struct SavePanelHandle {
+    panel: crate::SavePanel,
+    selected: Rc<RefCell<Option<String>>>,
+    cancelled: Rc<Cell<bool>>,
+}
+
+/// Creates a save panel from pointer-length UTF-8 options.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_save_panel_create_utf8(
+    title_data: *const u8,
+    title_length: usize,
+    suggested_data: *const u8,
+    suggested_length: usize,
+    initial_data: *const u8,
+    initial_length: usize,
+    root_data: *const u8,
+    root_length: usize,
+    confirms_replacement: u8,
+) -> *mut SavePanelHandle {
+    ffi_pointer(|| {
+        let title = unsafe {
+            string(StringView {
+                data: title_data,
+                length: title_length as u64,
+            })?
+        };
+        let suggested_name = unsafe {
+            string(StringView {
+                data: suggested_data,
+                length: suggested_length as u64,
+            })?
+        };
+        let initial = unsafe {
+            string(StringView {
+                data: initial_data,
+                length: initial_length as u64,
+            })?
+        };
+        let root = unsafe {
+            string(StringView {
+                data: root_data,
+                length: root_length as u64,
+            })?
+        };
+        let selected = Rc::new(RefCell::new(None));
+        let selected_callback = Rc::clone(&selected);
+        let cancelled = Rc::new(Cell::new(false));
+        let cancelled_callback = Rc::clone(&cancelled);
+        let panel = crate::SavePanel::new_with_cancel(
+            crate::SavePanelOptions {
+                title: title.to_owned(),
+                suggested_name: suggested_name.to_owned(),
+                initial_directory: (!initial.is_empty()).then(|| PathBuf::from(initial)),
+                root_directory: (!root.is_empty()).then(|| PathBuf::from(root)),
+                confirms_replacement: confirms_replacement != 0,
+                allowed_content_types: Vec::new(),
+            },
+            move |path| {
+                *selected_callback.borrow_mut() = Some(path.to_string_lossy().into_owned());
+                Ok(())
+            },
+            move || cancelled_callback.set(true),
+        );
+        Ok(SavePanelHandle {
+            panel,
+            selected,
+            cancelled,
+        })
+    })
+}
+
+/// Presents a save panel.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_save_panel_show(handle: *mut SavePanelHandle) -> i32 {
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        handle.panel.show();
+        Ok(())
+    })
+}
+
+/// Returns whether a save panel is visible.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_save_panel_is_visible(handle: *const SavePanelHandle) -> u8 {
+    unsafe { handle.as_ref() }.is_some_and(|handle| handle.panel.is_visible()) as u8
+}
+
+/// Moves the latest save-panel selection into the UTF-8 result buffer.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_save_panel_take_selection(handle: *mut SavePanelHandle) -> i32 {
+    remember_string(None);
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        let selected = handle.selected.borrow_mut().take();
+        remember_string(selected.as_deref());
+        Ok(())
+    })
+}
+
+/// Returns and clears the save panel's cancellation flag.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_save_panel_take_cancelled(handle: *mut SavePanelHandle) -> u8 {
+    unsafe { handle.as_ref() }.is_some_and(|handle| handle.cancelled.replace(false)) as u8
+}
+
+/// Destroys a save panel.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_save_panel_destroy(handle: *mut SavePanelHandle) {
+    if !handle.is_null() {
+        drop(unsafe { Box::from_raw(handle) });
+    }
 }
 
 #[cfg(feature = "ui")]
