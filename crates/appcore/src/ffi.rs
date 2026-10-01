@@ -1030,6 +1030,51 @@ pub unsafe extern "C" fn mochios_open_panel_show(handle: *mut OpenPanelHandle) -
     })
 }
 
+/// Adds an allowed content type to an open panel.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_open_panel_allow_content_type_utf8(
+    handle: *mut OpenPanelHandle,
+    data: *const u8,
+    length: usize,
+) -> i32 {
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        let identifier = unsafe {
+            string(StringView {
+                data,
+                length: length as u64,
+            })?
+        };
+        handle
+            .panel
+            .allow_content_type(ContentType::parse(identifier).map_err(map_error)?);
+        Ok(())
+    })
+}
+
+/// Presents an open panel in a specific directory.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_open_panel_show_at_utf8(
+    handle: *mut OpenPanelHandle,
+    data: *const u8,
+    length: usize,
+) -> i32 {
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        let directory = unsafe {
+            string(StringView {
+                data,
+                length: length as u64,
+            })?
+        };
+        let directory = (!directory.is_empty()).then(|| std::path::Path::new(directory));
+        handle.panel.show_at(directory);
+        Ok(())
+    })
+}
+
 /// Returns whether an open panel is visible.
 #[cfg(feature = "ui")]
 #[unsafe(no_mangle)]
@@ -1147,6 +1192,59 @@ pub unsafe extern "C" fn mochios_save_panel_show(handle: *mut SavePanelHandle) -
     ffi_status(|| {
         let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
         handle.panel.show();
+        Ok(())
+    })
+}
+
+/// Adds an allowed content type to a save panel.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_save_panel_allow_content_type_utf8(
+    handle: *mut SavePanelHandle,
+    data: *const u8,
+    length: usize,
+) -> i32 {
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        let identifier = unsafe {
+            string(StringView {
+                data,
+                length: length as u64,
+            })?
+        };
+        handle
+            .panel
+            .allow_content_type(ContentType::parse(identifier).map_err(map_error)?);
+        Ok(())
+    })
+}
+
+/// Presents a save panel for a directory and suggested file name.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_save_panel_show_for_utf8(
+    handle: *mut SavePanelHandle,
+    directory_data: *const u8,
+    directory_length: usize,
+    name_data: *const u8,
+    name_length: usize,
+) -> i32 {
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        let directory = unsafe {
+            string(StringView {
+                data: directory_data,
+                length: directory_length as u64,
+            })?
+        };
+        let name = unsafe {
+            string(StringView {
+                data: name_data,
+                length: name_length as u64,
+            })?
+        };
+        let directory = (!directory.is_empty()).then(|| std::path::Path::new(directory));
+        handle.panel.show_for(directory, name);
         Ok(())
     })
 }

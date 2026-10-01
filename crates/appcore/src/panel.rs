@@ -90,7 +90,7 @@ struct PanelState {
     error: RefCell<Option<String>>,
     alert: Alert,
     pending_replace: RefCell<Option<PathBuf>>,
-    allowed_content_types: Vec<ContentType>,
+    allowed_content_types: RefCell<Vec<ContentType>>,
     handler: Rc<SelectionHandler>,
     cancel_handler: Option<Rc<CancelHandler>>,
 }
@@ -109,11 +109,21 @@ impl PanelState {
             return;
         }
         *self.directory.borrow_mut() = path.clone();
-        *self.entries.borrow_mut() = entries(&path, &self.root, &self.allowed_content_types);
+        *self.entries.borrow_mut() =
+            entries(&path, &self.root, &self.allowed_content_types.borrow());
         self.selected.set(None);
         self.scroll.set(0.0);
         self.last_click.borrow_mut().take();
         self.error.borrow_mut().take();
+    }
+
+    fn allow_content_type(&self, content_type: ContentType) {
+        let mut allowed = self.allowed_content_types.borrow_mut();
+        if !allowed.contains(&content_type) {
+            allowed.push(content_type);
+        }
+        let directory = self.directory.borrow().clone();
+        *self.entries.borrow_mut() = entries(&directory, &self.root, &allowed);
     }
 
     fn dismiss(&self) {
@@ -261,7 +271,7 @@ impl FilePanel {
             error: RefCell::new(None),
             alert: Alert::new(),
             pending_replace: RefCell::new(None),
-            allowed_content_types,
+            allowed_content_types: RefCell::new(allowed_content_types),
             handler: Rc::new(handler),
             cancel_handler,
         });
@@ -329,6 +339,7 @@ impl FilePanel {
         let content_types = self
             .state
             .allowed_content_types
+            .borrow()
             .iter()
             .map(ContentType::identifier)
             .collect::<Vec<_>>();
@@ -707,6 +718,11 @@ impl SavePanel {
         self.0.show();
     }
 
+    /// Adds a content type accepted by this panel.
+    pub fn allow_content_type(&self, content_type: ContentType) {
+        self.0.state.allow_content_type(content_type);
+    }
+
     /// Presents the panel using the current document name and directory.
     pub fn show_for(&self, directory: Option<&Path>, suggested_name: &str) {
         self.0.set_directory(directory);
@@ -769,6 +785,11 @@ impl OpenPanel {
 
     pub fn show(&self) {
         self.0.show();
+    }
+
+    /// Adds a content type displayed by this panel.
+    pub fn allow_content_type(&self, content_type: ContentType) {
+        self.0.state.allow_content_type(content_type);
     }
 
     /// Presents the panel in the supplied directory when it is within the
@@ -1030,5 +1051,28 @@ mod tests {
         assert!(panel.0.state.error.borrow().is_some());
         fs::remove_dir_all(root).unwrap();
         fs::remove_dir_all(outside).unwrap();
+    }
+
+    #[test]
+    fn adding_an_allowed_content_type_refreshes_visible_entries() {
+        let root = temporary_directory("panel-content-types");
+        fs::write(root.join("image.png"), b"png").unwrap();
+        fs::write(root.join("notes.txt"), b"text").unwrap();
+        let panel = OpenPanel::new(
+            OpenPanelOptions {
+                initial_directory: Some(root.clone()),
+                root_directory: Some(root.clone()),
+                ..OpenPanelOptions::default()
+            },
+            |_| Ok(()),
+        );
+        assert_eq!(panel.0.state.entries.borrow().len(), 2);
+
+        panel.allow_content_type(ContentType::parse("image/png").unwrap());
+        let entries = panel.0.state.entries.borrow();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "image.png");
+        drop(entries);
+        fs::remove_dir_all(root).unwrap();
     }
 }

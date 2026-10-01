@@ -5,6 +5,8 @@ extern "C" from "appcore" {
 	// Creates an open panel.
 	fn mochios_open_panel_create_utf8(titleData: *const u8, titleLength: usize, initialData: *const u8, initialLength: usize, rootData: *const u8, rootLength: usize) -> *mut MochiosOpenPanel
 	fn mochios_open_panel_show(panel: *mut MochiosOpenPanel) -> i32
+	fn mochios_open_panel_allow_content_type_utf8(panel: *mut MochiosOpenPanel, data: *const u8, length: usize) -> i32
+	fn mochios_open_panel_show_at_utf8(panel: *mut MochiosOpenPanel, data: *const u8, length: usize) -> i32
 	fn mochios_open_panel_is_visible(panel: *mut MochiosOpenPanel) -> u8
 	fn mochios_open_panel_take_selection(panel: *mut MochiosOpenPanel) -> i32
 	fn mochios_open_panel_take_cancelled(panel: *mut MochiosOpenPanel) -> u8
@@ -13,6 +15,8 @@ extern "C" from "appcore" {
 	// Creates a save panel.
 	fn mochios_save_panel_create_utf8(titleData: *const u8, titleLength: usize, suggestedData: *const u8, suggestedLength: usize, initialData: *const u8, initialLength: usize, rootData: *const u8, rootLength: usize, confirmsReplacement: bool) -> *mut MochiosSavePanel
 	fn mochios_save_panel_show(panel: *mut MochiosSavePanel) -> i32
+	fn mochios_save_panel_allow_content_type_utf8(panel: *mut MochiosSavePanel, data: *const u8, length: usize) -> i32
+	fn mochios_save_panel_show_for_utf8(panel: *mut MochiosSavePanel, directoryData: *const u8, directoryLength: usize, nameData: *const u8, nameLength: usize) -> i32
 	fn mochios_save_panel_is_visible(panel: *mut MochiosSavePanel) -> u8
 	fn mochios_save_panel_take_selection(panel: *mut MochiosSavePanel) -> i32
 	fn mochios_save_panel_take_cancelled(panel: *mut MochiosSavePanel) -> u8
@@ -44,9 +48,19 @@ for OpenPanel {
 		return OpenPanel { raw: mochios_open_panel_create_utf8(__kome_string_data(options.title), __kome_string_len(options.title), __kome_string_data(options.initialDirectory), __kome_string_len(options.initialDirectory), __kome_string_data(options.rootDirectory), __kome_string_len(options.rootDirectory)) }
 	}
 
+	// Adds a content type displayed by this panel.
+	fn allowContentType(self, contentType: ContentType) -> i32 {
+		return mochios_open_panel_allow_content_type_utf8(self.raw, __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier))
+	}
+
 	// Presents the panel.
 	fn show(self) -> i32 {
 		return mochios_open_panel_show(self.raw)
+	}
+
+	// Presents the panel in a specific directory.
+	fn showAt(self, directory: String) -> i32 {
+		return mochios_open_panel_show_at_utf8(self.raw, __kome_string_data(directory), __kome_string_len(directory))
 	}
 
 	// Returns whether the panel is visible.
@@ -101,9 +115,19 @@ for SavePanel {
 		return SavePanel { raw: mochios_save_panel_create_utf8(__kome_string_data(options.title), __kome_string_len(options.title), __kome_string_data(options.suggestedName), __kome_string_len(options.suggestedName), __kome_string_data(options.initialDirectory), __kome_string_len(options.initialDirectory), __kome_string_data(options.rootDirectory), __kome_string_len(options.rootDirectory), options.confirmsReplacement) }
 	}
 
+	// Adds a content type accepted by this panel.
+	fn allowContentType(self, contentType: ContentType) -> i32 {
+		return mochios_save_panel_allow_content_type_utf8(self.raw, __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier))
+	}
+
 	// Presents the panel.
 	fn show(self) -> i32 {
 		return mochios_save_panel_show(self.raw)
+	}
+
+	// Presents the panel with a directory and suggested file name.
+	fn showFor(self, directory: String, suggestedName: String) -> i32 {
+		return mochios_save_panel_show_for_utf8(self.raw, __kome_string_data(directory), __kome_string_len(directory), __kome_string_data(suggestedName), __kome_string_len(suggestedName))
 	}
 
 	// Returns whether the panel is visible.
