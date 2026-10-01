@@ -7,7 +7,6 @@
 
 use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
-#[cfg(feature = "ui")]
 use std::path::PathBuf;
 #[cfg(feature = "ui")]
 use std::rc::Rc;
@@ -71,6 +70,11 @@ fn map_error(error: Error) -> Status {
             Status::SystemError
         }
     }
+}
+
+fn map_io_error(error: std::io::Error) -> Status {
+    remember_system_error(error.raw_os_error().map_or(-1, i64::from));
+    Status::SystemError
 }
 
 fn ffi_status(operation: impl FnOnce() -> Result<(), Status>) -> i32 {
@@ -1094,6 +1098,220 @@ pub unsafe extern "C" fn mochios_save_panel_take_cancelled(handle: *mut SavePane
 #[cfg(feature = "ui")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mochios_save_panel_destroy(handle: *mut SavePanelHandle) {
+    if !handle.is_null() {
+        drop(unsafe { Box::from_raw(handle) });
+    }
+}
+
+/// Owned recovery store used by the Kome wrapper.
+pub struct RecoveryStoreHandle(crate::RecoveryStore);
+
+/// Owned recovery record returned to the Kome wrapper.
+pub struct RecoveryRecordHandle(crate::RecoveryRecord);
+
+/// Creates a recovery store rooted at a UTF-8 path.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_recovery_store_create_utf8(
+    data: *const u8,
+    length: usize,
+) -> *mut RecoveryStoreHandle {
+    ffi_pointer(|| {
+        let directory = unsafe {
+            string(StringView {
+                data,
+                length: length as u64,
+            })?
+        };
+        Ok(RecoveryStoreHandle(crate::RecoveryStore::new(directory)))
+    })
+}
+
+/// Saves a UTF-8 recovery record atomically.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_recovery_store_save_utf8(
+    handle: *mut RecoveryStoreHandle,
+    identifier_data: *const u8,
+    identifier_length: usize,
+    original_path_data: *const u8,
+    original_path_length: usize,
+    content_type_data: *const u8,
+    content_type_length: usize,
+    revision: u64,
+    contents_data: *const u8,
+    contents_length: usize,
+) -> i32 {
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        let identifier = unsafe {
+            string(StringView {
+                data: identifier_data,
+                length: identifier_length as u64,
+            })?
+        };
+        let original_path = unsafe {
+            string(StringView {
+                data: original_path_data,
+                length: original_path_length as u64,
+            })?
+        };
+        let content_type = unsafe {
+            string(StringView {
+                data: content_type_data,
+                length: content_type_length as u64,
+            })?
+        };
+        let contents = unsafe { slice::from_raw_parts(contents_data, contents_length) };
+        handle
+            .0
+            .save(&crate::RecoveryRecord {
+                identifier: identifier.to_owned(),
+                original_path: (!original_path.is_empty()).then(|| PathBuf::from(original_path)),
+                content_type: content_type.to_owned(),
+                revision,
+                contents: contents.to_vec(),
+            })
+            .map_err(map_io_error)
+    })
+}
+
+/// Loads a recovery record, returning null when it does not exist.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_recovery_store_load_utf8(
+    handle: *mut RecoveryStoreHandle,
+    identifier_data: *const u8,
+    identifier_length: usize,
+) -> *mut RecoveryRecordHandle {
+    LAST_RESULT_PRESENT.with(|slot| slot.set(0));
+    let operation = || -> Result<Option<crate::RecoveryRecord>, Status> {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        let identifier = unsafe {
+            string(StringView {
+                data: identifier_data,
+                length: identifier_length as u64,
+            })?
+        };
+        handle.0.load(identifier).map_err(map_io_error)
+    };
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(Ok(Some(record))) => {
+            LAST_STATUS.with(|slot| slot.set(Status::Ok as i32));
+            LAST_RESULT_PRESENT.with(|slot| slot.set(1));
+            Box::into_raw(Box::new(RecoveryRecordHandle(record)))
+        }
+        Ok(Ok(None)) => {
+            LAST_STATUS.with(|slot| slot.set(Status::Ok as i32));
+            ptr::null_mut()
+        }
+        Ok(Err(status)) => {
+            LAST_STATUS.with(|slot| slot.set(status as i32));
+            ptr::null_mut()
+        }
+        Err(_) => {
+            LAST_STATUS.with(|slot| slot.set(Status::Panic as i32));
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Removes a recovery record and stores whether it existed as the integer result.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_recovery_store_remove_utf8(
+    handle: *mut RecoveryStoreHandle,
+    identifier_data: *const u8,
+    identifier_length: usize,
+) -> i32 {
+    remember_u64(0);
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        let identifier = unsafe {
+            string(StringView {
+                data: identifier_data,
+                length: identifier_length as u64,
+            })?
+        };
+        let removed = handle.0.remove(identifier).map_err(map_io_error)?;
+        remember_u64(removed as u64);
+        Ok(())
+    })
+}
+
+/// Stores a recovery record identifier in the UTF-8 result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_recovery_record_identifier(
+    handle: *const RecoveryRecordHandle,
+) -> i32 {
+    remember_string(None);
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        remember_string(Some(&handle.0.identifier));
+        Ok(())
+    })
+}
+
+/// Stores a recovery record's optional original path in the UTF-8 result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_recovery_record_original_path(
+    handle: *const RecoveryRecordHandle,
+) -> i32 {
+    remember_string(None);
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        let path = handle
+            .0
+            .original_path
+            .as_deref()
+            .and_then(std::path::Path::to_str);
+        remember_string(path);
+        Ok(())
+    })
+}
+
+/// Stores a recovery record's content type in the UTF-8 result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_recovery_record_content_type(
+    handle: *const RecoveryRecordHandle,
+) -> i32 {
+    remember_string(None);
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        remember_string(Some(&handle.0.content_type));
+        Ok(())
+    })
+}
+
+/// Returns a recovery record's revision.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_recovery_record_revision(
+    handle: *const RecoveryRecordHandle,
+) -> u64 {
+    unsafe { handle.as_ref() }.map_or(0, |handle| handle.0.revision)
+}
+
+/// Stores UTF-8 recovery contents in the result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_recovery_record_text_contents(
+    handle: *const RecoveryRecordHandle,
+) -> i32 {
+    remember_string(None);
+    ffi_status(|| {
+        let handle = unsafe { handle.as_ref() }.ok_or(Status::NullPointer)?;
+        let contents = str::from_utf8(&handle.0.contents).map_err(|_| Status::InvalidUtf8)?;
+        remember_string(Some(contents));
+        Ok(())
+    })
+}
+
+/// Destroys a recovery record.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_recovery_record_destroy(handle: *mut RecoveryRecordHandle) {
+    if !handle.is_null() {
+        drop(unsafe { Box::from_raw(handle) });
+    }
+}
+
+/// Destroys a recovery store.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_recovery_store_destroy(handle: *mut RecoveryStoreHandle) {
     if !handle.is_null() {
         drop(unsafe { Box::from_raw(handle) });
     }

@@ -1,1 +1,83 @@
-// Kome bindings for AppCore document recovery.
+extern "C" from "appcore" {
+	struct MochiosRecoveryStore
+	struct MochiosRecoveryRecord
+
+	fn mochios_recovery_store_create_utf8(data: *const u8, length: usize) -> *mut MochiosRecoveryStore
+	fn mochios_recovery_store_save_utf8(store: *mut MochiosRecoveryStore, identifierData: *const u8, identifierLength: usize, originalPathData: *const u8, originalPathLength: usize, contentTypeData: *const u8, contentTypeLength: usize, revision: u64, contentsData: *const u8, contentsLength: usize) -> i32
+	fn mochios_recovery_store_load_utf8(store: *mut MochiosRecoveryStore, identifierData: *const u8, identifierLength: usize) -> *mut MochiosRecoveryRecord
+	fn mochios_recovery_store_remove_utf8(store: *mut MochiosRecoveryStore, identifierData: *const u8, identifierLength: usize) -> i32
+	fn mochios_recovery_record_identifier(record: *mut MochiosRecoveryRecord) -> i32
+	fn mochios_recovery_record_original_path(record: *mut MochiosRecoveryRecord) -> i32
+	fn mochios_recovery_record_content_type(record: *mut MochiosRecoveryRecord) -> i32
+	fn mochios_recovery_record_revision(record: *mut MochiosRecoveryRecord) -> u64
+	fn mochios_recovery_record_text_contents(record: *mut MochiosRecoveryRecord) -> i32
+	fn mochios_recovery_record_destroy(record: *mut MochiosRecoveryRecord)
+	fn mochios_recovery_store_destroy(store: *mut MochiosRecoveryStore)
+}
+
+// One UTF-8 document recovery snapshot.
+struct RecoveryRecord {
+	identifier: String,
+	originalPath: String,
+	contentType: String,
+	revision: u64,
+	contents: String,
+}
+
+// An atomic recovery store rooted below an application-owned directory.
+struct RecoveryStore {
+	raw: *mut MochiosRecoveryStore,
+}
+
+for RecoveryStore {
+	// Opens a recovery store rooted at `directory`.
+	fn make(directory: String) -> RecoveryStore {
+		return RecoveryStore { raw: mochios_recovery_store_create_utf8(__kome_string_data(directory), __kome_string_len(directory)) }
+	}
+
+	// Atomically saves a UTF-8 recovery record.
+	fn save(self, record: RecoveryRecord) -> i32 {
+		return mochios_recovery_store_save_utf8(self.raw, __kome_string_data(record.identifier), __kome_string_len(record.identifier), __kome_string_data(record.originalPath), __kome_string_len(record.originalPath), __kome_string_data(record.contentType), __kome_string_len(record.contentType), record.revision, __kome_string_data(record.contents), __kome_string_len(record.contents))
+	}
+
+	// Loads a UTF-8 recovery record.
+	fn load(self, identifier: String) -> AppCoreResult<RecoveryRecord> {
+		let raw = mochios_recovery_store_load_utf8(self.raw, __kome_string_data(identifier), __kome_string_len(identifier))
+		let status = AppCore.lastStatus()
+		if status != 0 || mochios_last_result_has_value() == 0 {
+			return AppCoreResult<RecoveryRecord> { status: status, value: null }
+		}
+		mochios_recovery_record_identifier(raw)
+		let recordIdentifier = __appCoreLastString()
+		mochios_recovery_record_original_path(raw)
+		var originalPath = ""
+		if mochios_last_result_has_value() != 0 {
+			originalPath = __appCoreLastString()
+		}
+		mochios_recovery_record_content_type(raw)
+		let contentType = __appCoreLastString()
+		let revision = mochios_recovery_record_revision(raw)
+		let contentsStatus = mochios_recovery_record_text_contents(raw)
+		if contentsStatus != 0 {
+			mochios_recovery_record_destroy(raw)
+			return AppCoreResult<RecoveryRecord> { status: contentsStatus, value: null }
+		}
+		let contents = __appCoreLastString()
+		mochios_recovery_record_destroy(raw)
+		return AppCoreResult<RecoveryRecord> { status: status, value: RecoveryRecord { identifier: recordIdentifier, originalPath: originalPath, contentType: contentType, revision: revision, contents: contents } }
+	}
+
+	// Removes a recovery record.
+	fn remove(self, identifier: String) -> AppCoreResult<bool> {
+		let status = mochios_recovery_store_remove_utf8(self.raw, __kome_string_data(identifier), __kome_string_len(identifier))
+		if status != 0 {
+			return AppCoreResult<bool> { status: status, value: null }
+		}
+		return AppCoreResult<bool> { status: status, value: mochios_last_result_u64() != 0 }
+	}
+
+	// Releases the native recovery store.
+	fn close(self) {
+		mochios_recovery_store_destroy(self.raw)
+	}
+}

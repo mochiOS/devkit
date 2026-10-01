@@ -36,6 +36,8 @@ typedef struct MochiosControlCenterItem MochiosControlCenterItem;
 typedef struct MochiosAlert MochiosAlert;
 typedef struct MochiosOpenPanel MochiosOpenPanel;
 typedef struct MochiosSavePanel MochiosSavePanel;
+typedef struct MochiosRecoveryStore MochiosRecoveryStore;
+typedef struct MochiosRecoveryRecord MochiosRecoveryRecord;
 
 #ifdef __cplusplus
 extern "C" {
@@ -95,6 +97,17 @@ uint8_t mochios_save_panel_is_visible(const MochiosSavePanel *panel);
 int32_t mochios_save_panel_take_selection(MochiosSavePanel *panel);
 uint8_t mochios_save_panel_take_cancelled(MochiosSavePanel *panel);
 void mochios_save_panel_destroy(MochiosSavePanel *panel);
+MochiosRecoveryStore *mochios_recovery_store_create_utf8(const uint8_t *data, size_t length);
+int32_t mochios_recovery_store_save_utf8(MochiosRecoveryStore *store, const uint8_t *identifier_data, size_t identifier_length, const uint8_t *original_path_data, size_t original_path_length, const uint8_t *content_type_data, size_t content_type_length, uint64_t revision, const uint8_t *contents_data, size_t contents_length);
+MochiosRecoveryRecord *mochios_recovery_store_load_utf8(MochiosRecoveryStore *store, const uint8_t *identifier_data, size_t identifier_length);
+int32_t mochios_recovery_store_remove_utf8(MochiosRecoveryStore *store, const uint8_t *identifier_data, size_t identifier_length);
+int32_t mochios_recovery_record_identifier(const MochiosRecoveryRecord *record);
+int32_t mochios_recovery_record_original_path(const MochiosRecoveryRecord *record);
+int32_t mochios_recovery_record_content_type(const MochiosRecoveryRecord *record);
+uint64_t mochios_recovery_record_revision(const MochiosRecoveryRecord *record);
+int32_t mochios_recovery_record_text_contents(const MochiosRecoveryRecord *record);
+void mochios_recovery_record_destroy(MochiosRecoveryRecord *record);
+void mochios_recovery_store_destroy(MochiosRecoveryStore *store);
 int32_t mochios_application_request_exit(void);
 int32_t mochios_application_request_close_key_window(void);
 int32_t mochios_application_request_quit(void);
