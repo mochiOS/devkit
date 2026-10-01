@@ -5,12 +5,12 @@
 //! to obtain the required length, allocate, then call again. No Rust allocation
 //! ever crosses the ABI boundary.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::{ptr, slice, str};
 
 use crate::document::AssociationRoles;
-use crate::{Error, clipboard, document};
+use crate::{Error, UserNotification, clipboard, content_type::ContentType, document};
 
 pub const ABI_VERSION_MAJOR: u32 = 1;
 pub const ABI_VERSION_MINOR: u32 = 0;
@@ -47,6 +47,9 @@ pub struct MutableBuffer {
 
 thread_local! {
     static LAST_SYSTEM_ERROR: Cell<i64> = const { Cell::new(0) };
+    static LAST_RESULT_STRING: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+    static LAST_RESULT_PRESENT: Cell<u8> = const { Cell::new(0) };
+    static LAST_RESULT_U64: Cell<u64> = const { Cell::new(0) };
 }
 
 fn remember_system_error(value: i64) {
@@ -70,6 +73,21 @@ fn ffi_status(operation: impl FnOnce() -> Result<(), Status>) -> i32 {
     catch_unwind(AssertUnwindSafe(operation))
         .map(|result| result.map_or_else(|status| status as i32, |_| Status::Ok as i32))
         .unwrap_or(Status::Panic as i32)
+}
+
+fn remember_string(value: Option<&str>) {
+    LAST_RESULT_STRING.with(|slot| {
+        let mut bytes = slot.borrow_mut();
+        bytes.clear();
+        if let Some(value) = value {
+            bytes.extend_from_slice(value.as_bytes());
+        }
+    });
+    LAST_RESULT_PRESENT.with(|slot| slot.set(value.is_some() as u8));
+}
+
+fn remember_u64(value: u64) {
+    LAST_RESULT_U64.with(|slot| slot.set(value));
 }
 
 unsafe fn string<'a>(value: StringView) -> Result<&'a str, Status> {
@@ -121,6 +139,33 @@ pub extern "C" fn mochios_last_system_error() -> i64 {
     LAST_SYSTEM_ERROR.with(Cell::get)
 }
 
+/// Returns whether the latest UTF-8 result contains a value.
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_last_result_has_value() -> u8 {
+    LAST_RESULT_PRESENT.with(Cell::get)
+}
+
+/// Returns a borrowed pointer to the latest UTF-8 result.
+///
+/// The pointer remains valid until another AppCore call stores a string result
+/// on the same thread.
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_last_result_string_data() -> *const u8 {
+    LAST_RESULT_STRING.with(|slot| slot.borrow().as_ptr())
+}
+
+/// Returns the byte length of the latest UTF-8 result.
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_last_result_string_length() -> usize {
+    LAST_RESULT_STRING.with(|slot| slot.borrow().len())
+}
+
+/// Returns the latest integer result produced by a Kome adapter call.
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_last_result_u64() -> u64 {
+    LAST_RESULT_U64.with(Cell::get)
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn mochios_status_name(status: i32) -> StringView {
     let name = match status {
@@ -158,6 +203,123 @@ pub unsafe extern "C" fn mochios_clipboard_set_text_utf8(data: *const u8, length
         return Status::InvalidArgument as i32;
     };
     unsafe { mochios_clipboard_set_text(StringView { data, length }) }
+}
+
+/// Reads clipboard text into the thread-local UTF-8 result buffer.
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_clipboard_read_text_utf8() -> i32 {
+    remember_string(None);
+    ffi_status(|| {
+        let value = clipboard::text().map_err(map_error)?;
+        remember_string(value.as_deref());
+        Ok(())
+    })
+}
+
+/// Validates and canonicalizes a content type into the UTF-8 result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_content_type_parse_utf8(data: *const u8, length: usize) -> i32 {
+    remember_string(None);
+    ffi_status(|| {
+        let value = unsafe {
+            string(StringView {
+                data,
+                length: length as u64,
+            })?
+        };
+        let value = ContentType::parse(value).map_err(map_error)?;
+        remember_string(Some(value.identifier()));
+        Ok(())
+    })
+}
+
+/// Resolves a path to its canonical content type in the UTF-8 result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_content_type_for_path_utf8(data: *const u8, length: usize) -> i32 {
+    remember_string(None);
+    ffi_status(|| {
+        let path = unsafe {
+            string(StringView {
+                data,
+                length: length as u64,
+            })?
+        };
+        let value = ContentType::for_path(path);
+        remember_string(Some(value.identifier()));
+        Ok(())
+    })
+}
+
+/// Resolves an extension to its canonical content type in the UTF-8 result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_content_type_for_extension_utf8(
+    data: *const u8,
+    length: usize,
+) -> i32 {
+    remember_string(None);
+    ffi_status(|| {
+        let extension = unsafe {
+            string(StringView {
+                data,
+                length: length as u64,
+            })?
+        };
+        let value = ContentType::from_extension(extension);
+        remember_string(Some(value.identifier()));
+        Ok(())
+    })
+}
+
+/// Reports whether one validated content type conforms to another.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_content_type_conforms_utf8(
+    value_data: *const u8,
+    value_length: usize,
+    parent_data: *const u8,
+    parent_length: usize,
+) -> u8 {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let value = unsafe {
+            string(StringView {
+                data: value_data,
+                length: value_length as u64,
+            })
+        }
+        .ok()
+        .and_then(|value| ContentType::parse(value).ok());
+        let parent = unsafe {
+            string(StringView {
+                data: parent_data,
+                length: parent_length as u64,
+            })
+        }
+        .ok()
+        .and_then(|value| ContentType::parse(value).ok());
+        value
+            .zip(parent)
+            .is_some_and(|(value, parent)| value.conforms_to(&parent)) as u8
+    }));
+    result.unwrap_or(0)
+}
+
+/// Stores the preferred extension for a validated content type.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_content_type_preferred_extension_utf8(
+    data: *const u8,
+    length: usize,
+) -> i32 {
+    remember_string(None);
+    ffi_status(|| {
+        let value = unsafe {
+            string(StringView {
+                data,
+                length: length as u64,
+            })?
+        };
+        let value = ContentType::parse(value).map_err(map_error)?;
+        remember_string(value.preferred_extension());
+        Ok(())
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -232,6 +394,104 @@ pub unsafe extern "C" fn mochios_association_resolve(
     })
 }
 
+/// Sets a document association from pointer-length UTF-8 arguments.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_association_set_utf8(
+    extension_data: *const u8,
+    extension_length: usize,
+    content_type_data: *const u8,
+    content_type_length: usize,
+    bundle_id_data: *const u8,
+    bundle_id_length: usize,
+    role_bits: u16,
+) -> i32 {
+    ffi_status(|| {
+        document::set_default(
+            unsafe {
+                string(StringView {
+                    data: extension_data,
+                    length: extension_length as u64,
+                })?
+            },
+            unsafe {
+                string(StringView {
+                    data: content_type_data,
+                    length: content_type_length as u64,
+                })?
+            },
+            unsafe {
+                string(StringView {
+                    data: bundle_id_data,
+                    length: bundle_id_length as u64,
+                })?
+            },
+            roles(role_bits)?,
+        )
+        .map_err(map_error)
+    })
+}
+
+/// Removes a document association from pointer-length UTF-8 arguments.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_association_remove_utf8(
+    extension_data: *const u8,
+    extension_length: usize,
+    content_type_data: *const u8,
+    content_type_length: usize,
+    role_bits: u16,
+) -> i32 {
+    ffi_status(|| {
+        document::remove_default(
+            unsafe {
+                string(StringView {
+                    data: extension_data,
+                    length: extension_length as u64,
+                })?
+            },
+            unsafe {
+                string(StringView {
+                    data: content_type_data,
+                    length: content_type_length as u64,
+                })?
+            },
+            roles(role_bits)?,
+        )
+        .map_err(map_error)
+    })
+}
+
+/// Resolves a document association into the UTF-8 result buffer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_association_resolve_utf8(
+    extension_data: *const u8,
+    extension_length: usize,
+    content_type_data: *const u8,
+    content_type_length: usize,
+    role_bits: u16,
+) -> i32 {
+    remember_string(None);
+    ffi_status(|| {
+        let value = document::resolve_default(
+            unsafe {
+                string(StringView {
+                    data: extension_data,
+                    length: extension_length as u64,
+                })?
+            },
+            unsafe {
+                string(StringView {
+                    data: content_type_data,
+                    length: content_type_length as u64,
+                })?
+            },
+            roles(role_bits)?,
+        )
+        .map_err(map_error)?;
+        remember_string(Some(&value));
+        Ok(())
+    })
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mochios_document_open(
     path: StringView,
@@ -278,6 +538,116 @@ pub unsafe extern "C" fn mochios_document_open_with(
     })
 }
 
+/// Opens a document from pointer-length UTF-8 arguments.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_document_open_utf8(
+    path_data: *const u8,
+    path_length: usize,
+    content_type_data: *const u8,
+    content_type_length: usize,
+    role_bits: u16,
+) -> i32 {
+    remember_u64(0);
+    ffi_status(|| {
+        let process_id = document::open(
+            unsafe {
+                string(StringView {
+                    data: path_data,
+                    length: path_length as u64,
+                })?
+            },
+            unsafe {
+                string(StringView {
+                    data: content_type_data,
+                    length: content_type_length as u64,
+                })?
+            },
+            roles(role_bits)?,
+        )
+        .map_err(map_error)?;
+        remember_u64(process_id);
+        Ok(())
+    })
+}
+
+/// Opens a document with an explicit application from UTF-8 arguments.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_document_open_with_utf8(
+    path_data: *const u8,
+    path_length: usize,
+    content_type_data: *const u8,
+    content_type_length: usize,
+    bundle_id_data: *const u8,
+    bundle_id_length: usize,
+    role_bits: u16,
+) -> i32 {
+    remember_u64(0);
+    ffi_status(|| {
+        let process_id = document::open_with(
+            unsafe {
+                string(StringView {
+                    data: path_data,
+                    length: path_length as u64,
+                })?
+            },
+            unsafe {
+                string(StringView {
+                    data: content_type_data,
+                    length: content_type_length as u64,
+                })?
+            },
+            unsafe {
+                string(StringView {
+                    data: bundle_id_data,
+                    length: bundle_id_length as u64,
+                })?
+            },
+            roles(role_bits)?,
+        )
+        .map_err(map_error)?;
+        remember_u64(process_id);
+        Ok(())
+    })
+}
+
+/// Delivers a user notification from pointer-length UTF-8 arguments.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_notification_deliver_utf8(
+    bundle_id_data: *const u8,
+    bundle_id_length: usize,
+    title_data: *const u8,
+    title_length: usize,
+    body_data: *const u8,
+    body_length: usize,
+) -> i32 {
+    remember_u64(0);
+    ffi_status(|| {
+        let notification = UserNotification::new(
+            unsafe {
+                string(StringView {
+                    data: bundle_id_data,
+                    length: bundle_id_length as u64,
+                })?
+            },
+            unsafe {
+                string(StringView {
+                    data: title_data,
+                    length: title_length as u64,
+                })?
+            },
+        )
+        .body(unsafe {
+            string(StringView {
+                data: body_data,
+                length: body_length as u64,
+            })?
+        });
+        let identifier = notification.deliver().map_err(map_error)?;
+        remember_u64(identifier);
+        Ok(())
+    })
+}
+
 #[cfg(feature = "ui")]
 #[unsafe(no_mangle)]
 pub extern "C" fn mochios_application_request_exit() -> i32 {
@@ -287,9 +657,43 @@ pub extern "C" fn mochios_application_request_exit() -> i32 {
     })
 }
 
+/// Requests that the key ViewKit window close normally.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_application_request_close_key_window() -> i32 {
+    ffi_status(|| {
+        crate::request_close_key_window();
+        Ok(())
+    })
+}
+
+/// Requests application-wide termination.
+#[cfg(feature = "ui")]
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_application_request_quit() -> i32 {
+    ffi_status(|| {
+        crate::request_quit();
+        Ok(())
+    })
+}
+
 #[cfg(not(feature = "ui"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn mochios_application_request_exit() -> i32 {
+    Status::UnsupportedPlatform as i32
+}
+
+/// Reports that key-window closure is unavailable without ViewKit.
+#[cfg(not(feature = "ui"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_application_request_close_key_window() -> i32 {
+    Status::UnsupportedPlatform as i32
+}
+
+/// Reports that application-wide termination is unavailable without ViewKit.
+#[cfg(not(feature = "ui"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn mochios_application_request_quit() -> i32 {
     Status::UnsupportedPlatform as i32
 }
 

@@ -1,0 +1,26 @@
+extern "C" from "appcore" {
+	// Replaces the shared clipboard contents with UTF-8 text.
+	fn mochios_clipboard_set_text_utf8(data: *const u8, length: usize) -> i32
+
+	// Reads shared clipboard text into the AppCore result buffer.
+	fn mochios_clipboard_read_text_utf8() -> i32
+}
+
+// Provides capability-checked access to the shared workspace clipboard.
+struct Clipboard {}
+
+for Clipboard {
+	// Replaces the shared clipboard contents with UTF-8 text.
+	fn text(value: String) -> i32 {
+		return mochios_clipboard_set_text_utf8(__kome_string_data(value), __kome_string_len(value))
+	}
+
+	// Reads UTF-8 text from the shared clipboard.
+	fn readText() -> AppCoreResult<String> {
+		let status = mochios_clipboard_read_text_utf8()
+		if status != 0 || mochios_last_result_has_value() == 0 {
+			return AppCoreResult<String> { status: status, value: null }
+		}
+		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
+	}
+}

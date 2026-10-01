@@ -1,0 +1,30 @@
+extern "C" from "appcore" {
+	// Requests clean termination of the current ViewKit application.
+	fn mochios_application_request_exit() -> i32
+
+	// Requests normal closure of the key ViewKit window.
+	fn mochios_application_request_close_key_window() -> i32
+
+	// Requests application-wide termination.
+	fn mochios_application_request_quit() -> i32
+}
+
+// Provides application lifecycle operations backed by ViewKit.
+struct Application {}
+
+for Application {
+	// Requests clean termination of the current application.
+	fn exit() -> i32 {
+		return mochios_application_request_exit()
+	}
+
+	// Requests normal closure of the key window.
+	fn closeKeyWindow() -> i32 {
+		return mochios_application_request_close_key_window()
+	}
+
+	// Requests application-wide termination.
+	fn quit() -> i32 {
+		return mochios_application_request_quit()
+	}
+}

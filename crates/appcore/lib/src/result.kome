@@ -1,0 +1,36 @@
+extern "C" {
+	// Copies borrowed UTF-8 bytes into an owned Kome String.
+	fn __kome_string_create(data: *const u8, length: usize) -> String
+}
+
+extern "C" from "appcore" {
+	// Reports whether the latest result contains a value.
+	fn mochios_last_result_has_value() -> u8
+
+	// Returns the borrowed UTF-8 bytes of the latest string result.
+	fn mochios_last_result_string_data() -> *const u8
+
+	// Returns the byte length of the latest string result.
+	fn mochios_last_result_string_length() -> usize
+
+	// Returns the latest unsigned integer result.
+	fn mochios_last_result_u64() -> u64
+}
+
+// Contains an AppCore status and an optional typed value.
+struct AppCoreResult<T> {
+	status: i32,
+	value: T?,
+}
+
+for AppCoreResult<T> {
+	// Returns whether the operation completed successfully.
+	fn isOk(self) -> bool {
+		return self.status == 0
+	}
+}
+
+// Copies the latest borrowed AppCore string result into Kome ownership.
+fn __appCoreLastString() -> String {
+	return __kome_string_create(mochios_last_result_string_data(), mochios_last_result_string_length())
+}

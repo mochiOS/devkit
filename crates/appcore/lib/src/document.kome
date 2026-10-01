@@ -1,0 +1,69 @@
+extern "C" from "appcore" {
+	// Sets a default document association.
+	fn mochios_association_set_utf8(extensionData: *const u8, extensionLength: usize, contentTypeData: *const u8, contentTypeLength: usize, bundleIdData: *const u8, bundleIdLength: usize, roles: u16) -> i32
+
+	// Removes a default document association.
+	fn mochios_association_remove_utf8(extensionData: *const u8, extensionLength: usize, contentTypeData: *const u8, contentTypeLength: usize, roles: u16) -> i32
+
+	// Resolves a default document association.
+	fn mochios_association_resolve_utf8(extensionData: *const u8, extensionLength: usize, contentTypeData: *const u8, contentTypeLength: usize, roles: u16) -> i32
+
+	// Opens a document with its default application.
+	fn mochios_document_open_utf8(pathData: *const u8, pathLength: usize, contentTypeData: *const u8, contentTypeLength: usize, roles: u16) -> i32
+
+	// Opens a document with an explicit application.
+	fn mochios_document_open_with_utf8(pathData: *const u8, pathLength: usize, contentTypeData: *const u8, contentTypeLength: usize, bundleIdData: *const u8, bundleIdLength: usize, roles: u16) -> i32
+}
+
+// Roles used when resolving or updating document associations.
+struct AssociationRoles {
+	bits: u16,
+}
+
+for AssociationRoles {
+	const VIEW: AssociationRoles = AssociationRoles { bits: 1 }
+	const EDIT: AssociationRoles = AssociationRoles { bits: 2 }
+	const ALL: AssociationRoles = AssociationRoles { bits: 3 }
+}
+
+// Provides capability-checked document and file-association operations.
+struct Document {}
+
+for Document {
+	// Sets the default application for a document key and role.
+	fn setDefault(extension: String, contentType: ContentType, bundleId: String, roles: AssociationRoles) -> i32 {
+		return mochios_association_set_utf8(__kome_string_data(extension), __kome_string_len(extension), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), __kome_string_data(bundleId), __kome_string_len(bundleId), roles.bits)
+	}
+
+	// Removes the default application for a document key and role.
+	fn removeDefault(extension: String, contentType: ContentType, roles: AssociationRoles) -> i32 {
+		return mochios_association_remove_utf8(__kome_string_data(extension), __kome_string_len(extension), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), roles.bits)
+	}
+
+	// Resolves the default application's bundle identifier.
+	fn resolveDefault(extension: String, contentType: ContentType, roles: AssociationRoles) -> AppCoreResult<String> {
+		let status = mochios_association_resolve_utf8(__kome_string_data(extension), __kome_string_len(extension), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), roles.bits)
+		if status != 0 {
+			return AppCoreResult<String> { status: status, value: null }
+		}
+		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
+	}
+
+	// Opens a document with its default application.
+	fn open(path: String, contentType: ContentType, roles: AssociationRoles) -> AppCoreResult<u64> {
+		let status = mochios_document_open_utf8(__kome_string_data(path), __kome_string_len(path), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), roles.bits)
+		if status != 0 {
+			return AppCoreResult<u64> { status: status, value: null }
+		}
+		return AppCoreResult<u64> { status: status, value: mochios_last_result_u64() }
+	}
+
+	// Opens a document with an explicit application.
+	fn openWith(path: String, contentType: ContentType, bundleId: String, roles: AssociationRoles) -> AppCoreResult<u64> {
+		let status = mochios_document_open_with_utf8(__kome_string_data(path), __kome_string_len(path), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), __kome_string_data(bundleId), __kome_string_len(bundleId), roles.bits)
+		if status != 0 {
+			return AppCoreResult<u64> { status: status, value: null }
+		}
+		return AppCoreResult<u64> { status: status, value: mochios_last_result_u64() }
+	}
+}

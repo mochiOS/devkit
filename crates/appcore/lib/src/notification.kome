@@ -1,0 +1,32 @@
+extern "C" from "appcore" {
+	// Delivers a user notification.
+	fn mochios_notification_deliver_utf8(bundleIdData: *const u8, bundleIdLength: usize, titleData: *const u8, titleLength: usize, bodyData: *const u8, bodyLength: usize) -> i32
+}
+
+// A user notification delivered by the system notification center.
+struct UserNotification {
+	bundleId: String,
+	title: String,
+	message: String,
+}
+
+for UserNotification {
+	// Creates a notification builder.
+	fn make(bundleId: String, title: String) -> UserNotification {
+		return UserNotification { bundleId: bundleId, title: title, message: "" }
+	}
+
+	// Returns a notification with its body text replaced.
+	fn body(self, message: String) -> UserNotification {
+		return UserNotification { bundleId: self.bundleId, title: self.title, message: message }
+	}
+
+	// Delivers this notification.
+	fn deliver(self) -> AppCoreResult<u64> {
+		let status = mochios_notification_deliver_utf8(__kome_string_data(self.bundleId), __kome_string_len(self.bundleId), __kome_string_data(self.title), __kome_string_len(self.title), __kome_string_data(self.message), __kome_string_len(self.message))
+		if status != 0 {
+			return AppCoreResult<u64> { status: status, value: null }
+		}
+		return AppCoreResult<u64> { status: status, value: mochios_last_result_u64() }
+	}
+}

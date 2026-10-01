@@ -1,14 +1,22 @@
 extern "C" from "appcore" {
-	// Replaces the shared clipboard contents with UTF-8 text.
-	fn mochios_clipboard_set_text_utf8(data: *const u8, length: usize) -> i32
+	// Returns the AppCore C ABI version.
+	fn mochios_abi_version() -> u32
+
+	// Returns the native system error saved by the latest failed call.
+	fn mochios_last_system_error() -> i64
 }
 
-// Provides capability-checked access to the shared workspace clipboard.
-struct Clipboard {}
+// Provides process-wide AppCore information.
+struct AppCore {}
 
-for Clipboard {
-	// Replaces the shared clipboard contents with UTF-8 text.
-	fn text(value: String) -> i32 {
-		return mochios_clipboard_set_text_utf8(__kome_string_data(value), __kome_string_len(value))
+for AppCore {
+	// Returns the loaded AppCore C ABI version.
+	fn abiVersion() -> u32 {
+		return mochios_abi_version()
+	}
+
+	// Returns the native system error saved by the latest failed call.
+	fn lastSystemError() -> i64 {
+		return mochios_last_system_error()
 	}
 }

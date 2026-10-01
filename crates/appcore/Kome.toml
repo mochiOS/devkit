@@ -4,6 +4,23 @@ version = "0.1.0"
 
 [lib]
 source = "lib/src/lib.kome"
+sources = [
+	"lib/src/result.kome",
+	"lib/src/viewkit.kome",
+	"lib/src/clipboard.kome",
+	"lib/src/content_type.kome",
+	"lib/src/document.kome",
+	"lib/src/notification.kome",
+	"lib/src/control_center.kome",
+	"lib/src/alert.kome",
+	"lib/src/panel.kome",
+	"lib/src/document_controller.kome",
+	"lib/src/menu.kome",
+	"lib/src/recovery.kome",
+	"lib/src/session.kome",
+	"lib/src/undo.kome",
+	"lib/src/undo_responder.kome",
+]
 
 [dependencies]
 viewkit = { system = true }
