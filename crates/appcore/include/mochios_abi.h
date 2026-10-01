@@ -1,6 +1,7 @@
 #ifndef MOCHIOS_ABI_H
 #define MOCHIOS_ABI_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #define MOCHIOS_ABI_VERSION_MAJOR 1u
@@ -40,6 +41,7 @@ int64_t mochios_last_system_error(void);
 MochiosStringView mochios_status_name(int32_t status);
 
 int32_t mochios_clipboard_set_text(MochiosStringView text);
+int32_t mochios_clipboard_set_text_utf8(const uint8_t *data, size_t length);
 int32_t mochios_clipboard_copy_text(MochiosMutableBuffer output, uint64_t *required_length, uint8_t *has_text);
 
 int32_t mochios_association_set(MochiosStringView extension, MochiosStringView content_type, MochiosStringView bundle_id, uint16_t role_bits);

@@ -148,6 +148,18 @@ pub unsafe extern "C" fn mochios_clipboard_set_text(text: StringView) -> i32 {
     })
 }
 
+/// Replaces the clipboard with UTF-8 bytes passed as a pointer and length.
+///
+/// This form avoids a by-value C structure and is the stable entry point used
+/// by Kome's thin AppCore package.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mochios_clipboard_set_text_utf8(data: *const u8, length: usize) -> i32 {
+    let Ok(length) = u64::try_from(length) else {
+        return Status::InvalidArgument as i32;
+    };
+    unsafe { mochios_clipboard_set_text(StringView { data, length }) }
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mochios_clipboard_copy_text(
     output: MutableBuffer,
@@ -354,6 +366,15 @@ mod tests {
                 )
             },
             Status::InvalidArgument as i32
+        );
+    }
+
+    #[test]
+    fn pointer_length_clipboard_entry_rejects_invalid_utf8() {
+        let invalid = [0xff];
+        assert_eq!(
+            unsafe { mochios_clipboard_set_text_utf8(invalid.as_ptr(), invalid.len()) },
+            Status::InvalidUtf8 as i32
         );
     }
 }

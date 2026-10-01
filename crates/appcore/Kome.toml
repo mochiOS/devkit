@@ -1,0 +1,9 @@
+[package]
+name = "appcore"
+version = "0.1.0"
+
+[lib]
+source = "lib/src/lib.kome"
+
+[dependencies]
+viewkit = { system = true }
