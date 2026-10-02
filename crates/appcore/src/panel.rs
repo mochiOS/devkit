@@ -336,10 +336,8 @@ impl FilePanel {
             }
         };
         let directory = self.state.directory.borrow().to_string_lossy().into_owned();
-        let content_types = self
-            .state
-            .allowed_content_types
-            .borrow()
+        let allowed_content_types = self.state.allowed_content_types.borrow();
+        let content_types = allowed_content_types
             .iter()
             .map(ContentType::identifier)
             .collect::<Vec<_>>();
