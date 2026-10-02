@@ -1,16 +1,36 @@
-// A keyboard shortcut label displayed by an application menu item.
+/// アプリケーションメニューに表示するキーボードショートカットを表します。
+///
+/// @since 27.0-dp.1
 struct MenuShortcut {
 	label: String,
 }
 
 for MenuShortcut {
-	// Creates a shortcut from its platform-facing display label.
+	/// 表示用ラベルからショートカットを作成します。
+	///
+	/// ## Parameters
+	///
+	/// - `label`: プラットフォームに表示するラベルです。
+	///
+	/// ## Returns
+	///
+	/// 作成された`MenuShortcut`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let shortcut = MenuShortcut.make("Ctrl+S")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn make(label: String) -> MenuShortcut {
 		return MenuShortcut { label: label }
 	}
 }
 
-// One action-bearing entry in an application menu.
+/// 操作を持つアプリケーションメニューの項目を表します。
+///
+/// @since 27.0-dp.1
 struct ApplicationMenuItem {
 	label: String,
 	shortcut: String,
@@ -20,27 +40,105 @@ struct ApplicationMenuItem {
 }
 
 for ApplicationMenuItem {
-	// Creates an enabled menu item without a keyboard shortcut.
+	/// ショートカットを持たない有効なメニュー項目を作成します。
+	///
+	/// ## Parameters
+	///
+	/// - `label`: 項目のラベルです。
+	/// - `actionId`: 項目に紐づく操作識別子です。
+	///
+	/// ## Returns
+	///
+	/// 作成された`ApplicationMenuItem`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let item = ApplicationMenuItem.action("保存", 1)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn action(label: String, actionId: u64) -> ApplicationMenuItem {
 		return ApplicationMenuItem { label: label, shortcut: "", enabled: true, destructive: false, actionId: actionId }
 	}
 
-	// Creates an enabled menu item with a keyboard shortcut.
+	/// ショートカットを持つ有効なメニュー項目を作成します。
+	///
+	/// ## Parameters
+	///
+	/// - `label`: 項目のラベルです。
+	/// - `shortcut`: 項目のキーボードショートカットです。
+	/// - `actionId`: 項目に紐づく操作識別子です。
+	///
+	/// ## Returns
+	///
+	/// 作成された`ApplicationMenuItem`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let item = ApplicationMenuItem.actionWithShortcut("保存", shortcut, 1)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn actionWithShortcut(label: String, shortcut: MenuShortcut, actionId: u64) -> ApplicationMenuItem {
 		return ApplicationMenuItem { label: label, shortcut: shortcut.label, enabled: true, destructive: false, actionId: actionId }
 	}
 
-	// Returns a copy with the requested enabled state.
+	/// 有効状態を変更した複製を返します。
+	///
+	/// ## Parameters
+	///
+	/// - `enabled`: 項目を有効にする場合は`true`です。
+	///
+	/// ## Returns
+	///
+	/// 有効状態が変更された`ApplicationMenuItem`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let item = item.withEnabled(false)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn withEnabled(self, enabled: bool) -> ApplicationMenuItem {
 		return ApplicationMenuItem { label: self.label, shortcut: self.shortcut, enabled: enabled, destructive: self.destructive, actionId: self.actionId }
 	}
 
-	// Returns a copy with the requested destructive appearance.
+	/// 破壊的な操作の外観を設定した複製を返します。
+	///
+	/// ## Parameters
+	///
+	/// - `destructive`: 破壊的な操作として表示する場合は`true`です。
+	///
+	/// ## Returns
+	///
+	/// 外観が変更された`ApplicationMenuItem`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let item = item.withDestructive(true)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn withDestructive(self, destructive: bool) -> ApplicationMenuItem {
 		return ApplicationMenuItem { label: self.label, shortcut: self.shortcut, enabled: self.enabled, destructive: destructive, actionId: self.actionId }
 	}
 
-	// Pushes this item into the active ViewKit tree.
+	/// この項目を現在のViewKitツリーへ追加します。
+	///
+	/// ## Parameters
+	///
+	/// - `runtime`: 項目を追加するViewKit実行環境です。
+	/// - `nodeId`: 項目のノード識別子です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// @since 27.0-dp.1
 	fn push(self, runtime: *mut VkRuntime, nodeId: u64) -> i32 {
 		var enabled: u8 = 0
 		var destructive: u8 = 0
@@ -54,38 +152,100 @@ for ApplicationMenuItem {
 	}
 }
 
-// Describes one application menu surface.
+/// 1つのアプリケーションメニューを表します。
+///
+/// @since 27.0-dp.1
 struct ApplicationMenu {
 	title: String,
 }
 
 for ApplicationMenu {
-	// Creates an application menu with a title.
+	/// タイトル付きのアプリケーションメニューを作成します。
+	///
+	/// ## Parameters
+	///
+	/// - `title`: メニューのタイトルです。
+	///
+	/// ## Returns
+	///
+	/// 作成された`ApplicationMenu`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let menu = ApplicationMenu.make("ファイル")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn make(title: String) -> ApplicationMenu {
 		return ApplicationMenu { title: title }
 	}
 
-	// Begins the menu's vertical item container in the active ViewKit tree.
+	/// 現在のViewKitツリーでメニュー項目の縦方向コンテナーを開始します。
+	///
+	/// ## Parameters
+	///
+	/// - `runtime`: メニューを追加するViewKit実行環境です。
+	/// - `nodeId`: コンテナーのノード識別子です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// @since 27.0-dp.1
 	fn beginItems(self, runtime: *mut VkRuntime, nodeId: u64) -> i32 {
 		return vk_begin_vstack(runtime, nodeId, 0, 3, 0)
 	}
 
-	// Ends the menu's item container.
+	/// メニュー項目のコンテナーを終了します。
+	///
+	/// ## Parameters
+	///
+	/// - `runtime`: メニューを構築中のViewKit実行環境です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// @since 27.0-dp.1
 	fn endItems(self, runtime: *mut VkRuntime) -> i32 {
 		return vk_end_node(runtime)
 	}
 }
 
-// Builds a horizontal application-menu header row.
+/// アプリケーションメニューの水平な見出し行を構築します。
+///
+/// @since 27.0-dp.1
 struct ApplicationMenuBar {}
 
 for ApplicationMenuBar {
-	// Begins the menu bar in the active ViewKit tree.
+	/// 現在のViewKitツリーでメニューバーを開始します。
+	///
+	/// ## Parameters
+	///
+	/// - `runtime`: メニューバーを追加するViewKit実行環境です。
+	/// - `nodeId`: メニューバーのノード識別子です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// @since 27.0-dp.1
 	fn begin(runtime: *mut VkRuntime, nodeId: u64) -> i32 {
 		return vk_begin_hstack(runtime, nodeId, 2, 1, 0)
 	}
 
-	// Ends the menu bar.
+	/// メニューバーを終了します。
+	///
+	/// ## Parameters
+	///
+	/// - `runtime`: メニューバーを構築中のViewKit実行環境です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// @since 27.0-dp.1
 	fn end(runtime: *mut VkRuntime) -> i32 {
 		return vk_end_node(runtime)
 	}

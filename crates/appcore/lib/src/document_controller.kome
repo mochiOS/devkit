@@ -20,7 +20,9 @@ extern "C" from "appcore" {
 	fn mochios_document_controller_destroy(controller: *mut MochiosDocumentController)
 }
 
-// Metadata describing a document's stored representation.
+/// 保存される書類の形式を表します。
+///
+/// @since 27.0-dp.1
 struct DocumentMetadata {
 	fileType: String,
 	encoding: String,
@@ -28,18 +30,53 @@ struct DocumentMetadata {
 }
 
 for DocumentMetadata {
-	// Creates writable document metadata.
+	/// 書き込み可能な書類情報を作成します。
+	///
+	/// ## Parameters
+	///
+	/// - `fileType`: 書類のファイル形式です。
+	/// - `encoding`: 書類の文字エンコーディングです。
+	///
+	/// ## Returns
+	///
+	/// 作成された`DocumentMetadata`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let metadata = DocumentMetadata.make("text/plain", "utf-8")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn make(fileType: String, encoding: String) -> DocumentMetadata {
 		return DocumentMetadata { fileType: fileType, encoding: encoding, writable: true }
 	}
 
-	// Returns a copy with the requested writable state.
+	/// 書き込み可否を変更した複製を返します。
+	///
+	/// ## Parameters
+	///
+	/// - `writable`: 書き込み可能にする場合は`true`です。
+	///
+	/// ## Returns
+	///
+	/// 書き込み可否が変更された`DocumentMetadata`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let metadata = metadata.withWritable(false)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn withWritable(self, writable: bool) -> DocumentMetadata {
 		return DocumentMetadata { fileType: self.fileType, encoding: self.encoding, writable: writable }
 	}
 }
 
-// User-visible identity and storage metadata for a document.
+/// 書類の表示名と保存情報を表します。
+///
+/// @since 27.0-dp.1
 struct DocumentInfo {
 	displayName: String,
 	path: String,
@@ -47,91 +84,308 @@ struct DocumentInfo {
 }
 
 for DocumentInfo {
-	// Creates metadata for an untitled document.
+	/// 未命名の書類情報を作成します。
+	///
+	/// ## Parameters
+	///
+	/// - `metadata`: 書類の保存形式です。
+	///
+	/// ## Returns
+	///
+	/// 作成された`DocumentInfo`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let info = DocumentInfo.untitled(metadata)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn untitled(metadata: DocumentMetadata) -> DocumentInfo {
 		return DocumentInfo { displayName: "Untitled", path: "", metadata: metadata }
 	}
 
-	// Creates metadata for a named document.
+	/// 名前とパスを持つ書類情報を作成します。
+	///
+	/// ## Parameters
+	///
+	/// - `displayName`: ユーザーに表示する書類名です。
+	/// - `path`: 書類の保存パスです。
+	/// - `metadata`: 書類の保存形式です。
+	///
+	/// ## Returns
+	///
+	/// 作成された`DocumentInfo`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let info = DocumentInfo.at("Note.txt", "/Documents/Note.txt", metadata)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn at(displayName: String, path: String, metadata: DocumentMetadata) -> DocumentInfo {
 		return DocumentInfo { displayName: displayName, path: path, metadata: metadata }
 	}
 }
 
-// A lifecycle operation that application code must perform.
+/// アプリケーションが実行すべき書類操作を表します。
+///
+/// @since 27.0-dp.1
 struct DocumentControllerAction {
 	value: u64,
 }
 
 for DocumentControllerAction {
+	/// 書類を開く操作です。
+	///
+	/// @since 27.0-dp.1
 	const OPEN: DocumentControllerAction = DocumentControllerAction { value: 1 }
+	/// 書類を保存する操作です。
+	///
+	/// @since 27.0-dp.1
 	const SAVE: DocumentControllerAction = DocumentControllerAction { value: 2 }
+	/// 書類を別名で保存する操作です。
+	///
+	/// @since 27.0-dp.1
 	const SAVE_AS: DocumentControllerAction = DocumentControllerAction { value: 3 }
+	/// 書類を保存済みの状態へ戻す操作です。
+	///
+	/// @since 27.0-dp.1
 	const REVERT: DocumentControllerAction = DocumentControllerAction { value: 4 }
+	/// 書類を閉じる操作です。
+	///
+	/// @since 27.0-dp.1
 	const CLOSE: DocumentControllerAction = DocumentControllerAction { value: 5 }
 }
 
-// Coordinates the lifecycle state of one file-backed document.
+/// 1つのファイルに保存される書類の生存期間を管理します。
+///
+/// @since 27.0-dp.1
 struct DocumentController {
 	raw: *mut MochiosDocumentController,
 }
 
 for DocumentController {
-	// Creates a controller from initial document information.
+	/// 初期の書類情報から管理器を作成します。
+	///
+	/// ## Parameters
+	///
+	/// - `info`: 初期の書類情報です。
+	/// - `revision`: アプリケーションが管理する初期版番です。
+	///
+	/// ## Returns
+	///
+	/// 作成された`DocumentController`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let controller = DocumentController.make(info, 0)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn make(info: DocumentInfo, revision: u64) -> DocumentController {
 		var writable: u8 = 0
 		if info.metadata.writable { writable = 1 }
 		return DocumentController { raw: mochios_document_controller_create_utf8(__kome_string_data(info.displayName), __kome_string_len(info.displayName), __kome_string_data(info.path), __kome_string_len(info.path), __kome_string_data(info.metadata.fileType), __kome_string_len(info.metadata.fileType), __kome_string_data(info.metadata.encoding), __kome_string_len(info.metadata.encoding), writable, revision) }
 	}
 
-	// Updates the application-owned document revision.
+	/// アプリケーションが管理する書類の版番を更新します。
+	///
+	/// ## Parameters
+	///
+	/// - `revision`: 新しい版番です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// @since 27.0-dp.1
 	fn setRevision(self, revision: u64) -> i32 { return mochios_document_controller_set_revision(self.raw, revision) }
-	// Returns whether the document differs from its saved revision.
+	/// 書類が保存済みの版番から変更されたかどうかを返します。
+	///
+	/// ## Returns
+	///
+	/// 変更されている場合は`true`を返します。
+	///
+	/// @since 27.0-dp.1
 	fn isEdited(self) -> bool { return mochios_document_controller_is_edited(self.raw) != 0 }
-	// Requests an open operation.
+	/// 書類を開く操作を要求します。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// @since 27.0-dp.1
 	fn open(self) -> i32 { return mochios_document_controller_open(self.raw) }
-	// Requests a save or save-as operation as appropriate.
+	/// 状態に応じて保存または別名保存を要求します。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// @since 27.0-dp.1
 	fn save(self) -> i32 { return mochios_document_controller_save(self.raw) }
-	// Requests a save-as operation.
+	/// 別名保存を要求します。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// @since 27.0-dp.1
 	fn saveAs(self) -> i32 { return mochios_document_controller_save_as(self.raw) }
-	// Requests a revert operation.
+	/// 保存済みの状態へ戻す操作を要求します。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// @since 27.0-dp.1
 	fn revert(self) -> i32 { return mochios_document_controller_revert(self.raw) }
 
-	// Requests close and reports whether the document may close immediately.
+	/// 書類を閉じるよう要求します。
+	///
+	/// ## Returns
+	///
+	/// すぐに閉じられる場合は`true`を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let closable = controller.requestClose()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn requestClose(self) -> AppCoreResult<bool> {
 		let status = mochios_document_controller_request_close(self.raw)
 		if status != 0 { return AppCoreResult<bool> { status: status, value: null } }
 		return AppCoreResult<bool> { status: status, value: mochios_last_result_u64() != 0 }
 	}
 
-	// Takes the next lifecycle action for application code to perform.
+	/// アプリケーションが実行すべき次の書類操作を取得します。
+	///
+	/// ## Returns
+	///
+	/// 書類操作を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let action = controller.takeAction()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn takeAction(self) -> AppCoreResult<DocumentControllerAction> {
 		let status = mochios_document_controller_take_action(self.raw)
 		if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<DocumentControllerAction> { status: status, value: null } }
 		return AppCoreResult<DocumentControllerAction> { status: status, value: DocumentControllerAction { value: mochios_last_result_u64() } }
 	}
 
-	// Completes a lifecycle action with new saved document information.
+	/// 新しい保存済み書類情報を使って操作を完了します。
+	///
+	/// ## Parameters
+	///
+	/// - `info`: 操作完了後の書類情報です。
+	/// - `revision`: 操作完了後の版番です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// controller.complete(info, revision)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn complete(self, info: DocumentInfo, revision: u64) -> i32 {
 		var writable: u8 = 0
 		if info.metadata.writable { writable = 1 }
 		return mochios_document_controller_complete_utf8(self.raw, __kome_string_data(info.displayName), __kome_string_len(info.displayName), __kome_string_data(info.path), __kome_string_len(info.path), __kome_string_data(info.metadata.fileType), __kome_string_len(info.metadata.fileType), __kome_string_data(info.metadata.encoding), __kome_string_len(info.metadata.encoding), writable, revision)
 	}
 
-	// Completes a lifecycle action with an error.
+	/// エラーを記録して操作を終了します。
+	///
+	/// ## Parameters
+	///
+	/// - `message`: 記録するエラーメッセージです。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// controller.fail("書類を保存できませんでした。")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn fail(self, message: String) -> i32 { return mochios_document_controller_fail_utf8(self.raw, __kome_string_data(message), __kome_string_len(message)) }
 
-	// Returns the current document display name.
+	/// 現在の書類の表示名を返します。
+	///
+	/// ## Returns
+	///
+	/// 表示名を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let name = controller.displayName()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn displayName(self) -> AppCoreResult<String> { let status = mochios_document_controller_display_name(self.raw) if status != 0 { return AppCoreResult<String> { status: status, value: null } } return AppCoreResult<String> { status: status, value: __appCoreLastString() } }
-	// Returns the current document path when one exists.
+	/// 現在の書類のパスを返します。
+	///
+	/// ## Returns
+	///
+	/// パスがある場合はその文字列を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let path = controller.path()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn path(self) -> AppCoreResult<String> { let status = mochios_document_controller_path(self.raw) if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<String> { status: status, value: null } } return AppCoreResult<String> { status: status, value: __appCoreLastString() } }
-	// Returns the latest lifecycle error.
+	/// 直近の書類操作エラーを返します。
+	///
+	/// ## Returns
+	///
+	/// エラーメッセージがある場合はその文字列を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let status = controller.status()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn status(self) -> AppCoreResult<String> { let status = mochios_document_controller_status(self.raw) if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<String> { status: status, value: null } } return AppCoreResult<String> { status: status, value: __appCoreLastString() } }
-	// Clears the latest lifecycle error.
+	/// 直近の書類操作エラーを消去します。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// controller.clearStatus()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn clearStatus(self) -> i32 { return mochios_document_controller_clear_status(self.raw) }
 }
 
 for DocumentController: Drop {
-	// Releases the native controller.
+	/// ネイティブの書類管理器を解放します。
+	///
+	/// @since 27.0-dp.1
 	fn drop(self) { mochios_document_controller_destroy(self.raw) }
 }
