@@ -1,30 +1,84 @@
-// A semantic command accepted by an undo responder.
+/// 取り消し応答オブジェクトが受け付ける操作を表します。
+///
+/// @since 27.0-dp.1
 struct UndoCommand {
 	value: u8,
 }
 
 for UndoCommand {
+	/// 取り消し操作です。
+	///
+	/// @since 27.0-dp.1
 	const UNDO: UndoCommand = UndoCommand { value: 1 }
+	/// やり直し操作です。
+	///
+	/// @since 27.0-dp.1
 	const REDO: UndoCommand = UndoCommand { value: 2 }
 }
 
-// Routes semantic undo and redo commands to an UndoManager.
+/// 取り消しとやり直しの操作を`UndoManager`へ送ります。
+///
+/// @since 27.0-dp.1
 struct UndoResponder {
 	manager: UndoManager,
 }
 
 for UndoResponder {
-	// Creates a responder backed by an undo manager.
+	/// 取り消し管理器を使う応答オブジェクトを作成します。
+	///
+	/// ## Parameters
+	///
+	/// - `manager`: 操作を送る取り消し管理器です。
+	///
+	/// ## Returns
+	///
+	/// 作成された`UndoResponder`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let responder = UndoResponder.make(manager)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn make(manager: UndoManager) -> UndoResponder {
 		return UndoResponder { manager: manager }
 	}
 
-	// Returns the manager used by this responder.
+	/// この応答オブジェクトが使う取り消し管理器を返します。
+	///
+	/// ## Returns
+	///
+	/// 使用中の`UndoManager`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let manager = responder.undoManager()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn undoManager(self) -> UndoManager {
 		return self.manager
 	}
 
-	// Handles an undo or redo command.
+	/// 取り消しまたはやり直しの操作を処理します。
+	///
+	/// ## Parameters
+	///
+	/// - `command`: 処理する操作です。
+	///
+	/// ## Returns
+	///
+	/// 操作が実行された場合は`true`を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let result = responder.handle(UndoCommand.UNDO)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn handle(self, command: UndoCommand) -> AppCoreResult<bool> {
 		if command.value == UndoCommand.UNDO.value {
 			return self.manager.undo()

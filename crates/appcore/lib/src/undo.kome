@@ -18,30 +18,74 @@ extern "C" from "appcore" {
 	fn mochios_undo_manager_destroy(manager: *mut MochiosUndoManager)
 }
 
-// A reversible operation represented by application-owned action IDs.
+/// アプリケーションが所有する操作識別子で表される、取り消し可能な操作を表します。
+///
+/// @since 27.0-dp.1
 struct UndoOperation {
 	name: String,
 	undoAction: u64,
 	redoAction: u64,
 }
 
-// Records reversible operations and emits their action IDs during replay.
+/// 取り消し可能な操作を記録し、再実行時に操作識別子を通知します。
+///
+/// @since 27.0-dp.1
 struct UndoManager {
 	raw: *mut MochiosUndoManager,
 }
 
 for UndoManager {
-	// Creates an empty undo manager.
+	/// 空の取り消し管理器を作成します。
+	///
+	/// ## Returns
+	///
+	/// 作成された`UndoManager`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let manager = UndoManager.make()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn make() -> UndoManager {
 		return UndoManager { raw: mochios_undo_manager_create() }
 	}
 
-	// Starts an atomic undo group.
+	/// 一まとめに取り消す操作グループを開始します。
+	///
+	/// ## Parameters
+	///
+	/// - `name`: 操作グループの名前です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// manager.beginGroup("編集")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn beginGroup(self, name: String) -> i32 {
 		return mochios_undo_manager_begin_group_utf8(self.raw, __kome_string_data(name), __kome_string_len(name))
 	}
 
-	// Finishes the current group and reports whether one was open.
+	/// 現在の操作グループを終了します。
+	///
+	/// ## Returns
+	///
+	/// 終了したグループがある場合は`true`を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let ended = manager.endGroup()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn endGroup(self) -> AppCoreResult<bool> {
 		let status = mochios_undo_manager_end_group(self.raw)
 		if status != 0 {
@@ -50,27 +94,95 @@ for UndoManager {
 		return AppCoreResult<bool> { status: status, value: mochios_last_result_u64() != 0 }
 	}
 
-	// Changes the title of the currently open group.
+	/// 現在開いている操作グループの名前を変更します。
+	///
+	/// ## Parameters
+	///
+	/// - `name`: 新しい操作名です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// manager.setActionName("文字の挿入")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn setActionName(self, name: String) -> i32 {
 		return mochios_undo_manager_set_action_name_utf8(self.raw, __kome_string_data(name), __kome_string_len(name))
 	}
 
-	// Registers one reversible operation.
+	/// 取り消し可能な操作を1つ登録します。
+	///
+	/// ## Parameters
+	///
+	/// - `operation`: 登録する操作です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// manager.register(operation)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn register(self, operation: UndoOperation) -> i32 {
 		return mochios_undo_manager_register_utf8(self.raw, __kome_string_data(operation.name), __kome_string_len(operation.name), operation.undoAction, operation.redoAction)
 	}
 
-	// Returns whether an undo operation is available.
+	/// 取り消せる操作があるかどうかを返します。
+	///
+	/// ## Returns
+	///
+	/// 取り消し可能な場合は`true`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let available = manager.canUndo()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn canUndo(self) -> bool {
 		return mochios_undo_manager_can_undo(self.raw) != 0
 	}
 
-	// Returns whether a redo operation is available.
+	/// やり直せる操作があるかどうかを返します。
+	///
+	/// ## Returns
+	///
+	/// やり直し可能な場合は`true`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let available = manager.canRedo()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn canRedo(self) -> bool {
 		return mochios_undo_manager_can_redo(self.raw) != 0
 	}
 
-	// Returns the current undo action name.
+	/// 現在取り消せる操作の名前を返します。
+	///
+	/// ## Returns
+	///
+	/// 操作名を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let name = manager.undoActionName()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn undoActionName(self) -> AppCoreResult<String> {
 		let status = mochios_undo_manager_undo_action_name(self.raw)
 		if status != 0 || mochios_last_result_has_value() == 0 {
@@ -79,7 +191,19 @@ for UndoManager {
 		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
 	}
 
-	// Returns the current redo action name.
+	/// 現在やり直せる操作の名前を返します。
+	///
+	/// ## Returns
+	///
+	/// 操作名を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let name = manager.redoActionName()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn redoActionName(self) -> AppCoreResult<String> {
 		let status = mochios_undo_manager_redo_action_name(self.raw)
 		if status != 0 || mochios_last_result_has_value() == 0 {
@@ -88,7 +212,19 @@ for UndoManager {
 		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
 	}
 
-	// Performs the latest undo operation.
+	/// 直近の操作を取り消します。
+	///
+	/// ## Returns
+	///
+	/// 操作を取り消した場合は`true`を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let undone = manager.undo()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn undo(self) -> AppCoreResult<bool> {
 		let status = mochios_undo_manager_undo(self.raw)
 		if status != 0 {
@@ -97,7 +233,19 @@ for UndoManager {
 		return AppCoreResult<bool> { status: status, value: mochios_last_result_u64() != 0 }
 	}
 
-	// Performs the latest redo operation.
+	/// 直近に取り消した操作をやり直します。
+	///
+	/// ## Returns
+	///
+	/// 操作をやり直した場合は`true`を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let redone = manager.redo()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn redo(self) -> AppCoreResult<bool> {
 		let status = mochios_undo_manager_redo(self.raw)
 		if status != 0 {
@@ -106,7 +254,19 @@ for UndoManager {
 		return AppCoreResult<bool> { status: status, value: mochios_last_result_u64() != 0 }
 	}
 
-	// Takes the next action ID emitted by undo or redo.
+	/// 取り消しまたはやり直しが通知した次の操作識別子を取得します。
+	///
+	/// ## Returns
+	///
+	/// 操作識別子を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let action = manager.takeAction()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn takeAction(self) -> AppCoreResult<u64> {
 		let status = mochios_undo_manager_take_action(self.raw)
 		if status != 0 || mochios_last_result_has_value() == 0 {
@@ -115,17 +275,57 @@ for UndoManager {
 		return AppCoreResult<u64> { status: status, value: mochios_last_result_u64() }
 	}
 
-	// Removes all undo and redo history.
+	/// 取り消しとやり直しの履歴をすべて削除します。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// manager.removeAllActions()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn removeAllActions(self) -> i32 {
 		return mochios_undo_manager_remove_all(self.raw)
 	}
 
-	// Sets the maximum number of committed undo groups.
+	/// 保持する取り消しグループの最大数を設定します。
+	///
+	/// ## Parameters
+	///
+	/// - `levels`: 保持するグループの最大数です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// manager.setLevelsOfUndo(100)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn setLevelsOfUndo(self, levels: usize) -> i32 {
 		return mochios_undo_manager_set_levels(self.raw, levels)
 	}
 
-	// Returns the current nested grouping level.
+	/// 現在のグループの入れ子深度を返します。
+	///
+	/// ## Returns
+	///
+	/// 現在の入れ子深度を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let level = manager.groupingLevel()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn groupingLevel(self) -> usize {
 		return mochios_undo_manager_grouping_level(self.raw)
 	}
@@ -133,7 +333,9 @@ for UndoManager {
 }
 
 for UndoManager: Drop {
-	// Releases the native undo manager.
+	/// ネイティブの取り消し管理器を解放します。
+	///
+	/// @since 27.0-dp.1
 	fn drop(self) {
 		mochios_undo_manager_destroy(self.raw)
 	}
