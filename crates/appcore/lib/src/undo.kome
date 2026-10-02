@@ -1,3 +1,5 @@
+use std::core
+
 extern "C" from "appcore" {
 	struct MochiosUndoManager
 	fn mochios_undo_manager_create() -> *mut MochiosUndoManager

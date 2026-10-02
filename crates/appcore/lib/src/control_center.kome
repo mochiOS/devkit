@@ -1,3 +1,5 @@
+use std::core
+
 extern "C" from "appcore" {
 	struct MochiosControlCenterItem
 

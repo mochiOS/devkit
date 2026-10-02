@@ -1,3 +1,5 @@
+use std::core
+
 extern "C" from "appcore" {
 	struct MochiosDocumentController
 	fn mochios_document_controller_create_utf8(displayNameData: *const u8, displayNameLength: usize, pathData: *const u8, pathLength: usize, fileTypeData: *const u8, fileTypeLength: usize, encodingData: *const u8, encodingLength: usize, writable: u8, revision: u64) -> *mut MochiosDocumentController
