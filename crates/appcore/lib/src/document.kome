@@ -1,4 +1,4 @@
-use std::core
+use std::core::Drop
 
 extern "C" from "appcore" {
 	struct MochiosAssociationHandlers
@@ -26,15 +26,15 @@ extern "C" from "appcore" {
 /// 対応する書類を開けるアプリケーションを表します。
 ///
 /// @since 27.0-dp.1
-struct AssociationHandler {
-	bundleId: String,
-	name: String,
+pub struct AssociationHandler {
+	pub bundleId: String,
+	pub name: String,
 }
 
 /// 解決された書類ハンドラーのコレクションを表します。
 ///
 /// @since 27.0-dp.1
-struct AssociationHandlers {
+pub struct AssociationHandlers {
 	raw: *mut MochiosAssociationHandlers,
 }
 
@@ -52,7 +52,7 @@ for AssociationHandlers {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn count(self) -> usize {
+	pub fn count(self) -> usize {
 		return mochios_association_handlers_count(self.raw)
 	}
 
@@ -73,7 +73,7 @@ for AssociationHandlers {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn handler(self, index: usize) -> AppCoreResult<AssociationHandler> {
+	pub fn handler(self, index: usize) -> AppCoreResult<AssociationHandler> {
 		let status = mochios_association_handlers_bundle_id(self.raw, index)
 		if status != 0 {
 			return AppCoreResult<AssociationHandler> { status: status, value: null }
@@ -100,7 +100,7 @@ for AssociationHandlers: Drop {
 /// 書類の関連付けを解決または更新する際の役割を表します。
 ///
 /// @since 27.0-dp.1
-struct AssociationRoles {
+pub struct AssociationRoles {
 	bits: u16,
 }
 
@@ -108,21 +108,21 @@ for AssociationRoles {
 	/// 書類を閲覧する役割です。
 	///
 	/// @since 27.0-dp.1
-	const VIEW: AssociationRoles = AssociationRoles { bits: 1 }
+	pub const VIEW: AssociationRoles = AssociationRoles { bits: 1 }
 	/// 書類を編集する役割です。
 	///
 	/// @since 27.0-dp.1
-	const EDIT: AssociationRoles = AssociationRoles { bits: 2 }
+	pub const EDIT: AssociationRoles = AssociationRoles { bits: 2 }
 	/// 閲覧と編集の両方を含む役割です。
 	///
 	/// @since 27.0-dp.1
-	const ALL: AssociationRoles = AssociationRoles { bits: 3 }
+	pub const ALL: AssociationRoles = AssociationRoles { bits: 3 }
 }
 
 /// 権限を確認した上で、書類とファイルの関連付けを操作します。
 ///
 /// @since 27.0-dp.1
-struct Document {}
+pub struct Document {}
 
 for Document {
 	/// 書類の種類と役割に対する既定のアプリケーションを設定します。
@@ -145,7 +145,7 @@ for Document {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn setDefault(extension: String, contentType: ContentType, bundleId: String, roles: AssociationRoles) -> i32 {
+	pub fn setDefault(extension: String, contentType: ContentType, bundleId: String, roles: AssociationRoles) -> i32 {
 		return mochios_association_set_utf8(__kome_string_data(extension), __kome_string_len(extension), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), __kome_string_data(bundleId), __kome_string_len(bundleId), roles.bits)
 	}
 
@@ -168,7 +168,7 @@ for Document {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn removeDefault(extension: String, contentType: ContentType, roles: AssociationRoles) -> i32 {
+	pub fn removeDefault(extension: String, contentType: ContentType, roles: AssociationRoles) -> i32 {
 		return mochios_association_remove_utf8(__kome_string_data(extension), __kome_string_len(extension), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), roles.bits)
 	}
 
@@ -191,7 +191,7 @@ for Document {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn resolveDefault(extension: String, contentType: ContentType, roles: AssociationRoles) -> AppCoreResult<String> {
+	pub fn resolveDefault(extension: String, contentType: ContentType, roles: AssociationRoles) -> AppCoreResult<String> {
 		let status = mochios_association_resolve_utf8(__kome_string_data(extension), __kome_string_len(extension), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), roles.bits)
 		if status != 0 {
 			return AppCoreResult<String> { status: status, value: null }
@@ -218,7 +218,7 @@ for Document {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn handlers(extension: String, contentType: ContentType, roles: AssociationRoles) -> AppCoreResult<AssociationHandlers> {
+	pub fn handlers(extension: String, contentType: ContentType, roles: AssociationRoles) -> AppCoreResult<AssociationHandlers> {
 		let raw = mochios_association_handlers_utf8(__kome_string_data(extension), __kome_string_len(extension), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), roles.bits)
 		let status = AppCore.lastStatus()
 		if status != 0 {
@@ -246,7 +246,7 @@ for Document {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn open(path: String, contentType: ContentType, roles: AssociationRoles) -> AppCoreResult<u64> {
+	pub fn open(path: String, contentType: ContentType, roles: AssociationRoles) -> AppCoreResult<u64> {
 		let status = mochios_document_open_utf8(__kome_string_data(path), __kome_string_len(path), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), roles.bits)
 		if status != 0 {
 			return AppCoreResult<u64> { status: status, value: null }
@@ -274,7 +274,7 @@ for Document {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn openWith(path: String, contentType: ContentType, bundleId: String, roles: AssociationRoles) -> AppCoreResult<u64> {
+	pub fn openWith(path: String, contentType: ContentType, bundleId: String, roles: AssociationRoles) -> AppCoreResult<u64> {
 		let status = mochios_document_open_with_utf8(__kome_string_data(path), __kome_string_len(path), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), __kome_string_data(bundleId), __kome_string_len(bundleId), roles.bits)
 		if status != 0 {
 			return AppCoreResult<u64> { status: status, value: null }

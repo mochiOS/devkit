@@ -18,7 +18,7 @@ extern "C" from "appcore" {
 /// 検証済みの標準化されたMIME形式のコンテンツ識別子を表します。
 ///
 /// @since 27.0-dp.1
-struct ContentType {
+pub struct ContentType {
 	identifier: String,
 }
 
@@ -26,55 +26,55 @@ for ContentType {
 	/// 任意のバイナリデータを表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
-	const DATA: ContentType = ContentType { identifier: "application/octet-stream" }
+	pub const DATA: ContentType = ContentType { identifier: "application/octet-stream" }
 	/// プレーンテキストを表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
-	const PLAIN_TEXT: ContentType = ContentType { identifier: "text/plain" }
+	pub const PLAIN_TEXT: ContentType = ContentType { identifier: "text/plain" }
 	/// UTF-8のプレーンテキストを表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
-	const UTF8_PLAIN_TEXT: ContentType = ContentType { identifier: "text/plain;charset=utf-8" }
+	pub const UTF8_PLAIN_TEXT: ContentType = ContentType { identifier: "text/plain;charset=utf-8" }
 	/// JSON書類を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
-	const JSON: ContentType = ContentType { identifier: "application/json" }
+	pub const JSON: ContentType = ContentType { identifier: "application/json" }
 	/// XML書類を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
-	const XML: ContentType = ContentType { identifier: "application/xml" }
+	pub const XML: ContentType = ContentType { identifier: "application/xml" }
 	/// HTML書類を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
-	const HTML: ContentType = ContentType { identifier: "text/html" }
+	pub const HTML: ContentType = ContentType { identifier: "text/html" }
 	/// CSSスタイルシートを表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
-	const CSS: ContentType = ContentType { identifier: "text/css" }
+	pub const CSS: ContentType = ContentType { identifier: "text/css" }
 	/// JavaScriptソースコードを表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
-	const JAVASCRIPT: ContentType = ContentType { identifier: "text/javascript" }
+	pub const JAVASCRIPT: ContentType = ContentType { identifier: "text/javascript" }
 	/// Markdown書類を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
-	const MARKDOWN: ContentType = ContentType { identifier: "text/markdown" }
+	pub const MARKDOWN: ContentType = ContentType { identifier: "text/markdown" }
 	/// PNG画像を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
-	const PNG: ContentType = ContentType { identifier: "image/png" }
+	pub const PNG: ContentType = ContentType { identifier: "image/png" }
 	/// JPEG画像を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
-	const JPEG: ContentType = ContentType { identifier: "image/jpeg" }
+	pub const JPEG: ContentType = ContentType { identifier: "image/jpeg" }
 	/// SVG画像を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
-	const SVG: ContentType = ContentType { identifier: "image/svg+xml" }
+	pub const SVG: ContentType = ContentType { identifier: "image/svg+xml" }
 	/// PDF書類を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
-	const PDF: ContentType = ContentType { identifier: "application/pdf" }
+	pub const PDF: ContentType = ContentType { identifier: "application/pdf" }
 
 	/// コンテンツタイプの識別子を検証して標準化します。
 	///
@@ -93,7 +93,7 @@ for ContentType {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn parse(identifier: String) -> AppCoreResult<ContentType> {
+	pub fn parse(identifier: String) -> AppCoreResult<ContentType> {
 		let status = mochios_content_type_parse_utf8(__kome_string_data(identifier), __kome_string_len(identifier))
 		if status != 0 {
 			return AppCoreResult<ContentType> { status: status, value: null }
@@ -118,7 +118,7 @@ for ContentType {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn forPath(path: String) -> ContentType {
+	pub fn forPath(path: String) -> ContentType {
 		mochios_content_type_for_path_utf8(__kome_string_data(path), __kome_string_len(path))
 		return ContentType { identifier: __appCoreLastString() }
 	}
@@ -140,7 +140,7 @@ for ContentType {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn fromExtension(extension: String) -> ContentType {
+	pub fn fromExtension(extension: String) -> ContentType {
 		mochios_content_type_for_extension_utf8(__kome_string_data(extension), __kome_string_len(extension))
 		return ContentType { identifier: __appCoreLastString() }
 	}
@@ -162,7 +162,7 @@ for ContentType {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn conformsTo(self, parent: ContentType) -> bool {
+	pub fn conformsTo(self, parent: ContentType) -> bool {
 		return mochios_content_type_conforms_utf8(__kome_string_data(self.identifier), __kome_string_len(self.identifier), __kome_string_data(parent.identifier), __kome_string_len(parent.identifier)) != 0
 	}
 
@@ -179,7 +179,7 @@ for ContentType {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn preferredExtension(self) -> AppCoreResult<String> {
+	pub fn preferredExtension(self) -> AppCoreResult<String> {
 		let status = mochios_content_type_preferred_extension_utf8(__kome_string_data(self.identifier), __kome_string_len(self.identifier))
 		if status != 0 || mochios_last_result_has_value() == 0 {
 			return AppCoreResult<String> { status: status, value: null }

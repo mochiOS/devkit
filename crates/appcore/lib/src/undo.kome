@@ -1,4 +1,4 @@
-use std::core
+use std::core::Drop
 
 extern "C" from "appcore" {
 	struct MochiosUndoManager
@@ -23,16 +23,16 @@ extern "C" from "appcore" {
 /// アプリケーションが所有する操作識別子で表される、取り消し可能な操作を表します。
 ///
 /// @since 27.0-dp.1
-struct UndoOperation {
-	name: String,
-	undoAction: u64,
-	redoAction: u64,
+pub struct UndoOperation {
+	pub name: String,
+	pub undoAction: u64,
+	pub redoAction: u64,
 }
 
 /// 取り消し可能な操作を記録し、再実行時に操作識別子を通知します。
 ///
 /// @since 27.0-dp.1
-struct UndoManager {
+pub struct UndoManager {
 	raw: *mut MochiosUndoManager,
 }
 
@@ -50,7 +50,7 @@ for UndoManager {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn make() -> UndoManager {
+	pub fn make() -> UndoManager {
 		return UndoManager { raw: mochios_undo_manager_create() }
 	}
 
@@ -71,7 +71,7 @@ for UndoManager {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn beginGroup(self, name: String) -> i32 {
+	pub fn beginGroup(self, name: String) -> i32 {
 		return mochios_undo_manager_begin_group_utf8(self.raw, __kome_string_data(name), __kome_string_len(name))
 	}
 
@@ -88,7 +88,7 @@ for UndoManager {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn endGroup(self) -> AppCoreResult<bool> {
+	pub fn endGroup(self) -> AppCoreResult<bool> {
 		let status = mochios_undo_manager_end_group(self.raw)
 		if status != 0 {
 			return AppCoreResult<bool> { status: status, value: null }
@@ -113,7 +113,7 @@ for UndoManager {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn setActionName(self, name: String) -> i32 {
+	pub fn setActionName(self, name: String) -> i32 {
 		return mochios_undo_manager_set_action_name_utf8(self.raw, __kome_string_data(name), __kome_string_len(name))
 	}
 
@@ -134,7 +134,7 @@ for UndoManager {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn register(self, operation: UndoOperation) -> i32 {
+	pub fn register(self, operation: UndoOperation) -> i32 {
 		return mochios_undo_manager_register_utf8(self.raw, __kome_string_data(operation.name), __kome_string_len(operation.name), operation.undoAction, operation.redoAction)
 	}
 
@@ -151,7 +151,7 @@ for UndoManager {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn canUndo(self) -> bool {
+	pub fn canUndo(self) -> bool {
 		return mochios_undo_manager_can_undo(self.raw) != 0
 	}
 
@@ -168,7 +168,7 @@ for UndoManager {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn canRedo(self) -> bool {
+	pub fn canRedo(self) -> bool {
 		return mochios_undo_manager_can_redo(self.raw) != 0
 	}
 
@@ -185,7 +185,7 @@ for UndoManager {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn undoActionName(self) -> AppCoreResult<String> {
+	pub fn undoActionName(self) -> AppCoreResult<String> {
 		let status = mochios_undo_manager_undo_action_name(self.raw)
 		if status != 0 || mochios_last_result_has_value() == 0 {
 			return AppCoreResult<String> { status: status, value: null }
@@ -206,7 +206,7 @@ for UndoManager {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn redoActionName(self) -> AppCoreResult<String> {
+	pub fn redoActionName(self) -> AppCoreResult<String> {
 		let status = mochios_undo_manager_redo_action_name(self.raw)
 		if status != 0 || mochios_last_result_has_value() == 0 {
 			return AppCoreResult<String> { status: status, value: null }
@@ -227,7 +227,7 @@ for UndoManager {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn undo(self) -> AppCoreResult<bool> {
+	pub fn undo(self) -> AppCoreResult<bool> {
 		let status = mochios_undo_manager_undo(self.raw)
 		if status != 0 {
 			return AppCoreResult<bool> { status: status, value: null }
@@ -248,7 +248,7 @@ for UndoManager {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn redo(self) -> AppCoreResult<bool> {
+	pub fn redo(self) -> AppCoreResult<bool> {
 		let status = mochios_undo_manager_redo(self.raw)
 		if status != 0 {
 			return AppCoreResult<bool> { status: status, value: null }
@@ -269,7 +269,7 @@ for UndoManager {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn takeAction(self) -> AppCoreResult<u64> {
+	pub fn takeAction(self) -> AppCoreResult<u64> {
 		let status = mochios_undo_manager_take_action(self.raw)
 		if status != 0 || mochios_last_result_has_value() == 0 {
 			return AppCoreResult<u64> { status: status, value: null }
@@ -290,7 +290,7 @@ for UndoManager {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn removeAllActions(self) -> i32 {
+	pub fn removeAllActions(self) -> i32 {
 		return mochios_undo_manager_remove_all(self.raw)
 	}
 
@@ -311,7 +311,7 @@ for UndoManager {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn setLevelsOfUndo(self, levels: usize) -> i32 {
+	pub fn setLevelsOfUndo(self, levels: usize) -> i32 {
 		return mochios_undo_manager_set_levels(self.raw, levels)
 	}
 
@@ -328,7 +328,7 @@ for UndoManager {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn groupingLevel(self) -> usize {
+	pub fn groupingLevel(self) -> usize {
 		return mochios_undo_manager_grouping_level(self.raw)
 	}
 

@@ -1,4 +1,4 @@
-use std::core
+use std::core::Drop
 
 extern "C" from "appcore" {
 	struct MochiosRecoveryStore
@@ -25,7 +25,7 @@ extern "C" from "appcore" {
 /// ソート済みの復元用識別子を所有するコレクションを表します。
 ///
 /// @since 27.0-dp.1
-struct RecoveryIdentifiers {
+pub struct RecoveryIdentifiers {
 	raw: *mut MochiosRecoveryIdentifiers,
 }
 
@@ -43,7 +43,7 @@ for RecoveryIdentifiers {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn count(self) -> usize {
+	pub fn count(self) -> usize {
 		return mochios_recovery_identifiers_count(self.raw)
 	}
 
@@ -64,7 +64,7 @@ for RecoveryIdentifiers {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn identifier(self, index: usize) -> AppCoreResult<String> {
+	pub fn identifier(self, index: usize) -> AppCoreResult<String> {
 		let status = mochios_recovery_identifiers_get(self.raw, index)
 		if status != 0 {
 			return AppCoreResult<String> { status: status, value: null }
@@ -86,18 +86,18 @@ for RecoveryIdentifiers: Drop {
 /// 書類を復元するためのUTF-8スナップショットを表します。
 ///
 /// @since 27.0-dp.1
-struct RecoveryRecord {
-	identifier: String,
-	originalPath: String,
-	contentType: String,
-	revision: u64,
-	contents: String,
+pub struct RecoveryRecord {
+	pub identifier: String,
+	pub originalPath: String,
+	pub contentType: String,
+	pub revision: u64,
+	pub contents: String,
 }
 
 /// アプリケーション所有のディレクトリに復元データをアトミックに保存します。
 ///
 /// @since 27.0-dp.1
-struct RecoveryStore {
+pub struct RecoveryStore {
 	raw: *mut MochiosRecoveryStore,
 }
 
@@ -119,7 +119,7 @@ for RecoveryStore {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn make(directory: String) -> RecoveryStore {
+	pub fn make(directory: String) -> RecoveryStore {
 		return RecoveryStore { raw: mochios_recovery_store_create_utf8(__kome_string_data(directory), __kome_string_len(directory)) }
 	}
 
@@ -140,7 +140,7 @@ for RecoveryStore {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn save(self, record: RecoveryRecord) -> i32 {
+	pub fn save(self, record: RecoveryRecord) -> i32 {
 		return mochios_recovery_store_save_utf8(self.raw, __kome_string_data(record.identifier), __kome_string_len(record.identifier), __kome_string_data(record.originalPath), __kome_string_len(record.originalPath), __kome_string_data(record.contentType), __kome_string_len(record.contentType), record.revision, __kome_string_data(record.contents), __kome_string_len(record.contents))
 	}
 
@@ -161,7 +161,7 @@ for RecoveryStore {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn load(self, identifier: String) -> AppCoreResult<RecoveryRecord> {
+	pub fn load(self, identifier: String) -> AppCoreResult<RecoveryRecord> {
 		let raw = mochios_recovery_store_load_utf8(self.raw, __kome_string_data(identifier), __kome_string_len(identifier))
 		let status = AppCore.lastStatus()
 		if status != 0 || mochios_last_result_has_value() == 0 {
@@ -204,7 +204,7 @@ for RecoveryStore {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn remove(self, identifier: String) -> AppCoreResult<bool> {
+	pub fn remove(self, identifier: String) -> AppCoreResult<bool> {
 		let status = mochios_recovery_store_remove_utf8(self.raw, __kome_string_data(identifier), __kome_string_len(identifier))
 		if status != 0 {
 			return AppCoreResult<bool> { status: status, value: null }
@@ -225,7 +225,7 @@ for RecoveryStore {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn identifiers(self) -> AppCoreResult<RecoveryIdentifiers> {
+	pub fn identifiers(self) -> AppCoreResult<RecoveryIdentifiers> {
 		let raw = mochios_recovery_store_identifiers(self.raw)
 		let status = AppCore.lastStatus()
 		if status != 0 {

@@ -1,4 +1,4 @@
-use std::core
+use std::core::Drop
 
 extern "C" from "appcore" {
 	struct MochiosOpenPanel
@@ -28,7 +28,7 @@ extern "C" from "appcore" {
 /// 書類を開くパネルの設定を表します。
 ///
 /// @since 27.0-dp.1
-struct OpenPanelOptions {
+pub struct OpenPanelOptions {
 	title: String,
 	initialDirectory: String,
 	rootDirectory: String,
@@ -48,7 +48,7 @@ for OpenPanelOptions {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn defaults() -> OpenPanelOptions {
+	pub fn defaults() -> OpenPanelOptions {
 		return OpenPanelOptions { title: "Open", initialDirectory: "", rootDirectory: "" }
 	}
 }
@@ -56,7 +56,7 @@ for OpenPanelOptions {
 /// ワークスペースが管理する書類選択パネルを表します。
 ///
 /// @since 27.0-dp.1
-struct OpenPanel {
+pub struct OpenPanel {
 	raw: *mut MochiosOpenPanel,
 }
 
@@ -78,7 +78,7 @@ for OpenPanel {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn make(options: OpenPanelOptions) -> OpenPanel {
+	pub fn make(options: OpenPanelOptions) -> OpenPanel {
 		return OpenPanel { raw: mochios_open_panel_create_utf8(__kome_string_data(options.title), __kome_string_len(options.title), __kome_string_data(options.initialDirectory), __kome_string_len(options.initialDirectory), __kome_string_data(options.rootDirectory), __kome_string_len(options.rootDirectory)) }
 	}
 
@@ -99,7 +99,7 @@ for OpenPanel {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn allowContentType(self, contentType: ContentType) -> i32 {
+	pub fn allowContentType(self, contentType: ContentType) -> i32 {
 		return mochios_open_panel_allow_content_type_utf8(self.raw, __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier))
 	}
 
@@ -116,7 +116,7 @@ for OpenPanel {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn show(self) -> i32 {
+	pub fn show(self) -> i32 {
 		return mochios_open_panel_show(self.raw)
 	}
 
@@ -137,7 +137,7 @@ for OpenPanel {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn showAt(self, directory: String) -> i32 {
+	pub fn showAt(self, directory: String) -> i32 {
 		return mochios_open_panel_show_at_utf8(self.raw, __kome_string_data(directory), __kome_string_len(directory))
 	}
 
@@ -154,7 +154,7 @@ for OpenPanel {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn isVisible(self) -> bool {
+	pub fn isVisible(self) -> bool {
 		return mochios_open_panel_is_visible(self.raw) != 0
 	}
 
@@ -173,7 +173,7 @@ for OpenPanel {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn takeSelection(self) -> AppCoreResult<String> {
+	pub fn takeSelection(self) -> AppCoreResult<String> {
 		let status = mochios_open_panel_take_selection(self.raw)
 		if status != 0 || mochios_last_result_has_value() == 0 {
 			return AppCoreResult<String> { status: status, value: null }
@@ -196,7 +196,7 @@ for OpenPanel {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn takeCancelled(self) -> bool {
+	pub fn takeCancelled(self) -> bool {
 		return mochios_open_panel_take_cancelled(self.raw) != 0
 	}
 
@@ -214,7 +214,7 @@ for OpenPanel: Drop {
 /// 書類を保存するパネルの設定を表します。
 ///
 /// @since 27.0-dp.1
-struct SavePanelOptions {
+pub struct SavePanelOptions {
 	title: String,
 	suggestedName: String,
 	initialDirectory: String,
@@ -236,7 +236,7 @@ for SavePanelOptions {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn defaults() -> SavePanelOptions {
+	pub fn defaults() -> SavePanelOptions {
 		return SavePanelOptions { title: "Save As", suggestedName: "Untitled", initialDirectory: "", rootDirectory: "", confirmsReplacement: true }
 	}
 }
@@ -244,7 +244,7 @@ for SavePanelOptions {
 /// ワークスペースが管理する書類保存パネルを表します。
 ///
 /// @since 27.0-dp.1
-struct SavePanel {
+pub struct SavePanel {
 	raw: *mut MochiosSavePanel,
 }
 
@@ -266,7 +266,7 @@ for SavePanel {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn make(options: SavePanelOptions) -> SavePanel {
+	pub fn make(options: SavePanelOptions) -> SavePanel {
 		return SavePanel { raw: mochios_save_panel_create_utf8(__kome_string_data(options.title), __kome_string_len(options.title), __kome_string_data(options.suggestedName), __kome_string_len(options.suggestedName), __kome_string_data(options.initialDirectory), __kome_string_len(options.initialDirectory), __kome_string_data(options.rootDirectory), __kome_string_len(options.rootDirectory), options.confirmsReplacement) }
 	}
 
@@ -287,7 +287,7 @@ for SavePanel {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn allowContentType(self, contentType: ContentType) -> i32 {
+	pub fn allowContentType(self, contentType: ContentType) -> i32 {
 		return mochios_save_panel_allow_content_type_utf8(self.raw, __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier))
 	}
 
@@ -304,7 +304,7 @@ for SavePanel {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn show(self) -> i32 {
+	pub fn show(self) -> i32 {
 		return mochios_save_panel_show(self.raw)
 	}
 
@@ -326,7 +326,7 @@ for SavePanel {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn showFor(self, directory: String, suggestedName: String) -> i32 {
+	pub fn showFor(self, directory: String, suggestedName: String) -> i32 {
 		return mochios_save_panel_show_for_utf8(self.raw, __kome_string_data(directory), __kome_string_len(directory), __kome_string_data(suggestedName), __kome_string_len(suggestedName))
 	}
 
@@ -343,7 +343,7 @@ for SavePanel {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn isVisible(self) -> bool {
+	pub fn isVisible(self) -> bool {
 		return mochios_save_panel_is_visible(self.raw) != 0
 	}
 
@@ -362,7 +362,7 @@ for SavePanel {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn takeSelection(self) -> AppCoreResult<String> {
+	pub fn takeSelection(self) -> AppCoreResult<String> {
 		let status = mochios_save_panel_take_selection(self.raw)
 		if status != 0 || mochios_last_result_has_value() == 0 {
 			return AppCoreResult<String> { status: status, value: null }
@@ -385,7 +385,7 @@ for SavePanel {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn takeCancelled(self) -> bool {
+	pub fn takeCancelled(self) -> bool {
 		return mochios_save_panel_take_cancelled(self.raw) != 0
 	}
 

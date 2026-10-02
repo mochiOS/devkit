@@ -6,7 +6,7 @@ extern "C" from "appcore" {
 /// システム通知センターから配信するユーザー通知を表します。
 ///
 /// @since 27.0-dp.1
-struct UserNotification {
+pub struct UserNotification {
 	bundleId: String,
 	title: String,
 	message: String,
@@ -31,7 +31,7 @@ for UserNotification {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn make(bundleId: String, title: String) -> UserNotification {
+	pub fn make(bundleId: String, title: String) -> UserNotification {
 		return UserNotification { bundleId: bundleId, title: title, message: "" }
 	}
 
@@ -52,7 +52,7 @@ for UserNotification {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn body(self, message: String) -> UserNotification {
+	pub fn body(self, message: String) -> UserNotification {
 		return UserNotification { bundleId: self.bundleId, title: self.title, message: message }
 	}
 
@@ -69,7 +69,7 @@ for UserNotification {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn deliver(self) -> AppCoreResult<u64> {
+	pub fn deliver(self) -> AppCoreResult<u64> {
 		let status = mochios_notification_deliver_utf8(__kome_string_data(self.bundleId), __kome_string_len(self.bundleId), __kome_string_data(self.title), __kome_string_len(self.title), __kome_string_data(self.message), __kome_string_len(self.message))
 		if status != 0 {
 			return AppCoreResult<u64> { status: status, value: null }

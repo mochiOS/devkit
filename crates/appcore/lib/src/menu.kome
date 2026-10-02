@@ -1,7 +1,13 @@
+use viewkit::VkRuntime
+use viewkit::beginViewHStack
+use viewkit::beginViewVStack
+use viewkit::endViewNode
+use viewkit::pushViewMenuItem
+
 /// アプリケーションメニューに表示するキーボードショートカットを表します。
 ///
 /// @since 27.0-dp.1
-struct MenuShortcut {
+pub struct MenuShortcut {
 	label: String,
 }
 
@@ -23,7 +29,7 @@ for MenuShortcut {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn make(label: String) -> MenuShortcut {
+	pub fn make(label: String) -> MenuShortcut {
 		return MenuShortcut { label: label }
 	}
 }
@@ -31,7 +37,7 @@ for MenuShortcut {
 /// 操作を持つアプリケーションメニューの項目を表します。
 ///
 /// @since 27.0-dp.1
-struct ApplicationMenuItem {
+pub struct ApplicationMenuItem {
 	label: String,
 	shortcut: String,
 	enabled: bool,
@@ -58,7 +64,7 @@ for ApplicationMenuItem {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn action(label: String, actionId: u64) -> ApplicationMenuItem {
+	pub fn action(label: String, actionId: u64) -> ApplicationMenuItem {
 		return ApplicationMenuItem { label: label, shortcut: "", enabled: true, destructive: false, actionId: actionId }
 	}
 
@@ -81,7 +87,7 @@ for ApplicationMenuItem {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn actionWithShortcut(label: String, shortcut: MenuShortcut, actionId: u64) -> ApplicationMenuItem {
+	pub fn actionWithShortcut(label: String, shortcut: MenuShortcut, actionId: u64) -> ApplicationMenuItem {
 		return ApplicationMenuItem { label: label, shortcut: shortcut.label, enabled: true, destructive: false, actionId: actionId }
 	}
 
@@ -102,7 +108,7 @@ for ApplicationMenuItem {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn withEnabled(self, enabled: bool) -> ApplicationMenuItem {
+	pub fn withEnabled(self, enabled: bool) -> ApplicationMenuItem {
 		return ApplicationMenuItem { label: self.label, shortcut: self.shortcut, enabled: enabled, destructive: self.destructive, actionId: self.actionId }
 	}
 
@@ -123,7 +129,7 @@ for ApplicationMenuItem {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn withDestructive(self, destructive: bool) -> ApplicationMenuItem {
+	pub fn withDestructive(self, destructive: bool) -> ApplicationMenuItem {
 		return ApplicationMenuItem { label: self.label, shortcut: self.shortcut, enabled: self.enabled, destructive: destructive, actionId: self.actionId }
 	}
 
@@ -139,7 +145,7 @@ for ApplicationMenuItem {
 	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
 	///
 	/// @since 27.0-dp.1
-	fn push(self, runtime: *mut VkRuntime, nodeId: u64) -> i32 {
+	pub fn push(self, runtime: *mut VkRuntime, nodeId: u64) -> i32 {
 		var enabled: u8 = 0
 		var destructive: u8 = 0
 		if self.enabled {
@@ -155,7 +161,7 @@ for ApplicationMenuItem {
 /// 1つのアプリケーションメニューを表します。
 ///
 /// @since 27.0-dp.1
-struct ApplicationMenu {
+pub struct ApplicationMenu {
 	title: String,
 }
 
@@ -177,7 +183,7 @@ for ApplicationMenu {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn make(title: String) -> ApplicationMenu {
+	pub fn make(title: String) -> ApplicationMenu {
 		return ApplicationMenu { title: title }
 	}
 
@@ -193,8 +199,8 @@ for ApplicationMenu {
 	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
 	///
 	/// @since 27.0-dp.1
-	fn beginItems(self, runtime: *mut VkRuntime, nodeId: u64) -> i32 {
-		return vk_begin_vstack(runtime, nodeId, 0, 3, 0)
+	pub fn beginItems(self, runtime: *mut VkRuntime, nodeId: u64) -> i32 {
+		return beginViewVStack(runtime, nodeId, 0, 3, 0)
 	}
 
 	/// メニュー項目のコンテナーを終了します。
@@ -208,15 +214,15 @@ for ApplicationMenu {
 	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
 	///
 	/// @since 27.0-dp.1
-	fn endItems(self, runtime: *mut VkRuntime) -> i32 {
-		return vk_end_node(runtime)
+	pub fn endItems(self, runtime: *mut VkRuntime) -> i32 {
+		return endViewNode(runtime)
 	}
 }
 
 /// アプリケーションメニューの水平な見出し行を構築します。
 ///
 /// @since 27.0-dp.1
-struct ApplicationMenuBar {}
+pub struct ApplicationMenuBar {}
 
 for ApplicationMenuBar {
 	/// 現在のViewKitツリーでメニューバーを開始します。
@@ -231,8 +237,8 @@ for ApplicationMenuBar {
 	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
 	///
 	/// @since 27.0-dp.1
-	fn begin(runtime: *mut VkRuntime, nodeId: u64) -> i32 {
-		return vk_begin_hstack(runtime, nodeId, 2, 1, 0)
+	pub fn begin(runtime: *mut VkRuntime, nodeId: u64) -> i32 {
+		return beginViewHStack(runtime, nodeId, 2, 1, 0)
 	}
 
 	/// メニューバーを終了します。
@@ -246,7 +252,7 @@ for ApplicationMenuBar {
 	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
 	///
 	/// @since 27.0-dp.1
-	fn end(runtime: *mut VkRuntime) -> i32 {
-		return vk_end_node(runtime)
+	pub fn end(runtime: *mut VkRuntime) -> i32 {
+		return endViewNode(runtime)
 	}
 }

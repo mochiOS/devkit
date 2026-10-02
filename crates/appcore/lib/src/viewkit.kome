@@ -18,7 +18,7 @@ extern "C" from "appcore" {
 /// ```
 ///
 /// @since 27.0-dp.1
-struct Application {}
+pub struct Application {}
 
 for Application {
 	/// 現在のアプリケーションへ正常終了を要求します。
@@ -34,7 +34,7 @@ for Application {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn exit() -> i32 {
+	pub fn exit() -> i32 {
 		return mochios_application_request_exit()
 	}
 
@@ -51,7 +51,7 @@ for Application {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn closeKeyWindow() -> i32 {
+	pub fn closeKeyWindow() -> i32 {
 		return mochios_application_request_close_key_window()
 	}
 
@@ -68,7 +68,7 @@ for Application {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn quit() -> i32 {
+	pub fn quit() -> i32 {
 		return mochios_application_request_quit()
 	}
 }

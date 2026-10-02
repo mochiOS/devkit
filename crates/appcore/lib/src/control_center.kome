@@ -1,4 +1,4 @@
-use std::core
+use std::core::Drop
 
 extern "C" from "appcore" {
 	struct MochiosControlCenterItem
@@ -22,7 +22,7 @@ extern "C" from "appcore" {
 /// AppCoreが所有する宣言的なControl Centerカードを表します。
 ///
 /// @since 27.0-dp.1
-struct ControlCenterItem {
+pub struct ControlCenterItem {
 	raw: *mut MochiosControlCenterItem,
 }
 
@@ -45,7 +45,7 @@ for ControlCenterItem {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn register(bundleId: String, itemId: String) -> ControlCenterItem {
+	pub fn register(bundleId: String, itemId: String) -> ControlCenterItem {
 		return ControlCenterItem { raw: mochios_control_center_item_create_utf8(__kome_string_data(bundleId), __kome_string_len(bundleId), __kome_string_data(itemId), __kome_string_len(itemId)) }
 	}
 
@@ -66,7 +66,7 @@ for ControlCenterItem {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn title(self, title: String) -> i32 {
+	pub fn title(self, title: String) -> i32 {
 		return mochios_control_center_item_set_title_utf8(self.raw, __kome_string_data(title), __kome_string_len(title))
 	}
 
@@ -88,7 +88,7 @@ for ControlCenterItem {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn row(self, label: String, value: String) -> i32 {
+	pub fn row(self, label: String, value: String) -> i32 {
 		return mochios_control_center_item_add_row_utf8(self.raw, __kome_string_data(label), __kome_string_len(label), __kome_string_data(value), __kome_string_len(value))
 	}
 
@@ -105,7 +105,7 @@ for ControlCenterItem {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn publish(self) -> i32 {
+	pub fn publish(self) -> i32 {
 		return mochios_control_center_item_publish(self.raw)
 	}
 

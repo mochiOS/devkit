@@ -1,7 +1,7 @@
 /// 取り消し応答オブジェクトが受け付ける操作を表します。
 ///
 /// @since 27.0-dp.1
-struct UndoCommand {
+pub struct UndoCommand {
 	value: u8,
 }
 
@@ -9,17 +9,17 @@ for UndoCommand {
 	/// 取り消し操作です。
 	///
 	/// @since 27.0-dp.1
-	const UNDO: UndoCommand = UndoCommand { value: 1 }
+	pub const UNDO: UndoCommand = UndoCommand { value: 1 }
 	/// やり直し操作です。
 	///
 	/// @since 27.0-dp.1
-	const REDO: UndoCommand = UndoCommand { value: 2 }
+	pub const REDO: UndoCommand = UndoCommand { value: 2 }
 }
 
 /// 取り消しとやり直しの操作を`UndoManager`へ送ります。
 ///
 /// @since 27.0-dp.1
-struct UndoResponder {
+pub struct UndoResponder {
 	manager: UndoManager,
 }
 
@@ -41,7 +41,7 @@ for UndoResponder {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn make(manager: UndoManager) -> UndoResponder {
+	pub fn make(manager: UndoManager) -> UndoResponder {
 		return UndoResponder { manager: manager }
 	}
 
@@ -58,7 +58,7 @@ for UndoResponder {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn undoManager(self) -> UndoManager {
+	pub fn undoManager(self) -> UndoManager {
 		return self.manager
 	}
 
@@ -79,7 +79,7 @@ for UndoResponder {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn handle(self, command: UndoCommand) -> AppCoreResult<bool> {
+	pub fn handle(self, command: UndoCommand) -> AppCoreResult<bool> {
 		if command.value == UndoCommand.UNDO.value {
 			return self.manager.undo()
 		}

@@ -1,4 +1,4 @@
-use std::core
+use std::core::Drop
 
 extern "C" from "appcore" {
 	struct MochiosAlert
@@ -24,7 +24,7 @@ extern "C" from "appcore" {
 /// エラーのタイトルとメッセージを表示し、ユーザーへ問題を通知します。
 ///
 /// @since 27.0-dp.1
-struct Alert {
+pub struct Alert {
 	raw: *mut MochiosAlert,
 }
 
@@ -42,7 +42,7 @@ for Alert {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn make() -> Alert {
+	pub fn make() -> Alert {
 		return Alert { raw: mochios_alert_create() }
 	}
 
@@ -65,7 +65,7 @@ for Alert {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn presentError(self, title: String, message: String) -> i32 {
+	pub fn presentError(self, title: String, message: String) -> i32 {
 		return mochios_alert_present_error_utf8(self.raw, __kome_string_data(title), __kome_string_len(title), __kome_string_data(message), __kome_string_len(message))
 	}
 
@@ -82,7 +82,7 @@ for Alert {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn dismiss(self) -> i32 {
+	pub fn dismiss(self) -> i32 {
 		return mochios_alert_dismiss(self.raw)
 	}
 
@@ -99,7 +99,7 @@ for Alert {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn isVisible(self) -> bool {
+	pub fn isVisible(self) -> bool {
 		return mochios_alert_is_visible(self.raw) != 0
 	}
 

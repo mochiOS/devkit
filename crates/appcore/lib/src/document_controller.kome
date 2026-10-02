@@ -1,4 +1,4 @@
-use std::core
+use std::core::Drop
 
 extern "C" from "appcore" {
 	struct MochiosDocumentController
@@ -25,7 +25,7 @@ extern "C" from "appcore" {
 /// 保存される書類の形式を表します。
 ///
 /// @since 27.0-dp.1
-struct DocumentMetadata {
+pub struct DocumentMetadata {
 	fileType: String,
 	encoding: String,
 	writable: bool,
@@ -50,7 +50,7 @@ for DocumentMetadata {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn make(fileType: String, encoding: String) -> DocumentMetadata {
+	pub fn make(fileType: String, encoding: String) -> DocumentMetadata {
 		return DocumentMetadata { fileType: fileType, encoding: encoding, writable: true }
 	}
 
@@ -71,7 +71,7 @@ for DocumentMetadata {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn withWritable(self, writable: bool) -> DocumentMetadata {
+	pub fn withWritable(self, writable: bool) -> DocumentMetadata {
 		return DocumentMetadata { fileType: self.fileType, encoding: self.encoding, writable: writable }
 	}
 }
@@ -79,7 +79,7 @@ for DocumentMetadata {
 /// 書類の表示名と保存情報を表します。
 ///
 /// @since 27.0-dp.1
-struct DocumentInfo {
+pub struct DocumentInfo {
 	displayName: String,
 	path: String,
 	metadata: DocumentMetadata,
@@ -103,7 +103,7 @@ for DocumentInfo {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn untitled(metadata: DocumentMetadata) -> DocumentInfo {
+	pub fn untitled(metadata: DocumentMetadata) -> DocumentInfo {
 		return DocumentInfo { displayName: "Untitled", path: "", metadata: metadata }
 	}
 
@@ -126,7 +126,7 @@ for DocumentInfo {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn at(displayName: String, path: String, metadata: DocumentMetadata) -> DocumentInfo {
+	pub fn at(displayName: String, path: String, metadata: DocumentMetadata) -> DocumentInfo {
 		return DocumentInfo { displayName: displayName, path: path, metadata: metadata }
 	}
 }
@@ -134,7 +134,7 @@ for DocumentInfo {
 /// アプリケーションが実行すべき書類操作を表します。
 ///
 /// @since 27.0-dp.1
-struct DocumentControllerAction {
+pub struct DocumentControllerAction {
 	value: u64,
 }
 
@@ -142,29 +142,29 @@ for DocumentControllerAction {
 	/// 書類を開く操作です。
 	///
 	/// @since 27.0-dp.1
-	const OPEN: DocumentControllerAction = DocumentControllerAction { value: 1 }
+	pub const OPEN: DocumentControllerAction = DocumentControllerAction { value: 1 }
 	/// 書類を保存する操作です。
 	///
 	/// @since 27.0-dp.1
-	const SAVE: DocumentControllerAction = DocumentControllerAction { value: 2 }
+	pub const SAVE: DocumentControllerAction = DocumentControllerAction { value: 2 }
 	/// 書類を別名で保存する操作です。
 	///
 	/// @since 27.0-dp.1
-	const SAVE_AS: DocumentControllerAction = DocumentControllerAction { value: 3 }
+	pub const SAVE_AS: DocumentControllerAction = DocumentControllerAction { value: 3 }
 	/// 書類を保存済みの状態へ戻す操作です。
 	///
 	/// @since 27.0-dp.1
-	const REVERT: DocumentControllerAction = DocumentControllerAction { value: 4 }
+	pub const REVERT: DocumentControllerAction = DocumentControllerAction { value: 4 }
 	/// 書類を閉じる操作です。
 	///
 	/// @since 27.0-dp.1
-	const CLOSE: DocumentControllerAction = DocumentControllerAction { value: 5 }
+	pub const CLOSE: DocumentControllerAction = DocumentControllerAction { value: 5 }
 }
 
 /// 1つのファイルに保存される書類の生存期間を管理します。
 ///
 /// @since 27.0-dp.1
-struct DocumentController {
+pub struct DocumentController {
 	raw: *mut MochiosDocumentController,
 }
 
@@ -187,7 +187,7 @@ for DocumentController {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn make(info: DocumentInfo, revision: u64) -> DocumentController {
+	pub fn make(info: DocumentInfo, revision: u64) -> DocumentController {
 		var writable: u8 = 0
 		if info.metadata.writable { writable = 1 }
 		return DocumentController { raw: mochios_document_controller_create_utf8(__kome_string_data(info.displayName), __kome_string_len(info.displayName), __kome_string_data(info.path), __kome_string_len(info.path), __kome_string_data(info.metadata.fileType), __kome_string_len(info.metadata.fileType), __kome_string_data(info.metadata.encoding), __kome_string_len(info.metadata.encoding), writable, revision) }
@@ -204,7 +204,7 @@ for DocumentController {
 	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
 	///
 	/// @since 27.0-dp.1
-	fn setRevision(self, revision: u64) -> i32 { return mochios_document_controller_set_revision(self.raw, revision) }
+	pub fn setRevision(self, revision: u64) -> i32 { return mochios_document_controller_set_revision(self.raw, revision) }
 	/// 書類が保存済みの版番から変更されたかどうかを返します。
 	///
 	/// ## Returns
@@ -212,7 +212,7 @@ for DocumentController {
 	/// 変更されている場合は`true`を返します。
 	///
 	/// @since 27.0-dp.1
-	fn isEdited(self) -> bool { return mochios_document_controller_is_edited(self.raw) != 0 }
+	pub fn isEdited(self) -> bool { return mochios_document_controller_is_edited(self.raw) != 0 }
 	/// 書類を開く操作を要求します。
 	///
 	/// ## Returns
@@ -220,7 +220,7 @@ for DocumentController {
 	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
 	///
 	/// @since 27.0-dp.1
-	fn open(self) -> i32 { return mochios_document_controller_open(self.raw) }
+	pub fn open(self) -> i32 { return mochios_document_controller_open(self.raw) }
 	/// 状態に応じて保存または別名保存を要求します。
 	///
 	/// ## Returns
@@ -228,7 +228,7 @@ for DocumentController {
 	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
 	///
 	/// @since 27.0-dp.1
-	fn save(self) -> i32 { return mochios_document_controller_save(self.raw) }
+	pub fn save(self) -> i32 { return mochios_document_controller_save(self.raw) }
 	/// 別名保存を要求します。
 	///
 	/// ## Returns
@@ -236,7 +236,7 @@ for DocumentController {
 	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
 	///
 	/// @since 27.0-dp.1
-	fn saveAs(self) -> i32 { return mochios_document_controller_save_as(self.raw) }
+	pub fn saveAs(self) -> i32 { return mochios_document_controller_save_as(self.raw) }
 	/// 保存済みの状態へ戻す操作を要求します。
 	///
 	/// ## Returns
@@ -244,7 +244,7 @@ for DocumentController {
 	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
 	///
 	/// @since 27.0-dp.1
-	fn revert(self) -> i32 { return mochios_document_controller_revert(self.raw) }
+	pub fn revert(self) -> i32 { return mochios_document_controller_revert(self.raw) }
 
 	/// 書類を閉じるよう要求します。
 	///
@@ -259,7 +259,7 @@ for DocumentController {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn requestClose(self) -> AppCoreResult<bool> {
+	pub fn requestClose(self) -> AppCoreResult<bool> {
 		let status = mochios_document_controller_request_close(self.raw)
 		if status != 0 { return AppCoreResult<bool> { status: status, value: null } }
 		return AppCoreResult<bool> { status: status, value: mochios_last_result_u64() != 0 }
@@ -278,7 +278,7 @@ for DocumentController {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn takeAction(self) -> AppCoreResult<DocumentControllerAction> {
+	pub fn takeAction(self) -> AppCoreResult<DocumentControllerAction> {
 		let status = mochios_document_controller_take_action(self.raw)
 		if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<DocumentControllerAction> { status: status, value: null } }
 		return AppCoreResult<DocumentControllerAction> { status: status, value: DocumentControllerAction { value: mochios_last_result_u64() } }
@@ -302,7 +302,7 @@ for DocumentController {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn complete(self, info: DocumentInfo, revision: u64) -> i32 {
+	pub fn complete(self, info: DocumentInfo, revision: u64) -> i32 {
 		var writable: u8 = 0
 		if info.metadata.writable { writable = 1 }
 		return mochios_document_controller_complete_utf8(self.raw, __kome_string_data(info.displayName), __kome_string_len(info.displayName), __kome_string_data(info.path), __kome_string_len(info.path), __kome_string_data(info.metadata.fileType), __kome_string_len(info.metadata.fileType), __kome_string_data(info.metadata.encoding), __kome_string_len(info.metadata.encoding), writable, revision)
@@ -325,7 +325,7 @@ for DocumentController {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn fail(self, message: String) -> i32 { return mochios_document_controller_fail_utf8(self.raw, __kome_string_data(message), __kome_string_len(message)) }
+	pub fn fail(self, message: String) -> i32 { return mochios_document_controller_fail_utf8(self.raw, __kome_string_data(message), __kome_string_len(message)) }
 
 	/// 現在の書類の表示名を返します。
 	///
@@ -340,7 +340,7 @@ for DocumentController {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn displayName(self) -> AppCoreResult<String> { let status = mochios_document_controller_display_name(self.raw) if status != 0 { return AppCoreResult<String> { status: status, value: null } } return AppCoreResult<String> { status: status, value: __appCoreLastString() } }
+	pub fn displayName(self) -> AppCoreResult<String> { let status = mochios_document_controller_display_name(self.raw) if status != 0 { return AppCoreResult<String> { status: status, value: null } } return AppCoreResult<String> { status: status, value: __appCoreLastString() } }
 	/// 現在の書類のパスを返します。
 	///
 	/// ## Returns
@@ -354,7 +354,7 @@ for DocumentController {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn path(self) -> AppCoreResult<String> { let status = mochios_document_controller_path(self.raw) if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<String> { status: status, value: null } } return AppCoreResult<String> { status: status, value: __appCoreLastString() } }
+	pub fn path(self) -> AppCoreResult<String> { let status = mochios_document_controller_path(self.raw) if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<String> { status: status, value: null } } return AppCoreResult<String> { status: status, value: __appCoreLastString() } }
 	/// 直近の書類操作エラーを返します。
 	///
 	/// ## Returns
@@ -368,7 +368,7 @@ for DocumentController {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn status(self) -> AppCoreResult<String> { let status = mochios_document_controller_status(self.raw) if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<String> { status: status, value: null } } return AppCoreResult<String> { status: status, value: __appCoreLastString() } }
+	pub fn status(self) -> AppCoreResult<String> { let status = mochios_document_controller_status(self.raw) if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<String> { status: status, value: null } } return AppCoreResult<String> { status: status, value: __appCoreLastString() } }
 	/// 直近の書類操作エラーを消去します。
 	///
 	/// ## Returns
@@ -382,7 +382,7 @@ for DocumentController {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn clearStatus(self) -> i32 { return mochios_document_controller_clear_status(self.raw) }
+	pub fn clearStatus(self) -> i32 { return mochios_document_controller_clear_status(self.raw) }
 }
 
 for DocumentController: Drop {

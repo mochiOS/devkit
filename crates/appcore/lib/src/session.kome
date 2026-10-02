@@ -1,4 +1,4 @@
-use std::core
+use std::core::Drop
 
 extern "C" from "appcore" {
 	struct MochiosSessionStore
@@ -27,17 +27,17 @@ extern "C" from "appcore" {
 /// 書類ウィンドウの最後に確認された論理ピクセル領域を表します。
 ///
 /// @since 27.0-dp.1
-struct WindowFrame { x: f32, y: f32, width: f32, height: f32 }
+pub struct WindowFrame { pub x: f32, pub y: f32, pub width: f32, pub height: f32 }
 
 /// 個別に復元できる書類ウィンドウを表します。
 ///
 /// @since 27.0-dp.1
-struct RestorableWindow { identifier: String, documentPath: String, recoveryIdentifier: String, hasFrame: bool, frame: WindowFrame, maximized: bool, fullscreen: bool }
+pub struct RestorableWindow { pub identifier: String, pub documentPath: String, pub recoveryIdentifier: String, pub hasFrame: bool, pub frame: WindowFrame, pub maximized: bool, pub fullscreen: bool }
 
 /// 一緒に復元するウィンドウのコレクションを表します。
 ///
 /// @since 27.0-dp.1
-struct ApplicationSession { raw: *mut MochiosApplicationSession }
+pub struct ApplicationSession { raw: *mut MochiosApplicationSession }
 
 for ApplicationSession {
 	/// 空のセッションを作成します。
@@ -53,7 +53,7 @@ for ApplicationSession {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn make() -> ApplicationSession { return ApplicationSession { raw: mochios_application_session_create() } }
+	pub fn make() -> ApplicationSession { return ApplicationSession { raw: mochios_application_session_create() } }
 	/// 復元可能なウィンドウを追加します。
 	///
 	/// ## Parameters
@@ -71,7 +71,7 @@ for ApplicationSession {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn addWindow(self, window: RestorableWindow) -> i32 { return mochios_application_session_add_window_utf8(self.raw, __kome_string_data(window.identifier), __kome_string_len(window.identifier), __kome_string_data(window.documentPath), __kome_string_len(window.documentPath), __kome_string_data(window.recoveryIdentifier), __kome_string_len(window.recoveryIdentifier), window.hasFrame, window.frame.x, window.frame.y, window.frame.width, window.frame.height, window.maximized, window.fullscreen) }
+	pub fn addWindow(self, window: RestorableWindow) -> i32 { return mochios_application_session_add_window_utf8(self.raw, __kome_string_data(window.identifier), __kome_string_len(window.identifier), __kome_string_data(window.documentPath), __kome_string_len(window.documentPath), __kome_string_data(window.recoveryIdentifier), __kome_string_len(window.recoveryIdentifier), window.hasFrame, window.frame.x, window.frame.y, window.frame.width, window.frame.height, window.maximized, window.fullscreen) }
 	/// 保存されているウィンドウ数を返します。
 	///
 	/// ## Returns
@@ -85,7 +85,7 @@ for ApplicationSession {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn windowCount(self) -> usize { return mochios_application_session_window_count(self.raw) }
+	pub fn windowCount(self) -> usize { return mochios_application_session_window_count(self.raw) }
 	/// 指定された位置の復元用ウィンドウを返します。
 	///
 	/// ## Parameters
@@ -103,7 +103,7 @@ for ApplicationSession {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn window(self, index: usize) -> AppCoreResult<RestorableWindow> {
+	pub fn window(self, index: usize) -> AppCoreResult<RestorableWindow> {
 		let status = mochios_application_session_window_identifier(self.raw, index)
 		if status != 0 { return AppCoreResult<RestorableWindow> { status: status, value: null } }
 		let identifier = __appCoreLastString()
@@ -129,7 +129,7 @@ for ApplicationSession: Drop {
 /// 1つのアプリケーションの復元状態をアトミックに保存します。
 ///
 /// @since 27.0-dp.1
-struct SessionStore { raw: *mut MochiosSessionStore }
+pub struct SessionStore { raw: *mut MochiosSessionStore }
 
 for SessionStore {
 	/// セッションの保存領域を作成します。
@@ -149,7 +149,7 @@ for SessionStore {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn make(path: String) -> SessionStore { return SessionStore { raw: mochios_session_store_create_utf8(__kome_string_data(path), __kome_string_len(path)) } }
+	pub fn make(path: String) -> SessionStore { return SessionStore { raw: mochios_session_store_create_utf8(__kome_string_data(path), __kome_string_len(path)) } }
 	/// セッションを保存します。
 	///
 	/// ## Parameters
@@ -167,7 +167,7 @@ for SessionStore {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn save(self, session: ApplicationSession) -> i32 { return mochios_session_store_save(self.raw, session.raw) }
+	pub fn save(self, session: ApplicationSession) -> i32 { return mochios_session_store_save(self.raw, session.raw) }
 	/// 保存されたセッションを読み込みます。
 	///
 	/// ## Returns
@@ -181,7 +181,7 @@ for SessionStore {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn load(self) -> AppCoreResult<ApplicationSession> { let raw = mochios_session_store_load(self.raw) let status = AppCore.lastStatus() if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<ApplicationSession> { status: status, value: null } } return AppCoreResult<ApplicationSession> { status: status, value: ApplicationSession { raw: raw } } }
+	pub fn load(self) -> AppCoreResult<ApplicationSession> { let raw = mochios_session_store_load(self.raw) let status = AppCore.lastStatus() if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<ApplicationSession> { status: status, value: null } } return AppCoreResult<ApplicationSession> { status: status, value: ApplicationSession { raw: raw } } }
 	/// 保存されたセッション状態を削除します。
 	///
 	/// ## Returns
@@ -195,7 +195,7 @@ for SessionStore {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn clear(self) -> AppCoreResult<bool> { let status = mochios_session_store_clear(self.raw) if status != 0 { return AppCoreResult<bool> { status: status, value: null } } return AppCoreResult<bool> { status: status, value: mochios_last_result_u64() != 0 } }
+	pub fn clear(self) -> AppCoreResult<bool> { let status = mochios_session_store_clear(self.raw) if status != 0 { return AppCoreResult<bool> { status: status, value: null } } return AppCoreResult<bool> { status: status, value: mochios_last_result_u64() != 0 } }
 }
 
 for SessionStore: Drop {

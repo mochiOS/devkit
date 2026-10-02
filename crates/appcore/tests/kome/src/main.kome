@@ -1,3 +1,5 @@
+use appcore::*
+
 fn main() {
 	let parsed = ContentType.parse("text/plain")
 	let manager = UndoManager.make()

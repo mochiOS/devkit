@@ -18,7 +18,7 @@ extern "C" from "appcore" {
 /// ```
 ///
 /// @since 27.0-dp.1
-struct AppCore {}
+pub struct AppCore {}
 
 for AppCore {
 	/// 読み込まれているAppCore C ABIのバージョンを返します。
@@ -34,7 +34,7 @@ for AppCore {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn abiVersion() -> u32 {
+	pub fn abiVersion() -> u32 {
 		return mochios_abi_version()
 	}
 
@@ -51,7 +51,7 @@ for AppCore {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn lastSystemError() -> i64 {
+	pub fn lastSystemError() -> i64 {
 		return mochios_last_system_error()
 	}
 
@@ -68,7 +68,7 @@ for AppCore {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn lastStatus() -> i32 {
+	pub fn lastStatus() -> i32 {
 		return mochios_last_status()
 	}
 }

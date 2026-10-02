@@ -1,6 +1,10 @@
 extern "C" {
 	// Copies borrowed UTF-8 bytes into an owned Kome String.
 	fn __kome_string_create(data: *const u8, length: usize) -> String
+	// Returns a borrowed pointer to a Kome String's UTF-8 bytes.
+	fn __kome_string_data(value: String) -> *const u8
+	// Returns the byte length of a Kome String.
+	fn __kome_string_len(value: String) -> usize
 }
 
 extern "C" from "appcore" {
@@ -22,9 +26,9 @@ extern "C" from "appcore" {
 /// `status`が`0`の場合は操作が成功しています。値を返さない失敗では`value`が`null`になります。
 ///
 /// @since 27.0-dp.1
-struct AppCoreResult<T> {
-	status: i32,
-	value: T?,
+pub struct AppCoreResult<T> {
+	pub status: i32,
+	pub value: T?,
 }
 
 for AppCoreResult<T> {
@@ -42,7 +46,7 @@ for AppCoreResult<T> {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn isOk(self) -> bool {
+	pub fn isOk(self) -> bool {
 		return self.status == 0
 	}
 }

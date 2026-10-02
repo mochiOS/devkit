@@ -1,4 +1,4 @@
-use std::core
+use std::core::Drop
 
 extern "C" from "appcore" {
 	struct MochiosClipboardWrite
@@ -22,7 +22,7 @@ extern "C" from "appcore" {
 /// 明示的なMIMEコンテンツタイプを持つクリップボードデータを表します。
 ///
 /// @since 27.0-dp.1
-struct ClipboardContent {
+pub struct ClipboardContent {
 	raw: *mut MochiosClipboardContent,
 }
 
@@ -40,7 +40,7 @@ for ClipboardContent {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn contentType(self) -> AppCoreResult<String> {
+	pub fn contentType(self) -> AppCoreResult<String> {
 		let status = mochios_clipboard_content_type(self.raw)
 		if status != 0 { return AppCoreResult<String> { status: status, value: null } }
 		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
@@ -59,7 +59,7 @@ for ClipboardContent {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn count(self) -> usize {
+	pub fn count(self) -> usize {
 		return mochios_clipboard_content_length(self.raw)
 	}
 
@@ -80,7 +80,7 @@ for ClipboardContent {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn byte(self, index: usize) -> AppCoreResult<u8> {
+	pub fn byte(self, index: usize) -> AppCoreResult<u8> {
 		let value = mochios_clipboard_content_byte(self.raw, index)
 		let status = AppCore.lastStatus()
 		if status != 0 { return AppCoreResult<u8> { status: status, value: null } }
@@ -103,7 +103,7 @@ for ClipboardContent: Drop {
 /// 利用する操作に応じてManifestへクリップボードの権限を宣言する必要があります。
 ///
 /// @since 27.0-dp.1
-struct Clipboard {}
+pub struct Clipboard {}
 
 for Clipboard {
 	/// 共有クリップボードをUTF-8テキストで置き換えます。
@@ -123,7 +123,7 @@ for Clipboard {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn text(value: String) -> i32 {
+	pub fn text(value: String) -> i32 {
 		return mochios_clipboard_set_text_utf8(__kome_string_data(value), __kome_string_len(value))
 	}
 
@@ -140,7 +140,7 @@ for Clipboard {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn readText() -> AppCoreResult<String> {
+	pub fn readText() -> AppCoreResult<String> {
 		let status = mochios_clipboard_read_text_utf8()
 		if status != 0 || mochios_last_result_has_value() == 0 {
 			return AppCoreResult<String> { status: status, value: null }
@@ -166,7 +166,7 @@ for Clipboard {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn set(contentType: ContentType, bytes: u8[]) -> i32 {
+	pub fn set(contentType: ContentType, bytes: u8[]) -> i32 {
 		let handle = mochios_clipboard_write_create_utf8(__kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier))
 		let createStatus = AppCore.lastStatus()
 		if createStatus != 0 { return createStatus }
@@ -195,7 +195,7 @@ for Clipboard {
 	/// ```
 	///
 	/// @since 27.0-dp.1
-	fn content() -> AppCoreResult<ClipboardContent> {
+	pub fn content() -> AppCoreResult<ClipboardContent> {
 		let raw = mochios_clipboard_read_content()
 		let status = AppCore.lastStatus()
 		if status != 0 || mochios_last_result_has_value() == 0 {
