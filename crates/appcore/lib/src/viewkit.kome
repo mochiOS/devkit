@@ -9,21 +9,65 @@ extern "C" from "appcore" {
 	fn mochios_application_request_quit() -> i32
 }
 
-// Provides application lifecycle operations backed by ViewKit.
+/// ViewKitで動作するアプリケーションのライフサイクル操作を提供します。
+///
+/// ## Example
+///
+/// ```kome
+/// Application.closeKeyWindow()
+/// ```
+///
+/// @since 27.0-dp.1
 struct Application {}
 
 for Application {
-	// Requests clean termination of the current application.
+	/// 現在のアプリケーションへ正常終了を要求します。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// Application.exit()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn exit() -> i32 {
 		return mochios_application_request_exit()
 	}
 
-	// Requests normal closure of the key window.
+	/// key windowへ通常のclose処理を要求します。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// Application.closeKeyWindow()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn closeKeyWindow() -> i32 {
 		return mochios_application_request_close_key_window()
 	}
 
-	// Requests application-wide termination.
+	/// アプリケーション全体の終了を要求します。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// Application.quit()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn quit() -> i32 {
 		return mochios_application_request_quit()
 	}

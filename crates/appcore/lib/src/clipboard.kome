@@ -17,25 +17,67 @@ extern "C" from "appcore" {
 	fn mochios_clipboard_content_destroy(handle: *mut MochiosClipboardContent)
 }
 
-// Owned clipboard bytes with an explicit MIME content type.
+/// 明示的なMIME content typeを持つclipboard dataを表します。
+///
+/// @since 27.0-dp.1
 struct ClipboardContent {
 	raw: *mut MochiosClipboardContent,
 }
 
 for ClipboardContent {
-	// Returns the MIME content type.
+	/// clipboard dataのMIME content typeを返します。
+	///
+	/// ## Returns
+	///
+	/// content type identifierを含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let type = content.contentType()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn contentType(self) -> AppCoreResult<String> {
 		let status = mochios_clipboard_content_type(self.raw)
 		if status != 0 { return AppCoreResult<String> { status: status, value: null } }
 		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
 	}
 
-	// Returns the number of content bytes.
+	/// clipboard dataのbyte数を返します。
+	///
+	/// ## Returns
+	///
+	/// clipboard dataのbyte数を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let count = content.count()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn count(self) -> usize {
 		return mochios_clipboard_content_length(self.raw)
 	}
 
-	// Returns one byte by index.
+	/// 指定された位置のbyteを返します。
+	///
+	/// ## Parameters
+	///
+	/// - `index`: 取得するbyteのzero-based indexです。
+	///
+	/// ## Returns
+	///
+	/// 指定されたbyteを含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let first = content.byte(0)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn byte(self, index: usize) -> AppCoreResult<u8> {
 		let value = mochios_clipboard_content_byte(self.raw, index)
 		let status = AppCore.lastStatus()
@@ -46,22 +88,56 @@ for ClipboardContent {
 }
 
 for ClipboardContent: Drop {
-	// Releases the native clipboard content.
+	/// native clipboard contentを解放します。
+	///
+	/// @since 27.0-dp.1
 	fn drop(self) {
 		mochios_clipboard_content_destroy(self.raw)
 	}
 }
 
-// Provides capability-checked access to the shared workspace clipboard.
+/// shared workspace clipboardへcapability-checked accessを提供します。
+///
+/// 利用する操作に応じてManifestへclipboard capabilityを宣言する必要があります。
+///
+/// @since 27.0-dp.1
 struct Clipboard {}
 
 for Clipboard {
-	// Replaces the shared clipboard contents with UTF-8 text.
+	/// shared clipboardをUTF-8 textで置き換えます。
+	///
+	/// ## Parameters
+	///
+	/// - `value`: clipboardへ書き込むtextです。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// Clipboard.text("Kome")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn text(value: String) -> i32 {
 		return mochios_clipboard_set_text_utf8(__kome_string_data(value), __kome_string_len(value))
 	}
 
-	// Reads UTF-8 text from the shared clipboard.
+	/// shared clipboardからUTF-8 textを読み取ります。
+	///
+	/// ## Returns
+	///
+	/// textが存在する場合は文字列を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let result = Clipboard.readText()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn readText() -> AppCoreResult<String> {
 		let status = mochios_clipboard_read_text_utf8()
 		if status != 0 || mochios_last_result_has_value() == 0 {
@@ -70,7 +146,24 @@ for Clipboard {
 		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
 	}
 
-	// Replaces the clipboard with bytes and an explicit MIME content type.
+	/// clipboardをbyte列と明示的なMIME content typeで置き換えます。
+	///
+	/// ## Parameters
+	///
+	/// - `contentType`: dataのcontent typeです。
+	/// - `bytes`: clipboardへ書き込むbyte列です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// Clipboard.set(ContentType.DATA, [1, 2, 3])
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn set(contentType: ContentType, bytes: u8[]) -> i32 {
 		let handle = mochios_clipboard_write_create_utf8(__kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier))
 		let createStatus = AppCore.lastStatus()
@@ -87,7 +180,19 @@ for Clipboard {
 		return status
 	}
 
-	// Reads arbitrary clipboard content.
+	/// shared clipboardから任意形式のdataを読み取ります。
+	///
+	/// ## Returns
+	///
+	/// dataが存在する場合は`ClipboardContent`を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let result = Clipboard.content()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn content() -> AppCoreResult<ClipboardContent> {
 		let raw = mochios_clipboard_read_content()
 		let status = AppCore.lastStatus()

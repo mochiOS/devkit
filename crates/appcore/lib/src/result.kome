@@ -17,14 +17,31 @@ extern "C" from "appcore" {
 	fn mochios_last_result_u64() -> u64
 }
 
-// Contains an AppCore status and an optional typed value.
+/// AppCoreのステータスと任意の型の値を保持します。
+///
+/// `status`が`0`の場合は操作が成功しています。値を返さない失敗では`value`が`null`になります。
+///
+/// @since 27.0-dp.1
 struct AppCoreResult<T> {
 	status: i32,
 	value: T?,
 }
 
 for AppCoreResult<T> {
-	// Returns whether the operation completed successfully.
+	/// 操作が成功したかどうかを返します。
+	///
+	/// ## Returns
+	///
+	/// `status`が`0`の場合は`true`、それ以外の場合は`false`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let result = Clipboard.readText()
+	/// if result.isOk() { result.value }
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn isOk(self) -> bool {
 		return self.status == 0
 	}

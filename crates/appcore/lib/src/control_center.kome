@@ -17,28 +17,92 @@ extern "C" from "appcore" {
 	fn mochios_control_center_item_destroy(item: *mut MochiosControlCenterItem)
 }
 
-// A declarative Control Center card owned by AppCore.
+/// AppCoreが所有する宣言的なControl Centerカードを表します。
+///
+/// @since 27.0-dp.1
 struct ControlCenterItem {
 	raw: *mut MochiosControlCenterItem,
 }
 
 for ControlCenterItem {
-	// Begins registration for a manifest-declared Control Center item.
+	/// Manifestで宣言されたControl Center項目の登録を開始します。
+	///
+	/// ## Parameters
+	///
+	/// - `bundleId`: 項目を所有するアプリケーションのBundle IDです。
+	/// - `itemId`: Manifestで宣言された項目の識別子です。
+	///
+	/// ## Returns
+	///
+	/// 登録内容を構築する`ControlCenterItem`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let item = ControlCenterItem.register("org.example.app", "status")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn register(bundleId: String, itemId: String) -> ControlCenterItem {
 		return ControlCenterItem { raw: mochios_control_center_item_create_utf8(__kome_string_data(bundleId), __kome_string_len(bundleId), __kome_string_data(itemId), __kome_string_len(itemId)) }
 	}
 
-	// Replaces the card title.
+	/// カードのタイトルを置き換えます。
+	///
+	/// ## Parameters
+	///
+	/// - `title`: カードに表示するタイトルです。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// item.title("システム状態")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn title(self, title: String) -> i32 {
 		return mochios_control_center_item_set_title_utf8(self.raw, __kome_string_data(title), __kome_string_len(title))
 	}
 
-	// Appends a label/value row to the card.
+	/// カードへラベルと値の行を追加します。
+	///
+	/// ## Parameters
+	///
+	/// - `label`: 行のラベルです。
+	/// - `value`: 行に表示する値です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// item.row("状態", "正常")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn row(self, label: String, value: String) -> i32 {
 		return mochios_control_center_item_add_row_utf8(self.raw, __kome_string_data(label), __kome_string_len(label), __kome_string_data(value), __kome_string_len(value))
 	}
 
-	// Publishes or replaces the card.
+	/// カードを公開し、既存のカードがある場合は置き換えます。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// item.publish()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn publish(self) -> i32 {
 		return mochios_control_center_item_publish(self.raw)
 	}
@@ -46,7 +110,9 @@ for ControlCenterItem {
 }
 
 for ControlCenterItem: Drop {
-	// Releases the native card builder.
+	/// native card builderを解放します。
+	///
+	/// @since 27.0-dp.1
 	fn drop(self) {
 		mochios_control_center_item_destroy(self.raw)
 	}

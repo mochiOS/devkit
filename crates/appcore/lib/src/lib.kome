@@ -9,21 +9,65 @@ extern "C" from "appcore" {
 	fn mochios_last_status() -> i32
 }
 
-// Provides process-wide AppCore information.
+/// プロセス全体で共有されるAppCore情報を提供します。
+///
+/// ## Example
+///
+/// ```kome
+/// let version = AppCore.abiVersion()
+/// ```
+///
+/// @since 27.0-dp.1
 struct AppCore {}
 
 for AppCore {
-	// Returns the loaded AppCore C ABI version.
+	/// 読み込まれているAppCore C ABIのバージョンを返します。
+	///
+	/// ## Returns
+	///
+	/// AppCore C ABIのバージョン番号を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let version = AppCore.abiVersion()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn abiVersion() -> u32 {
 		return mochios_abi_version()
 	}
 
-	// Returns the native system error saved by the latest failed call.
+	/// 直前に失敗した呼び出しのnative system errorを返します。
+	///
+	/// ## Returns
+	///
+	/// 保存されているsystem error codeを返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let error = AppCore.lastSystemError()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn lastSystemError() -> i64 {
 		return mochios_last_system_error()
 	}
 
-	// Returns the status produced by the latest AppCore operation.
+	/// 直前のAppCore操作が返したステータスを返します。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let status = AppCore.lastStatus()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn lastStatus() -> i32 {
 		return mochios_last_status()
 	}

@@ -3,7 +3,9 @@ extern "C" from "appcore" {
 	fn mochios_notification_deliver_utf8(bundleIdData: *const u8, bundleIdLength: usize, titleData: *const u8, titleLength: usize, bodyData: *const u8, bodyLength: usize) -> i32
 }
 
-// A user notification delivered by the system notification center.
+/// system notification centerから配信するユーザー通知を表します。
+///
+/// @since 27.0-dp.1
 struct UserNotification {
 	bundleId: String,
 	title: String,
@@ -11,17 +13,62 @@ struct UserNotification {
 }
 
 for UserNotification {
-	// Creates a notification builder.
+	/// 通知を作成します。
+	///
+	/// ## Parameters
+	///
+	/// - `bundleId`: 通知を所有するアプリケーションのBundle IDです。
+	/// - `title`: 通知に表示するタイトルです。
+	///
+	/// ## Returns
+	///
+	/// 作成された`UserNotification`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let notification = UserNotification.make("org.example.app", "保存完了")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn make(bundleId: String, title: String) -> UserNotification {
 		return UserNotification { bundleId: bundleId, title: title, message: "" }
 	}
 
-	// Returns a notification with its body text replaced.
+	/// 本文を置き換えた通知を返します。
+	///
+	/// ## Parameters
+	///
+	/// - `message`: 通知に表示する本文です。
+	///
+	/// ## Returns
+	///
+	/// 本文が設定された`UserNotification`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let notification = UserNotification.make("org.example.app", "保存完了").body("書類を保存しました。")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn body(self, message: String) -> UserNotification {
 		return UserNotification { bundleId: self.bundleId, title: self.title, message: message }
 	}
 
-	// Delivers this notification.
+	/// この通知を配信します。
+	///
+	/// ## Returns
+	///
+	/// 成功時は配信された通知の識別子を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let result = notification.deliver()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn deliver(self) -> AppCoreResult<u64> {
 		let status = mochios_notification_deliver_utf8(__kome_string_data(self.bundleId), __kome_string_len(self.bundleId), __kome_string_data(self.title), __kome_string_len(self.title), __kome_string_data(self.message), __kome_string_len(self.message))
 		if status != 0 {
