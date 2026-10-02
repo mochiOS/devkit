@@ -38,11 +38,11 @@ for AppCore {
 		return mochios_abi_version()
 	}
 
-	/// 直前に失敗した呼び出しのnative system errorを返します。
+	/// 直前に失敗した呼び出しのネイティブシステムエラーを返します。
 	///
 	/// ## Returns
 	///
-	/// 保存されているsystem error codeを返します。
+	/// 保存されているシステムエラーコードを返します。
 	///
 	/// ## Example
 	///

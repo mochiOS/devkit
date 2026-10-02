@@ -38,7 +38,7 @@ for Application {
 		return mochios_application_request_exit()
 	}
 
-	/// key windowへ通常のclose処理を要求します。
+	/// キーウィンドウへ通常のクローズ処理を要求します。
 	///
 	/// ## Returns
 	///

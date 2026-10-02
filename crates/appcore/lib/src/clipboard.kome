@@ -17,7 +17,7 @@ extern "C" from "appcore" {
 	fn mochios_clipboard_content_destroy(handle: *mut MochiosClipboardContent)
 }
 
-/// 明示的なMIME content typeを持つclipboard dataを表します。
+/// 明示的なMIMEコンテンツタイプを持つクリップボードデータを表します。
 ///
 /// @since 27.0-dp.1
 struct ClipboardContent {
@@ -25,11 +25,11 @@ struct ClipboardContent {
 }
 
 for ClipboardContent {
-	/// clipboard dataのMIME content typeを返します。
+	/// クリップボードデータのMIMEコンテンツタイプを返します。
 	///
 	/// ## Returns
 	///
-	/// content type identifierを含む`AppCoreResult`を返します。
+	/// コンテンツタイプの識別子を含む`AppCoreResult`を返します。
 	///
 	/// ## Example
 	///
@@ -44,11 +44,11 @@ for ClipboardContent {
 		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
 	}
 
-	/// clipboard dataのbyte数を返します。
+	/// クリップボードデータのバイト数を返します。
 	///
 	/// ## Returns
 	///
-	/// clipboard dataのbyte数を返します。
+	/// クリップボードデータのバイト数を返します。
 	///
 	/// ## Example
 	///
@@ -61,15 +61,15 @@ for ClipboardContent {
 		return mochios_clipboard_content_length(self.raw)
 	}
 
-	/// 指定された位置のbyteを返します。
+	/// 指定された位置のバイトを返します。
 	///
 	/// ## Parameters
 	///
-	/// - `index`: 取得するbyteのzero-based indexです。
+	/// - `index`: 取得するバイトの0始まりの位置です。
 	///
 	/// ## Returns
 	///
-	/// 指定されたbyteを含む`AppCoreResult`を返します。
+	/// 指定されたバイトを含む`AppCoreResult`を返します。
 	///
 	/// ## Example
 	///
@@ -88,7 +88,7 @@ for ClipboardContent {
 }
 
 for ClipboardContent: Drop {
-	/// native clipboard contentを解放します。
+	/// ネイティブのクリップボードデータを解放します。
 	///
 	/// @since 27.0-dp.1
 	fn drop(self) {
@@ -96,19 +96,19 @@ for ClipboardContent: Drop {
 	}
 }
 
-/// shared workspace clipboardへcapability-checked accessを提供します。
+/// 共有ワークスペースのクリップボードへ、権限を確認した上でアクセスします。
 ///
-/// 利用する操作に応じてManifestへclipboard capabilityを宣言する必要があります。
+/// 利用する操作に応じてManifestへクリップボードの権限を宣言する必要があります。
 ///
 /// @since 27.0-dp.1
 struct Clipboard {}
 
 for Clipboard {
-	/// shared clipboardをUTF-8 textで置き換えます。
+	/// 共有クリップボードをUTF-8テキストで置き換えます。
 	///
 	/// ## Parameters
 	///
-	/// - `value`: clipboardへ書き込むtextです。
+	/// - `value`: クリップボードへ書き込むテキストです。
 	///
 	/// ## Returns
 	///
@@ -125,11 +125,11 @@ for Clipboard {
 		return mochios_clipboard_set_text_utf8(__kome_string_data(value), __kome_string_len(value))
 	}
 
-	/// shared clipboardからUTF-8 textを読み取ります。
+	/// 共有クリップボードからUTF-8テキストを読み取ります。
 	///
 	/// ## Returns
 	///
-	/// textが存在する場合は文字列を含む`AppCoreResult`を返します。
+	/// テキストが存在する場合は文字列を含む`AppCoreResult`を返します。
 	///
 	/// ## Example
 	///
@@ -146,12 +146,12 @@ for Clipboard {
 		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
 	}
 
-	/// clipboardをbyte列と明示的なMIME content typeで置き換えます。
+	/// クリップボードをバイト列と明示的なMIMEコンテンツタイプで置き換えます。
 	///
 	/// ## Parameters
 	///
-	/// - `contentType`: dataのcontent typeです。
-	/// - `bytes`: clipboardへ書き込むbyte列です。
+	/// - `contentType`: データのコンテンツタイプです。
+	/// - `bytes`: クリップボードへ書き込むバイト列です。
 	///
 	/// ## Returns
 	///
@@ -180,11 +180,11 @@ for Clipboard {
 		return status
 	}
 
-	/// shared clipboardから任意形式のdataを読み取ります。
+	/// 共有クリップボードから任意形式のデータを読み取ります。
 	///
 	/// ## Returns
 	///
-	/// dataが存在する場合は`ClipboardContent`を含む`AppCoreResult`を返します。
+	/// データが存在する場合は`ClipboardContent`を含む`AppCoreResult`を返します。
 	///
 	/// ## Example
 	///

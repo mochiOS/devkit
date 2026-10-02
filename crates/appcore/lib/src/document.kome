@@ -21,24 +21,56 @@ extern "C" from "appcore" {
 	fn mochios_document_open_with_utf8(pathData: *const u8, pathLength: usize, contentTypeData: *const u8, contentTypeLength: usize, bundleIdData: *const u8, bundleIdLength: usize, roles: u16) -> i32
 }
 
-// An application capable of opening a matching document.
+/// 対応する書類を開けるアプリケーションを表します。
+///
+/// @since 27.0-dp.1
 struct AssociationHandler {
 	bundleId: String,
 	name: String,
 }
 
-// An owned collection of resolved document handlers.
+/// 解決された書類ハンドラーのコレクションを表します。
+///
+/// @since 27.0-dp.1
 struct AssociationHandlers {
 	raw: *mut MochiosAssociationHandlers,
 }
 
 for AssociationHandlers {
-	// Returns the number of handlers in this collection.
+	/// コレクションに含まれるハンドラー数を返します。
+	///
+	/// ## Returns
+	///
+	/// ハンドラー数を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let count = handlers.count()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn count(self) -> usize {
 		return mochios_association_handlers_count(self.raw)
 	}
 
-	// Returns one handler by index.
+	/// 指定された位置のハンドラーを返します。
+	///
+	/// ## Parameters
+	///
+	/// - `index`: 取得するハンドラーの0始まりの位置です。
+	///
+	/// ## Returns
+	///
+	/// `AssociationHandler`を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let handler = handlers.handler(0)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn handler(self, index: usize) -> AppCoreResult<AssociationHandler> {
 		let status = mochios_association_handlers_bundle_id(self.raw, index)
 		if status != 0 {
@@ -55,38 +87,108 @@ for AssociationHandlers {
 }
 
 for AssociationHandlers: Drop {
-	// Releases the native handler collection.
+	/// ネイティブのハンドラーコレクションを解放します。
+	///
+	/// @since 27.0-dp.1
 	fn drop(self) {
 		mochios_association_handlers_destroy(self.raw)
 	}
 }
 
-// Roles used when resolving or updating document associations.
+/// 書類の関連付けを解決または更新する際の役割を表します。
+///
+/// @since 27.0-dp.1
 struct AssociationRoles {
 	bits: u16,
 }
 
 for AssociationRoles {
+	/// 書類を閲覧する役割です。
+	///
+	/// @since 27.0-dp.1
 	const VIEW: AssociationRoles = AssociationRoles { bits: 1 }
+	/// 書類を編集する役割です。
+	///
+	/// @since 27.0-dp.1
 	const EDIT: AssociationRoles = AssociationRoles { bits: 2 }
+	/// 閲覧と編集の両方を含む役割です。
+	///
+	/// @since 27.0-dp.1
 	const ALL: AssociationRoles = AssociationRoles { bits: 3 }
 }
 
-// Provides capability-checked document and file-association operations.
+/// 権限を確認した上で、書類とファイルの関連付けを操作します。
+///
+/// @since 27.0-dp.1
 struct Document {}
 
 for Document {
-	// Sets the default application for a document key and role.
+	/// 書類の種類と役割に対する既定のアプリケーションを設定します。
+	///
+	/// ## Parameters
+	///
+	/// - `extension`: 対象のファイル拡張子です。
+	/// - `contentType`: 対象のコンテンツタイプです。
+	/// - `bundleId`: 既定に設定するアプリケーションのBundle IDです。
+	/// - `roles`: 関連付けを設定する役割です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// Document.setDefault("md", ContentType.MARKDOWN, "org.example.editor", AssociationRoles.EDIT)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn setDefault(extension: String, contentType: ContentType, bundleId: String, roles: AssociationRoles) -> i32 {
 		return mochios_association_set_utf8(__kome_string_data(extension), __kome_string_len(extension), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), __kome_string_data(bundleId), __kome_string_len(bundleId), roles.bits)
 	}
 
-	// Removes the default application for a document key and role.
+	/// 書類の種類と役割に対する既定のアプリケーションを削除します。
+	///
+	/// ## Parameters
+	///
+	/// - `extension`: 対象のファイル拡張子です。
+	/// - `contentType`: 対象のコンテンツタイプです。
+	/// - `roles`: 関連付けを削除する役割です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// Document.removeDefault("md", ContentType.MARKDOWN, AssociationRoles.EDIT)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn removeDefault(extension: String, contentType: ContentType, roles: AssociationRoles) -> i32 {
 		return mochios_association_remove_utf8(__kome_string_data(extension), __kome_string_len(extension), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), roles.bits)
 	}
 
-	// Resolves the default application's bundle identifier.
+	/// 現在の既定のアプリケーションのBundle IDを解決します。
+	///
+	/// ## Parameters
+	///
+	/// - `extension`: 対象のファイル拡張子です。
+	/// - `contentType`: 対象のコンテンツタイプです。
+	/// - `roles`: 解決対象の役割です。
+	///
+	/// ## Returns
+	///
+	/// Bundle IDを含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let handler = Document.resolveDefault("md", ContentType.MARKDOWN, AssociationRoles.VIEW)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn resolveDefault(extension: String, contentType: ContentType, roles: AssociationRoles) -> AppCoreResult<String> {
 		let status = mochios_association_resolve_utf8(__kome_string_data(extension), __kome_string_len(extension), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), roles.bits)
 		if status != 0 {
@@ -95,7 +197,25 @@ for Document {
 		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
 	}
 
-	// Resolves every application registered for a document key and role.
+	/// 書類の種類と役割に登録されたすべてのアプリケーションを解決します。
+	///
+	/// ## Parameters
+	///
+	/// - `extension`: 対象のファイル拡張子です。
+	/// - `contentType`: 対象のコンテンツタイプです。
+	/// - `roles`: 解決対象の役割です。
+	///
+	/// ## Returns
+	///
+	/// ハンドラーのコレクションを含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let handlers = Document.handlers("md", ContentType.MARKDOWN, AssociationRoles.VIEW)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn handlers(extension: String, contentType: ContentType, roles: AssociationRoles) -> AppCoreResult<AssociationHandlers> {
 		let raw = mochios_association_handlers_utf8(__kome_string_data(extension), __kome_string_len(extension), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), roles.bits)
 		let status = AppCore.lastStatus()
@@ -105,7 +225,25 @@ for Document {
 		return AppCoreResult<AssociationHandlers> { status: status, value: AssociationHandlers { raw: raw } }
 	}
 
-	// Opens a document with its default application.
+	/// 解決された既定のアプリケーションで書類を開きます。
+	///
+	/// ## Parameters
+	///
+	/// - `path`: 開く書類のパスです。
+	/// - `contentType`: 書類のコンテンツタイプです。
+	/// - `roles`: 書類を開く役割です。
+	///
+	/// ## Returns
+	///
+	/// ワークスペース要求の識別子を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let request = Document.open("/Documents/Note.md", ContentType.MARKDOWN, AssociationRoles.VIEW)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn open(path: String, contentType: ContentType, roles: AssociationRoles) -> AppCoreResult<u64> {
 		let status = mochios_document_open_utf8(__kome_string_data(path), __kome_string_len(path), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), roles.bits)
 		if status != 0 {
@@ -114,7 +252,26 @@ for Document {
 		return AppCoreResult<u64> { status: status, value: mochios_last_result_u64() }
 	}
 
-	// Opens a document with an explicit application.
+	/// 指定されたアプリケーションで書類を開きます。
+	///
+	/// ## Parameters
+	///
+	/// - `path`: 開く書類のパスです。
+	/// - `contentType`: 書類のコンテンツタイプです。
+	/// - `bundleId`: 使用するアプリケーションのBundle IDです。
+	/// - `roles`: 書類を開く役割です。
+	///
+	/// ## Returns
+	///
+	/// ワークスペース要求の識別子を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let request = Document.openWith("/Documents/Note.md", ContentType.MARKDOWN, "org.example.editor", AssociationRoles.EDIT)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn openWith(path: String, contentType: ContentType, bundleId: String, roles: AssociationRoles) -> AppCoreResult<u64> {
 		let status = mochios_document_open_with_utf8(__kome_string_data(path), __kome_string_len(path), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), __kome_string_data(bundleId), __kome_string_len(bundleId), roles.bits)
 		if status != 0 {

@@ -15,7 +15,7 @@ extern "C" from "appcore" {
 	fn mochios_content_type_preferred_extension_utf8(data: *const u8, length: usize) -> i32
 }
 
-/// 検証済みの標準化されたMIME形式のcontent identifierを表します。
+/// 検証済みの標準化されたMIME形式のコンテンツ識別子を表します。
 ///
 /// @since 27.0-dp.1
 struct ContentType {
@@ -23,64 +23,64 @@ struct ContentType {
 }
 
 for ContentType {
-	/// 任意のbinary dataを表すcontent typeです。
+	/// 任意のバイナリデータを表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
 	const DATA: ContentType = ContentType { identifier: "application/octet-stream" }
-	/// plain textを表すcontent typeです。
+	/// プレーンテキストを表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
 	const PLAIN_TEXT: ContentType = ContentType { identifier: "text/plain" }
-	/// UTF-8 plain textを表すcontent typeです。
+	/// UTF-8のプレーンテキストを表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
 	const UTF8_PLAIN_TEXT: ContentType = ContentType { identifier: "text/plain;charset=utf-8" }
-	/// JSON documentを表すcontent typeです。
+	/// JSON書類を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
 	const JSON: ContentType = ContentType { identifier: "application/json" }
-	/// XML documentを表すcontent typeです。
+	/// XML書類を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
 	const XML: ContentType = ContentType { identifier: "application/xml" }
-	/// HTML documentを表すcontent typeです。
+	/// HTML書類を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
 	const HTML: ContentType = ContentType { identifier: "text/html" }
-	/// CSS stylesheetを表すcontent typeです。
+	/// CSSスタイルシートを表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
 	const CSS: ContentType = ContentType { identifier: "text/css" }
-	/// JavaScript sourceを表すcontent typeです。
+	/// JavaScriptソースコードを表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
 	const JAVASCRIPT: ContentType = ContentType { identifier: "text/javascript" }
-	/// Markdown documentを表すcontent typeです。
+	/// Markdown書類を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
 	const MARKDOWN: ContentType = ContentType { identifier: "text/markdown" }
-	/// PNG imageを表すcontent typeです。
+	/// PNG画像を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
 	const PNG: ContentType = ContentType { identifier: "image/png" }
-	/// JPEG imageを表すcontent typeです。
+	/// JPEG画像を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
 	const JPEG: ContentType = ContentType { identifier: "image/jpeg" }
-	/// SVG imageを表すcontent typeです。
+	/// SVG画像を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
 	const SVG: ContentType = ContentType { identifier: "image/svg+xml" }
-	/// PDF documentを表すcontent typeです。
+	/// PDF書類を表すコンテンツタイプです。
 	///
 	/// @since 27.0-dp.1
 	const PDF: ContentType = ContentType { identifier: "application/pdf" }
 
-	/// content type identifierを検証して標準化します。
+	/// コンテンツタイプの識別子を検証して標準化します。
 	///
 	/// ## Parameters
 	///
-	/// - `identifier`: 検証するMIME形式のidentifierです。
+	/// - `identifier`: 検証するMIME形式の識別子です。
 	///
 	/// ## Returns
 	///
@@ -101,11 +101,11 @@ for ContentType {
 		return AppCoreResult<ContentType> { status: status, value: ContentType { identifier: __appCoreLastString() } }
 	}
 
-	/// filenameまたはpathからcontent typeを解決します。
+	/// ファイル名またはパスからコンテンツタイプを解決します。
 	///
 	/// ## Parameters
 	///
-	/// - `path`: content typeを解決するfilenameまたはpathです。
+	/// - `path`: コンテンツタイプを解決するファイル名またはパスです。
 	///
 	/// ## Returns
 	///
@@ -123,11 +123,11 @@ for ContentType {
 		return ContentType { identifier: __appCoreLastString() }
 	}
 
-	/// filename extensionからcontent typeを解決します。
+	/// ファイル拡張子からコンテンツタイプを解決します。
 	///
 	/// ## Parameters
 	///
-	/// - `extension`: 先頭のdotを除いたfilename extensionです。
+	/// - `extension`: 先頭のピリオドを除いたファイル拡張子です。
 	///
 	/// ## Returns
 	///
@@ -145,11 +145,11 @@ for ContentType {
 		return ContentType { identifier: __appCoreLastString() }
 	}
 
-	/// このcontent typeが指定された上位typeに適合するかを返します。
+	/// このコンテンツタイプが指定された上位タイプに適合するかを返します。
 	///
 	/// ## Parameters
 	///
-	/// - `parent`: 適合関係を確認する上位のcontent typeです。
+	/// - `parent`: 適合関係を確認する上位のコンテンツタイプです。
 	///
 	/// ## Returns
 	///
@@ -166,11 +166,11 @@ for ContentType {
 		return mochios_content_type_conforms_utf8(__kome_string_data(self.identifier), __kome_string_len(self.identifier), __kome_string_data(parent.identifier), __kome_string_len(parent.identifier)) != 0
 	}
 
-	/// 推奨されるfilename extensionを返します。
+	/// 推奨されるファイル拡張子を返します。
 	///
 	/// ## Returns
 	///
-	/// extensionが既知の場合は文字列を含む`AppCoreResult`を返します。
+	/// 拡張子が既知の場合は文字列を含む`AppCoreResult`を返します。
 	///
 	/// ## Example
 	///

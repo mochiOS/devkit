@@ -3,7 +3,7 @@ extern "C" from "appcore" {
 	fn mochios_notification_deliver_utf8(bundleIdData: *const u8, bundleIdLength: usize, titleData: *const u8, titleLength: usize, bodyData: *const u8, bodyLength: usize) -> i32
 }
 
-/// system notification centerから配信するユーザー通知を表します。
+/// システム通知センターから配信するユーザー通知を表します。
 ///
 /// @since 27.0-dp.1
 struct UserNotification {

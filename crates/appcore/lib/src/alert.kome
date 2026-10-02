@@ -104,7 +104,7 @@ for Alert {
 }
 
 for Alert: Drop {
-	/// native alertを解放します。
+	/// ネイティブのアラートを解放します。
 	///
 	/// @since 27.0-dp.1
 	fn drop(self) {

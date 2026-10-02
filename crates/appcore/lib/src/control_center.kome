@@ -110,7 +110,7 @@ for ControlCenterItem {
 }
 
 for ControlCenterItem: Drop {
-	/// native card builderを解放します。
+	/// ネイティブのカード構築オブジェクトを解放します。
 	///
 	/// @since 27.0-dp.1
 	fn drop(self) {
