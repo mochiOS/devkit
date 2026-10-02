@@ -52,8 +52,11 @@ for AssociationHandlers {
 		return AppCoreResult<AssociationHandler> { status: 0, value: AssociationHandler { bundleId: bundleId, name: __appCoreLastString() } }
 	}
 
+}
+
+for AssociationHandlers: Drop {
 	// Releases the native handler collection.
-	fn close(self) {
+	fn drop(self) {
 		mochios_association_handlers_destroy(self.raw)
 	}
 }

@@ -4,18 +4,15 @@ fn main() {
 	manager.register(UndoOperation { name: "Typing", undoAction: 10, redoAction: 11 })
 	manager.undo()
 	manager.takeAction()
-	manager.close()
 
 	let metadata = DocumentMetadata.make("text/plain", "utf-8")
 	let controller = DocumentController.make(DocumentInfo.untitled(metadata), 1)
 	controller.setRevision(2)
 	controller.save()
 	controller.takeAction()
-	controller.close()
 
 	let session = ApplicationSession.make()
 	let frame = WindowFrame { x: 10, y: 20, width: 800, height: 600 }
 	let window = RestorableWindow { identifier: "main", documentPath: "", recoveryIdentifier: "", hasFrame: true, frame: frame, maximized: false, fullscreen: false }
 	session.addWindow(window)
-	session.close()
 }

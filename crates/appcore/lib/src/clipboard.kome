@@ -43,8 +43,11 @@ for ClipboardContent {
 		return AppCoreResult<u8> { status: status, value: value }
 	}
 
+}
+
+for ClipboardContent: Drop {
 	// Releases the native clipboard content.
-	fn close(self) {
+	fn drop(self) {
 		mochios_clipboard_content_destroy(self.raw)
 	}
 }

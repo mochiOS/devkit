@@ -43,8 +43,11 @@ for ControlCenterItem {
 		return mochios_control_center_item_publish(self.raw)
 	}
 
+}
+
+for ControlCenterItem: Drop {
 	// Releases the native card builder.
-	fn close(self) {
+	fn drop(self) {
 		mochios_control_center_item_destroy(self.raw)
 	}
 }

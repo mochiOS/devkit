@@ -43,8 +43,11 @@ for Alert {
 		return mochios_alert_is_visible(self.raw) != 0
 	}
 
+}
+
+for Alert: Drop {
 	// Releases the native alert.
-	fn close(self) {
+	fn drop(self) {
 		mochios_alert_destroy(self.raw)
 	}
 }

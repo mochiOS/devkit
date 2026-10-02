@@ -82,8 +82,11 @@ for OpenPanel {
 		return mochios_open_panel_take_cancelled(self.raw) != 0
 	}
 
+}
+
+for OpenPanel: Drop {
 	// Releases the native panel.
-	fn close(self) {
+	fn drop(self) {
 		mochios_open_panel_destroy(self.raw)
 	}
 }
@@ -149,8 +152,11 @@ for SavePanel {
 		return mochios_save_panel_take_cancelled(self.raw) != 0
 	}
 
+}
+
+for SavePanel: Drop {
 	// Releases the native panel.
-	fn close(self) {
+	fn drop(self) {
 		mochios_save_panel_destroy(self.raw)
 	}
 }

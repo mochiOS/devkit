@@ -40,8 +40,11 @@ for RecoveryIdentifiers {
 		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
 	}
 
+}
+
+for RecoveryIdentifiers: Drop {
 	// Releases the native identifier collection.
-	fn close(self) {
+	fn drop(self) {
 		mochios_recovery_identifiers_destroy(self.raw)
 	}
 }
@@ -117,8 +120,11 @@ for RecoveryStore {
 		return AppCoreResult<RecoveryIdentifiers> { status: status, value: RecoveryIdentifiers { raw: raw } }
 	}
 
+}
+
+for RecoveryStore: Drop {
 	// Releases the native recovery store.
-	fn close(self) {
+	fn drop(self) {
 		mochios_recovery_store_destroy(self.raw)
 	}
 }

@@ -129,6 +129,9 @@ for DocumentController {
 	fn status(self) -> AppCoreResult<String> { let status = mochios_document_controller_status(self.raw) if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<String> { status: status, value: null } } return AppCoreResult<String> { status: status, value: __appCoreLastString() } }
 	// Clears the latest lifecycle error.
 	fn clearStatus(self) -> i32 { return mochios_document_controller_clear_status(self.raw) }
+}
+
+for DocumentController: Drop {
 	// Releases the native controller.
-	fn close(self) { mochios_document_controller_destroy(self.raw) }
+	fn drop(self) { mochios_document_controller_destroy(self.raw) }
 }

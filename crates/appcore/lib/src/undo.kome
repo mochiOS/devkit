@@ -130,8 +130,11 @@ for UndoManager {
 		return mochios_undo_manager_grouping_level(self.raw)
 	}
 
+}
+
+for UndoManager: Drop {
 	// Releases the native undo manager.
-	fn close(self) {
+	fn drop(self) {
 		mochios_undo_manager_destroy(self.raw)
 	}
 }

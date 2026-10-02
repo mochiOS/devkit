@@ -53,8 +53,11 @@ for ApplicationSession {
 		let window = RestorableWindow { identifier: identifier, documentPath: path, recoveryIdentifier: recovery, hasFrame: mochios_application_session_window_has_frame(self.raw, index) != 0, frame: frame, maximized: mochios_application_session_window_maximized(self.raw, index) != 0, fullscreen: mochios_application_session_window_fullscreen(self.raw, index) != 0 }
 		return AppCoreResult<RestorableWindow> { status: status, value: window }
 	}
+}
+
+for ApplicationSession: Drop {
 	// Releases the native session.
-	fn close(self) { mochios_application_session_destroy(self.raw) }
+	fn drop(self) { mochios_application_session_destroy(self.raw) }
 }
 
 // Atomically persists one application's restoration state.
@@ -69,6 +72,9 @@ for SessionStore {
 	fn load(self) -> AppCoreResult<ApplicationSession> { let raw = mochios_session_store_load(self.raw) let status = AppCore.lastStatus() if status != 0 || mochios_last_result_has_value() == 0 { return AppCoreResult<ApplicationSession> { status: status, value: null } } return AppCoreResult<ApplicationSession> { status: status, value: ApplicationSession { raw: raw } } }
 	// Clears persisted session state.
 	fn clear(self) -> AppCoreResult<bool> { let status = mochios_session_store_clear(self.raw) if status != 0 { return AppCoreResult<bool> { status: status, value: null } } return AppCoreResult<bool> { status: status, value: mochios_last_result_u64() != 0 } }
+}
+
+for SessionStore: Drop {
 	// Releases the native store.
-	fn close(self) { mochios_session_store_destroy(self.raw) }
+	fn drop(self) { mochios_session_store_destroy(self.raw) }
 }
