@@ -20,18 +20,48 @@ extern "C" from "appcore" {
 	fn mochios_recovery_store_destroy(store: *mut MochiosRecoveryStore)
 }
 
-// An owned collection of sorted recovery identifiers.
+/// ソート済みの復元用識別子を所有するコレクションを表します。
+///
+/// @since 27.0-dp.1
 struct RecoveryIdentifiers {
 	raw: *mut MochiosRecoveryIdentifiers,
 }
 
 for RecoveryIdentifiers {
-	// Returns the number of identifiers in this collection.
+	/// コレクションに含まれる識別子数を返します。
+	///
+	/// ## Returns
+	///
+	/// 識別子数を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let count = identifiers.count()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn count(self) -> usize {
 		return mochios_recovery_identifiers_count(self.raw)
 	}
 
-	// Returns one identifier by index.
+	/// 指定された位置の識別子を返します。
+	///
+	/// ## Parameters
+	///
+	/// - `index`: 取得する識別子の0始まりの位置です。
+	///
+	/// ## Returns
+	///
+	/// 識別子を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let identifier = identifiers.identifier(0)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn identifier(self, index: usize) -> AppCoreResult<String> {
 		let status = mochios_recovery_identifiers_get(self.raw, index)
 		if status != 0 {
@@ -43,13 +73,17 @@ for RecoveryIdentifiers {
 }
 
 for RecoveryIdentifiers: Drop {
-	// Releases the native identifier collection.
+	/// ネイティブの識別子コレクションを解放します。
+	///
+	/// @since 27.0-dp.1
 	fn drop(self) {
 		mochios_recovery_identifiers_destroy(self.raw)
 	}
 }
 
-// One UTF-8 document recovery snapshot.
+/// 書類を復元するためのUTF-8スナップショットを表します。
+///
+/// @since 27.0-dp.1
 struct RecoveryRecord {
 	identifier: String,
 	originalPath: String,
@@ -58,23 +92,73 @@ struct RecoveryRecord {
 	contents: String,
 }
 
-// An atomic recovery store rooted below an application-owned directory.
+/// アプリケーション所有のディレクトリに復元データをアトミックに保存します。
+///
+/// @since 27.0-dp.1
 struct RecoveryStore {
 	raw: *mut MochiosRecoveryStore,
 }
 
 for RecoveryStore {
-	// Opens a recovery store rooted at `directory`.
+	/// 指定したディレクトリの復元用保存領域を開きます。
+	///
+	/// ## Parameters
+	///
+	/// - `directory`: 復元データを保存するディレクトリです。
+	///
+	/// ## Returns
+	///
+	/// 作成された`RecoveryStore`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let store = RecoveryStore.make("/Application/Recovery")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn make(directory: String) -> RecoveryStore {
 		return RecoveryStore { raw: mochios_recovery_store_create_utf8(__kome_string_data(directory), __kome_string_len(directory)) }
 	}
 
-	// Atomically saves a UTF-8 recovery record.
+	/// UTF-8の復元レコードをアトミックに保存します。
+	///
+	/// ## Parameters
+	///
+	/// - `record`: 保存する復元レコードです。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// store.save(record)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn save(self, record: RecoveryRecord) -> i32 {
 		return mochios_recovery_store_save_utf8(self.raw, __kome_string_data(record.identifier), __kome_string_len(record.identifier), __kome_string_data(record.originalPath), __kome_string_len(record.originalPath), __kome_string_data(record.contentType), __kome_string_len(record.contentType), record.revision, __kome_string_data(record.contents), __kome_string_len(record.contents))
 	}
 
-	// Loads a UTF-8 recovery record.
+	/// UTF-8の復元レコードを読み込みます。
+	///
+	/// ## Parameters
+	///
+	/// - `identifier`: 読み込むレコードの識別子です。
+	///
+	/// ## Returns
+	///
+	/// 復元レコードを含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let record = store.load("document-1")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn load(self, identifier: String) -> AppCoreResult<RecoveryRecord> {
 		let raw = mochios_recovery_store_load_utf8(self.raw, __kome_string_data(identifier), __kome_string_len(identifier))
 		let status = AppCore.lastStatus()
@@ -101,7 +185,23 @@ for RecoveryStore {
 		return AppCoreResult<RecoveryRecord> { status: status, value: RecoveryRecord { identifier: recordIdentifier, originalPath: originalPath, contentType: contentType, revision: revision, contents: contents } }
 	}
 
-	// Removes a recovery record.
+	/// 復元レコードを削除します。
+	///
+	/// ## Parameters
+	///
+	/// - `identifier`: 削除するレコードの識別子です。
+	///
+	/// ## Returns
+	///
+	/// レコードを削除した場合は`true`を含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let removed = store.remove("document-1")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn remove(self, identifier: String) -> AppCoreResult<bool> {
 		let status = mochios_recovery_store_remove_utf8(self.raw, __kome_string_data(identifier), __kome_string_len(identifier))
 		if status != 0 {
@@ -110,7 +210,19 @@ for RecoveryStore {
 		return AppCoreResult<bool> { status: status, value: mochios_last_result_u64() != 0 }
 	}
 
-	// Loads all sorted recovery identifiers.
+	/// ソート済みのすべての復元用識別子を読み込みます。
+	///
+	/// ## Returns
+	///
+	/// 識別子コレクションを含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let identifiers = store.identifiers()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn identifiers(self) -> AppCoreResult<RecoveryIdentifiers> {
 		let raw = mochios_recovery_store_identifiers(self.raw)
 		let status = AppCore.lastStatus()
@@ -123,7 +235,9 @@ for RecoveryStore {
 }
 
 for RecoveryStore: Drop {
-	// Releases the native recovery store.
+	/// ネイティブの復元用保存領域を解放します。
+	///
+	/// @since 27.0-dp.1
 	fn drop(self) {
 		mochios_recovery_store_destroy(self.raw)
 	}

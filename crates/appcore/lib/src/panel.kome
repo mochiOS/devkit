@@ -23,7 +23,9 @@ extern "C" from "appcore" {
 	fn mochios_save_panel_destroy(panel: *mut MochiosSavePanel)
 }
 
-// Configuration used when creating an open panel.
+/// 書類を開くパネルの設定を表します。
+///
+/// @since 27.0-dp.1
 struct OpenPanelOptions {
 	title: String,
 	initialDirectory: String,
@@ -31,44 +33,144 @@ struct OpenPanelOptions {
 }
 
 for OpenPanelOptions {
-	// Returns the standard open-panel configuration.
+	/// 標準的な設定を返します。
+	///
+	/// ## Returns
+	///
+	/// 標準的な`OpenPanelOptions`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let options = OpenPanelOptions.defaults()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn defaults() -> OpenPanelOptions {
 		return OpenPanelOptions { title: "Open", initialDirectory: "", rootDirectory: "" }
 	}
 }
 
-// A workspace-owned document open panel.
+/// ワークスペースが管理する書類選択パネルを表します。
+///
+/// @since 27.0-dp.1
 struct OpenPanel {
 	raw: *mut MochiosOpenPanel,
 }
 
 for OpenPanel {
-	// Creates an open panel.
+	/// 書類選択パネルを作成します。
+	///
+	/// ## Parameters
+	///
+	/// - `options`: パネルの設定です。
+	///
+	/// ## Returns
+	///
+	/// 作成された`OpenPanel`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let panel = OpenPanel.make(OpenPanelOptions.defaults())
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn make(options: OpenPanelOptions) -> OpenPanel {
 		return OpenPanel { raw: mochios_open_panel_create_utf8(__kome_string_data(options.title), __kome_string_len(options.title), __kome_string_data(options.initialDirectory), __kome_string_len(options.initialDirectory), __kome_string_data(options.rootDirectory), __kome_string_len(options.rootDirectory)) }
 	}
 
-	// Adds a content type displayed by this panel.
+	/// パネルに表示するコンテンツタイプを追加します。
+	///
+	/// ## Parameters
+	///
+	/// - `contentType`: 表示を許可するコンテンツタイプです。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// panel.allowContentType(ContentType.PLAIN_TEXT)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn allowContentType(self, contentType: ContentType) -> i32 {
 		return mochios_open_panel_allow_content_type_utf8(self.raw, __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier))
 	}
 
-	// Presents the panel.
+	/// パネルを表示します。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// panel.show()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn show(self) -> i32 {
 		return mochios_open_panel_show(self.raw)
 	}
 
-	// Presents the panel in a specific directory.
+	/// 指定したディレクトリでパネルを表示します。
+	///
+	/// ## Parameters
+	///
+	/// - `directory`: 最初に表示するディレクトリです。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// panel.showAt("/Documents")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn showAt(self, directory: String) -> i32 {
 		return mochios_open_panel_show_at_utf8(self.raw, __kome_string_data(directory), __kome_string_len(directory))
 	}
 
-	// Returns whether the panel is visible.
+	/// パネルが表示されているかどうかを返します。
+	///
+	/// ## Returns
+	///
+	/// 表示中の場合は`true`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let visible = panel.isVisible()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn isVisible(self) -> bool {
 		return mochios_open_panel_is_visible(self.raw) != 0
 	}
 
-	// Takes the most recent selected path.
+	/// 直近に選択されたパスを取得します。
+	///
+	/// 取得した選択結果はパネルから取り除かれます。
+	///
+	/// ## Returns
+	///
+	/// 選択されたパスを含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let selection = panel.takeSelection()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn takeSelection(self) -> AppCoreResult<String> {
 		let status = mochios_open_panel_take_selection(self.raw)
 		if status != 0 || mochios_last_result_has_value() == 0 {
@@ -77,7 +179,21 @@ for OpenPanel {
 		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
 	}
 
-	// Returns and clears the user-cancellation flag.
+	/// ユーザーがキャンセルしたかどうかを取得します。
+	///
+	/// 取得後にキャンセル状態は消去されます。
+	///
+	/// ## Returns
+	///
+	/// ユーザーがキャンセルした場合は`true`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let cancelled = panel.takeCancelled()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn takeCancelled(self) -> bool {
 		return mochios_open_panel_take_cancelled(self.raw) != 0
 	}
@@ -85,13 +201,17 @@ for OpenPanel {
 }
 
 for OpenPanel: Drop {
-	// Releases the native panel.
+	/// ネイティブのパネルを解放します。
+	///
+	/// @since 27.0-dp.1
 	fn drop(self) {
 		mochios_open_panel_destroy(self.raw)
 	}
 }
 
-// Configuration used when creating a save panel.
+/// 書類を保存するパネルの設定を表します。
+///
+/// @since 27.0-dp.1
 struct SavePanelOptions {
 	title: String,
 	suggestedName: String,
@@ -101,44 +221,145 @@ struct SavePanelOptions {
 }
 
 for SavePanelOptions {
-	// Returns the standard save-panel configuration.
+	/// 標準的な設定を返します。
+	///
+	/// ## Returns
+	///
+	/// 標準的な`SavePanelOptions`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let options = SavePanelOptions.defaults()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn defaults() -> SavePanelOptions {
 		return SavePanelOptions { title: "Save As", suggestedName: "Untitled", initialDirectory: "", rootDirectory: "", confirmsReplacement: true }
 	}
 }
 
-// A workspace-owned document save panel.
+/// ワークスペースが管理する書類保存パネルを表します。
+///
+/// @since 27.0-dp.1
 struct SavePanel {
 	raw: *mut MochiosSavePanel,
 }
 
 for SavePanel {
-	// Creates a save panel.
+	/// 書類保存パネルを作成します。
+	///
+	/// ## Parameters
+	///
+	/// - `options`: パネルの設定です。
+	///
+	/// ## Returns
+	///
+	/// 作成された`SavePanel`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let panel = SavePanel.make(SavePanelOptions.defaults())
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn make(options: SavePanelOptions) -> SavePanel {
 		return SavePanel { raw: mochios_save_panel_create_utf8(__kome_string_data(options.title), __kome_string_len(options.title), __kome_string_data(options.suggestedName), __kome_string_len(options.suggestedName), __kome_string_data(options.initialDirectory), __kome_string_len(options.initialDirectory), __kome_string_data(options.rootDirectory), __kome_string_len(options.rootDirectory), options.confirmsReplacement) }
 	}
 
-	// Adds a content type accepted by this panel.
+	/// パネルが受け付けるコンテンツタイプを追加します。
+	///
+	/// ## Parameters
+	///
+	/// - `contentType`: 受け付けるコンテンツタイプです。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// panel.allowContentType(ContentType.PLAIN_TEXT)
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn allowContentType(self, contentType: ContentType) -> i32 {
 		return mochios_save_panel_allow_content_type_utf8(self.raw, __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier))
 	}
 
-	// Presents the panel.
+	/// パネルを表示します。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// panel.show()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn show(self) -> i32 {
 		return mochios_save_panel_show(self.raw)
 	}
 
-	// Presents the panel with a directory and suggested file name.
+	/// ディレクトリと推奨ファイル名を指定してパネルを表示します。
+	///
+	/// ## Parameters
+	///
+	/// - `directory`: 最初に表示するディレクトリです。
+	/// - `suggestedName`: 推奨するファイル名です。
+	///
+	/// ## Returns
+	///
+	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// panel.showFor("/Documents", "Untitled.txt")
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn showFor(self, directory: String, suggestedName: String) -> i32 {
 		return mochios_save_panel_show_for_utf8(self.raw, __kome_string_data(directory), __kome_string_len(directory), __kome_string_data(suggestedName), __kome_string_len(suggestedName))
 	}
 
-	// Returns whether the panel is visible.
+	/// パネルが表示されているかどうかを返します。
+	///
+	/// ## Returns
+	///
+	/// 表示中の場合は`true`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let visible = panel.isVisible()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn isVisible(self) -> bool {
 		return mochios_save_panel_is_visible(self.raw) != 0
 	}
 
-	// Takes the most recent selected path.
+	/// 直近に選択されたパスを取得します。
+	///
+	/// 取得した選択結果はパネルから取り除かれます。
+	///
+	/// ## Returns
+	///
+	/// 選択されたパスを含む`AppCoreResult`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let selection = panel.takeSelection()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn takeSelection(self) -> AppCoreResult<String> {
 		let status = mochios_save_panel_take_selection(self.raw)
 		if status != 0 || mochios_last_result_has_value() == 0 {
@@ -147,7 +368,21 @@ for SavePanel {
 		return AppCoreResult<String> { status: status, value: __appCoreLastString() }
 	}
 
-	// Returns and clears the user-cancellation flag.
+	/// ユーザーがキャンセルしたかどうかを取得します。
+	///
+	/// 取得後にキャンセル状態は消去されます。
+	///
+	/// ## Returns
+	///
+	/// ユーザーがキャンセルした場合は`true`を返します。
+	///
+	/// ## Example
+	///
+	/// ```kome
+	/// let cancelled = panel.takeCancelled()
+	/// ```
+	///
+	/// @since 27.0-dp.1
 	fn takeCancelled(self) -> bool {
 		return mochios_save_panel_take_cancelled(self.raw) != 0
 	}
@@ -155,7 +390,9 @@ for SavePanel {
 }
 
 for SavePanel: Drop {
-	// Releases the native panel.
+	/// ネイティブのパネルを解放します。
+	///
+	/// @since 27.0-dp.1
 	fn drop(self) {
 		mochios_save_panel_destroy(self.raw)
 	}
