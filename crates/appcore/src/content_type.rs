@@ -16,6 +16,9 @@ pub const JAVASCRIPT: &str = "text/javascript";
 pub const MARKDOWN: &str = "text/markdown";
 pub const PNG: &str = "image/png";
 pub const JPEG: &str = "image/jpeg";
+pub const WEBP: &str = "image/webp";
+pub const GIF: &str = "image/gif";
+pub const BMP: &str = "image/bmp";
 pub const SVG: &str = "image/svg+xml";
 pub const PDF: &str = "application/pdf";
 
@@ -66,6 +69,9 @@ impl ContentType {
             "md" | "markdown" => MARKDOWN,
             "png" => PNG,
             "jpg" | "jpeg" => JPEG,
+            "webp" => WEBP,
+            "gif" => GIF,
+            "bmp" => BMP,
             "svg" => SVG,
             "pdf" => PDF,
             _ => DATA,
@@ -96,6 +102,9 @@ impl ContentType {
             MARKDOWN => Some("md"),
             PNG => Some("png"),
             JPEG => Some("jpg"),
+            WEBP => Some("webp"),
+            GIF => Some("gif"),
+            BMP => Some("bmp"),
             SVG => Some("svg"),
             PDF => Some("pdf"),
             _ => None,
@@ -144,6 +153,13 @@ mod tests {
     fn infers_common_editor_formats() {
         assert_eq!(ContentType::for_path("notes.md").identifier(), MARKDOWN);
         assert_eq!(ContentType::for_path("unknown.bin").identifier(), DATA);
+    }
+
+    #[test]
+    fn infers_viewer_image_formats() {
+        assert_eq!(ContentType::for_path("photo.webp").identifier(), WEBP);
+        assert_eq!(ContentType::for_path("animation.GIF").identifier(), GIF);
+        assert_eq!(ContentType::for_path("scan.bmp").identifier(), BMP);
     }
 
     #[test]
