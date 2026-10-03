@@ -53,6 +53,8 @@ pub struct OpenedDocument {
 impl OpenedDocument {
     #[cfg(target_os = "mochios")]
     pub fn read_to_end_limited(&self, maximum: usize) -> std::io::Result<Vec<u8>> {
+        mochi_user_platform::file::seek(self.handle.fd() as u64, 0, 0)
+            .map_err(|error| std::io::Error::from_raw_os_error(error.raw() as i32))?;
         let mut bytes = Vec::new();
         let mut buffer = [0u8; 64 * 1024];
         loop {
