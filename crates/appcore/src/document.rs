@@ -6,6 +6,9 @@
 
 use crate::{Error, Result};
 
+#[cfg(feature = "ui")]
+use std::path::PathBuf;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct AssociationRoles(u16);
@@ -36,6 +39,80 @@ impl AssociationRoles {
 pub struct AssociationHandler {
     pub bundle_id: String,
     pub name: String,
+}
+
+#[cfg(feature = "ui")]
+#[derive(Debug)]
+pub struct OpenedDocument {
+    fd: i32,
+    pub path: PathBuf,
+    pub content_type: String,
+}
+
+#[cfg(feature = "ui")]
+impl OpenedDocument {
+    #[cfg(target_os = "mochios")]
+    pub fn read_to_end_limited(&self, maximum: usize) -> std::io::Result<Vec<u8>> {
+        let mut bytes = Vec::new();
+        let mut buffer = [0u8; 64 * 1024];
+        loop {
+            let read = mochi_user_platform::file::read(
+                self.fd as u64,
+                buffer.as_mut_ptr() as u64,
+                buffer.len() as u64,
+            )
+            .map_err(|error| std::io::Error::from_raw_os_error(error.raw() as i32))?
+                as usize;
+            if read == 0 {
+                return Ok(bytes);
+            }
+            if bytes.len().saturating_add(read) > maximum {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::FileTooLarge,
+                    "document exceeds the size limit",
+                ));
+            }
+            bytes.extend_from_slice(&buffer[..read]);
+        }
+    }
+
+    #[cfg(not(target_os = "mochios"))]
+    pub fn read_to_end_limited(&self, _maximum: usize) -> std::io::Result<Vec<u8>> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "delegated document handles are only available on mochiOS",
+        ))
+    }
+}
+
+#[cfg(all(feature = "ui", target_os = "mochios"))]
+impl Drop for OpenedDocument {
+    fn drop(&mut self) {
+        if self.fd >= 0 {
+            let _ = mochi_user_platform::file::close(self.fd as u64);
+            self.fd = -1;
+        }
+    }
+}
+
+#[cfg(feature = "ui")]
+pub fn decode_open_message(
+    message: &[u8],
+    handles: &[viewkit::platform::PlatformFileHandle],
+) -> Result<Option<OpenedDocument>> {
+    if message.get(..8) != Some(&mochios_workspace_protocol::DOCUMENT_DELIVERY_MAGIC) {
+        return Ok(None);
+    }
+    if handles.len() != 1 || handles[0].fd < 0 {
+        return Err(Error::InvalidArgument);
+    }
+    let delivery = mochios_workspace_protocol::decode_document_delivery(message)
+        .map_err(|_| Error::InvalidArgument)?;
+    Ok(Some(OpenedDocument {
+        fd: handles[0].fd,
+        path: PathBuf::from(delivery.path),
+        content_type: delivery.content_type.to_owned(),
+    }))
 }
 
 fn validate_key(extension: &str, content_type: &str) -> Result<()> {

@@ -16,6 +16,7 @@ ui = ["dep:viewkit"]
 
 [dependencies]
 viewkit = { version = "2.0.0", path = "../../../../libraries/viewkit", optional = true }
+mochios-workspace-protocol = { path = "../../../../user/crates/workspace-protocol" }
 
 [target.'cfg(target_os = "mochios")'.dependencies]
 mochi-user-platform = { version = "0.1.0", path = "../../../../user/crates/platform", default-features = false, features = ["std"] }
