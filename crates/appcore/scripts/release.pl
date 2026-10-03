@@ -18,9 +18,11 @@ my $workspace_root = abs_path(File::Spec->catdir($appcore_root, '..', '..'));
 my $target;
 my $arch;
 my $sdk_version;
+my $mochios_root;
 
 GetOptions(
     'sdk-version=s' => \$sdk_version,
+    'mochios-root=s' => \$mochios_root,
     'target=s'      => \$target,
     'arch=s'        => \$arch,
 ) or die usage();
@@ -32,6 +34,14 @@ my $kome_version = manifest_version(File::Spec->catfile($appcore_root, 'Kome.tom
 $version eq $kome_version
     or die "AppCore version mismatch: Cargo.toml has $version, Kome.toml has $kome_version\n";
 
+$mochios_root //= $ENV{MOCHIOS_ROOT};
+$mochios_root //= File::Spec->catdir($workspace_root, '..', '..', '..', 'mochiOS');
+$mochios_root = abs_path($mochios_root)
+    // die "mochiOS root was not found; pass --mochios-root <path>\n";
+require_directory(File::Spec->catdir($mochios_root, 'user'));
+require_directory(File::Spec->catdir($mochios_root, 'libraries'));
+require_file(File::Spec->catfile($mochios_root, 'tools', 'devkit', 'Cargo.lock'));
+
 $arch //= architecture_name($target);
 validate_fragment('architecture', $arch);
 validate_fragment('version', $version);
@@ -41,7 +51,7 @@ if (defined $sdk_version) {
     $sdk_version = $version;
 }
 
-build_appcore($target);
+build_appcore($target, $mochios_root);
 
 my $binary_directory = defined $target
     ? File::Spec->catdir($workspace_root, 'target', $target, 'release')
@@ -85,7 +95,7 @@ write_checksum($archive, File::Spec->catfile($output_directory, 'SHA256SUMS'));
 print "$archive\n";
 
 sub usage {
-    return "usage: crates/appcore/scripts/release.pl [--sdk-version <version>] [--target <rust-target>] [--arch <artifact-arch>]\n";
+    return "usage: crates/appcore/scripts/release.pl [--sdk-version <version>] [--mochios-root <path>] [--target <rust-target>] [--arch <artifact-arch>]\n";
 }
 
 sub manifest_version {
@@ -128,14 +138,53 @@ sub validate_fragment {
 }
 
 sub build_appcore {
-    my ($target) = @_;
+    my ($target, $mochios_root) = @_;
+    my $build_root = tempdir('appcore-build-XXXXXX', TMPDIR => 1, CLEANUP => 1);
+    my $build_package = File::Spec->catdir($build_root, 'tools', 'devkit', 'crates', 'appcore');
+    make_path($build_package);
+    copy_file(
+        File::Spec->catfile($appcore_root, 'Cargo.toml'),
+        File::Spec->catfile($build_package, 'Cargo.toml'),
+    );
+    copy_file(
+        File::Spec->catfile($mochios_root, 'tools', 'devkit', 'Cargo.lock'),
+        File::Spec->catfile($build_package, 'Cargo.lock'),
+    );
+    link_directory(
+        File::Spec->catdir($appcore_root, 'src'),
+        File::Spec->catdir($build_package, 'src'),
+    );
+    link_directory(
+        File::Spec->catdir($mochios_root, 'user'),
+        File::Spec->catdir($build_root, 'user'),
+    );
+    link_directory(
+        File::Spec->catdir($mochios_root, 'libraries'),
+        File::Spec->catdir($build_root, 'libraries'),
+    );
+
+    run(
+        'cargo', 'generate-lockfile',
+        '--manifest-path', File::Spec->catfile($build_package, 'Cargo.toml'),
+        '--offline',
+    );
+
     my @command = (
         'cargo', 'build',
-        '--manifest-path', File::Spec->catfile($workspace_root, 'Cargo.toml'),
-        '--release', '--locked', '-p', 'mochios-appcore',
+        '--manifest-path', File::Spec->catfile($build_package, 'Cargo.toml'),
+        '--target-dir', File::Spec->catdir($workspace_root, 'target'),
+        '--release', '--locked',
     );
     push @command, '--target', $target if defined $target;
     run(@command);
+}
+
+sub link_directory {
+    my ($source, $destination) = @_;
+    require_directory($source);
+    make_path(dirname($destination));
+    symlink $source, $destination
+        or die "failed to link $source to $destination: $!\n";
 }
 
 sub stage_file {
@@ -171,6 +220,11 @@ sub copy_file {
 sub require_file {
     my ($path) = @_;
     -f $path or die "required release file was not found: $path\n";
+}
+
+sub require_directory {
+    my ($path) = @_;
+    -d $path or die "required directory was not found: $path\n";
 }
 
 sub source_date_epoch {
