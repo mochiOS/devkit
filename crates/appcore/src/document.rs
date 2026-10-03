@@ -44,7 +44,7 @@ pub struct AssociationHandler {
 #[cfg(feature = "ui")]
 #[derive(Debug)]
 pub struct OpenedDocument {
-    fd: i32,
+    handle: viewkit::platform::PlatformFileHandle,
     pub path: PathBuf,
     pub content_type: String,
 }
@@ -57,7 +57,7 @@ impl OpenedDocument {
         let mut buffer = [0u8; 64 * 1024];
         loop {
             let read = mochi_user_platform::file::read(
-                self.fd as u64,
+                self.handle.fd() as u64,
                 buffer.as_mut_ptr() as u64,
                 buffer.len() as u64,
             )
@@ -85,31 +85,21 @@ impl OpenedDocument {
     }
 }
 
-#[cfg(all(feature = "ui", target_os = "mochios"))]
-impl Drop for OpenedDocument {
-    fn drop(&mut self) {
-        if self.fd >= 0 {
-            let _ = mochi_user_platform::file::close(self.fd as u64);
-            self.fd = -1;
-        }
-    }
-}
-
 #[cfg(feature = "ui")]
 pub fn decode_open_message(
     message: &[u8],
-    handles: &[viewkit::platform::PlatformFileHandle],
+    handles: &mut [viewkit::platform::PlatformFileHandle],
 ) -> Result<Option<OpenedDocument>> {
     if message.get(..8) != Some(&mochios_workspace_protocol::DOCUMENT_DELIVERY_MAGIC) {
         return Ok(None);
     }
-    if handles.len() != 1 || handles[0].fd < 0 {
+    if handles.len() != 1 || handles[0].fd() < 0 {
         return Err(Error::InvalidArgument);
     }
     let delivery = mochios_workspace_protocol::decode_document_delivery(message)
         .map_err(|_| Error::InvalidArgument)?;
     Ok(Some(OpenedDocument {
-        fd: handles[0].fd,
+        handle: handles[0].take().ok_or(Error::InvalidArgument)?,
         path: PathBuf::from(delivery.path),
         content_type: delivery.content_type.to_owned(),
     }))
