@@ -17,10 +17,12 @@ my $appcore_root = abs_path(File::Spec->catdir($Bin, '..'));
 my $workspace_root = abs_path(File::Spec->catdir($appcore_root, '..', '..'));
 my $target;
 my $arch;
+my $sdk_version;
 
 GetOptions(
-    'target=s' => \$target,
-    'arch=s'   => \$arch,
+    'sdk-version=s' => \$sdk_version,
+    'target=s'      => \$target,
+    'arch=s'        => \$arch,
 ) or die usage();
 
 @ARGV == 0 or die usage();
@@ -33,6 +35,11 @@ $version eq $kome_version
 $arch //= architecture_name($target);
 validate_fragment('architecture', $arch);
 validate_fragment('version', $version);
+if (defined $sdk_version) {
+    validate_fragment('SDK version', $sdk_version);
+} else {
+    $sdk_version = $version;
+}
 
 build_appcore($target);
 
@@ -57,9 +64,9 @@ copy_file($static_library, File::Spec->catfile($stage, basename($static_library)
 my @entries = qw(Kome.toml LICENSE README.md lib include libappcore.a libappcore.so);
 my $output_directory = File::Spec->catdir($workspace_root, 'target', 'release');
 make_path($output_directory);
-my $filename = "$arch-appcore-$version.tar.zst";
+my $filename = "$arch-appcore-$sdk_version.tar.zst";
 my $archive = File::Spec->catfile($output_directory, $filename);
-my $tar = File::Spec->catfile($stage, "$arch-appcore-$version.tar");
+my $tar = File::Spec->catfile($stage, "$arch-appcore-$sdk_version.tar");
 
 run(
     'tar',
@@ -78,7 +85,7 @@ write_checksum($archive, File::Spec->catfile($output_directory, 'SHA256SUMS'));
 print "$archive\n";
 
 sub usage {
-    return "usage: crates/appcore/scripts/release.pl [--target <rust-target>] [--arch <artifact-arch>]\n";
+    return "usage: crates/appcore/scripts/release.pl [--sdk-version <version>] [--target <rust-target>] [--arch <artifact-arch>]\n";
 }
 
 sub manifest_version {
