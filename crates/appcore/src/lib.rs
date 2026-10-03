@@ -49,7 +49,19 @@ pub use panel::{OpenPanel, OpenPanelOptions, SavePanel, SavePanelOptions};
 #[cfg(feature = "ui")]
 pub use viewkit;
 #[cfg(feature = "ui")]
-pub use viewkit::{ViewKitError, run};
+pub use viewkit::ViewKitError;
+
+/// Starts an AppCore application after consuming the standard mochiOS
+/// bootstrap arguments shared by every application.
+#[cfg(feature = "ui")]
+pub fn run<A>() -> core::result::Result<(), ViewKitError>
+where
+    A: viewkit::app::App,
+{
+    #[cfg(target_os = "mochios")]
+    let _ = mochi_user_platform::logger::init_from_env();
+    viewkit::run::<A>()
+}
 
 /// Common imports for a Rust mochiOS application.
 pub mod prelude {
