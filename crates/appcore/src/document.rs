@@ -53,18 +53,19 @@ pub struct OpenedDocument {
 impl OpenedDocument {
     #[cfg(target_os = "mochios")]
     pub fn read_to_end_limited(&self, maximum: usize) -> std::io::Result<Vec<u8>> {
-        mochi_user_platform::file::seek(self.handle.fd() as u64, 0, 0)
-            .map_err(|error| std::io::Error::from_raw_os_error(error.raw() as i32))?;
+        mochi_user_platform::handle::seek(
+            self.handle.handle(),
+            0,
+            mochi_user_platform::handle::HANDLE_SEEK_START,
+        )
+        .map_err(|error| std::io::Error::from_raw_os_error(error.raw().unsigned_abs() as i32))?;
         let mut bytes = Vec::new();
         let mut buffer = [0u8; 64 * 1024];
         loop {
-            let read = mochi_user_platform::file::read(
-                self.handle.fd() as u64,
-                buffer.as_mut_ptr() as u64,
-                buffer.len() as u64,
-            )
-            .map_err(|error| std::io::Error::from_raw_os_error(error.raw() as i32))?
-                as usize;
+            let read = mochi_user_platform::handle::read(self.handle.handle(), &mut buffer)
+                .map_err(|error| {
+                    std::io::Error::from_raw_os_error(error.raw().unsigned_abs() as i32)
+                })?;
             if read == 0 {
                 return Ok(bytes);
             }
@@ -95,8 +96,16 @@ pub fn decode_open_message(
     if message.get(..8) != Some(&mochios_workspace_protocol::DOCUMENT_DELIVERY_MAGIC) {
         return Ok(None);
     }
-    if handles.len() != 1 || handles[0].fd() < 0 {
+    if handles.len() != 1 || handles[0].handle() == 0 {
         return Err(Error::InvalidArgument);
+    }
+    #[cfg(target_os = "mochios")]
+    {
+        let required_rights = mochi_user_platform::handle::HANDLE_RIGHT_READ
+            | mochi_user_platform::handle::HANDLE_RIGHT_SEEK;
+        if handles[0].rights() & required_rights != required_rights {
+            return Err(Error::InvalidArgument);
+        }
     }
     let delivery = mochios_workspace_protocol::decode_document_delivery(message)
         .map_err(|_| Error::InvalidArgument)?;
@@ -173,7 +182,23 @@ pub fn open_with(
 #[cfg(target_os = "mochios")]
 mod platform {
     use super::AssociationHandler;
-    use crate::Result;
+    use crate::{Error, Result};
+    use mochios_posix_client::{Client, ClientError, OpenAtBase, SyscallEndpointTransport};
+
+    fn posix_error(error: ClientError<mochi_user_platform::syscall::SysError>) -> Error {
+        match error {
+            ClientError::Transport(error) => Error::from(error),
+            ClientError::Remote(status) => Error::System(status.unsigned_abs() as i64),
+            ClientError::RequestTooLarge => {
+                Error::System(mochi_user_platform::syscall::EOVERFLOW as i64)
+            }
+            ClientError::Protocol(_)
+            | ClientError::ResponseTooLarge
+            | ClientError::MismatchedResponse => {
+                Error::System(mochi_user_platform::syscall::EIO as i64)
+            }
+        }
+    }
 
     pub fn set_default(
         extension: &str,
@@ -210,8 +235,38 @@ mod platform {
             .map_err(Into::into)
     }
     pub fn open(path: &str, content_type: &str, bundle_id: &str, roles: u16) -> Result<u64> {
-        mochi_user_platform::workspace::open_document_with(path, content_type, bundle_id, roles)
-            .map_err(Into::into)
+        let client = Client::<SyscallEndpointTransport>::from_syscall_launch_context()
+            .map_err(posix_error)?;
+        let opened = client
+            .open_at(
+                if path.starts_with('/') {
+                    OpenAtBase::ProcessRoot
+                } else {
+                    OpenAtBase::ProcessCwd
+                },
+                mochios_posix_protocol::OPEN_READ,
+                0,
+                path,
+            )
+            .map_err(posix_error)?;
+        let required_rights = mochi_user_platform::handle::HANDLE_RIGHT_READ
+            | mochi_user_platform::handle::HANDLE_RIGHT_SEEK
+            | mochi_user_platform::handle::HANDLE_RIGHT_TRANSFER;
+        if opened.rights & required_rights != required_rights {
+            let _ = mochi_user_platform::handle::close(opened.handle);
+            return Err(Error::System(mochi_user_platform::syscall::EACCES as i64));
+        }
+        let result = mochi_user_platform::workspace::open_document_object_with(
+            path,
+            content_type,
+            bundle_id,
+            roles,
+            opened.handle,
+            opened.rights,
+        )
+        .map_err(Into::into);
+        let _ = mochi_user_platform::handle::close(opened.handle);
+        result
     }
 }
 

@@ -20,6 +20,8 @@ mochios-workspace-protocol = { path = "../../../../user/crates/workspace-protoco
 
 [target.'cfg(target_os = "mochios")'.dependencies]
 mochi-user-platform = { version = "0.1.0", path = "../../../../user/crates/platform", default-features = false, features = ["std"] }
+mochios-posix-client = { path = "../../../../user/crates/posix-client", default-features = false, features = ["syscall-endpoint"] }
+mochios-posix-protocol = { path = "../../../../user/crates/posix-protocol" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("mochios"))'] }
