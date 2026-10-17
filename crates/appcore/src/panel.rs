@@ -358,7 +358,7 @@ impl FilePanel {
             },
         ) {
             Ok(selection) => selection,
-            Err(error) if error.raw() == mochi_user_platform::syscall::ENOSPC as i64 => {
+            Err(error) if error.raw() == mochios_workspace_protocol::STATUS_CAPACITY_EXCEEDED as i64 => {
                 // Workspace already owns a panel for this application. Do not
                 // cover that live window with a contradictory launch alert.
                 return;
