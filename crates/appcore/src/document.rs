@@ -189,9 +189,9 @@ mod platform {
         match error {
             ClientError::Transport(error) => Error::from(error),
             ClientError::Remote(status) => Error::System(status.unsigned_abs() as i64),
-            ClientError::RequestTooLarge => {
-                Error::System(mochi_user_platform::syscall::EOVERFLOW as i64)
-            }
+            ClientError::RequestTooLarge => Error::System(
+                mochi_user_platform::syscall::NativeError::LimitExceeded.into_raw() as i64,
+            ),
             ClientError::Protocol(_)
             | ClientError::ResponseTooLarge
             | ClientError::MismatchedResponse => {
