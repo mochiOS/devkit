@@ -126,7 +126,23 @@ impl ControlCenterItem {
             mochi_user_platform::workspace::register_control_center_card(&card)?;
             Ok(())
         }
-        #[cfg(not(target_os = "mochios"))]
+        #[cfg(all(target_os = "linux", feature = "ui"))]
+        {
+            if std::env::var_os(viewkit::platform::linux::preview::SOCKET_ENV).is_none() {
+                return Err(Error::UnsupportedPlatform);
+            }
+            viewkit::platform::linux::preview::publish_control_center_card(
+                self.bundle_id,
+                self.item_id,
+                card.title,
+                card.rows
+                    .into_iter()
+                    .map(|row| (row.label, row.value))
+                    .collect(),
+            )
+            .map_err(|_| Error::System(5))
+        }
+        #[cfg(not(any(target_os = "mochios", all(target_os = "linux", feature = "ui"))))]
         {
             Err(Error::UnsupportedPlatform)
         }
