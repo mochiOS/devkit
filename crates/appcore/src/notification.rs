@@ -54,7 +54,19 @@ impl UserNotification {
                 &self.body,
             )?)
         }
-        #[cfg(not(target_os = "mochios"))]
+        #[cfg(all(target_os = "linux", feature = "ui"))]
+        {
+            if std::env::var_os(viewkit::platform::linux::preview::SOCKET_ENV).is_none() {
+                return Err(Error::UnsupportedPlatform);
+            }
+            viewkit::platform::linux::preview::publish_notification(
+                self.bundle_id,
+                self.title,
+                self.body,
+            )
+            .map_err(|_| Error::System(5))
+        }
+        #[cfg(not(any(target_os = "mochios", all(target_os = "linux", feature = "ui"))))]
         {
             Err(Error::UnsupportedPlatform)
         }
