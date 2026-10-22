@@ -444,7 +444,9 @@ fn present_open_panel(state: &ControllerState, panel: &OpenPanel) {
 }
 
 fn present_save_panel(state: &ControllerState, panel: &SavePanel) {
-    let info = state.info.borrow();
+    // The system panel completes synchronously and updates document metadata.
+    // Release the borrow before entering the panel's operation callback.
+    let info = state.info.borrow().clone();
     let suggested_name = if info.display_name == "Untitled" {
         "Untitled.txt"
     } else {

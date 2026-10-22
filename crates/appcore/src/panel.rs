@@ -16,6 +16,9 @@ use viewkit::platform::PointerButton;
 use viewkit::prelude::*;
 use viewkit::view::{Constraints, MeasureContext, PaintContext};
 
+#[cfg(target_os = "linux")]
+mod preview;
+
 use crate::Alert;
 use crate::content_type::ContentType;
 
@@ -318,6 +321,17 @@ impl FilePanel {
             self.show_system_panel();
             return;
         }
+        #[cfg(target_os = "linux")]
+        if std::env::var_os(viewkit::platform::linux::preview::SOCKET_ENV).is_some()
+            && std::env::var_os("MOCHIOS_SYSTEM_FILE_PANEL").is_none()
+        {
+            if let Err(error) = preview::show(self) {
+                self.state
+                    .alert
+                    .present_error(operation_error_title(self.state.mode), error);
+            }
+            return;
+        }
         self.state.error.borrow_mut().take();
         self.state.alert.dismiss();
         self.state.pending_replace.borrow_mut().take();
@@ -358,7 +372,9 @@ impl FilePanel {
             },
         ) {
             Ok(selection) => selection,
-            Err(error) if error.raw() == mochios_workspace_protocol::STATUS_CAPACITY_EXCEEDED as i64 => {
+            Err(error)
+                if error.raw() == mochios_workspace_protocol::STATUS_CAPACITY_EXCEEDED as i64 =>
+            {
                 // Workspace already owns a panel for this application. Do not
                 // cover that live window with a contradictory launch alert.
                 return;
@@ -823,6 +839,7 @@ impl View for OpenPanel {
 
 fn canonical_root(explicit: Option<PathBuf>) -> PathBuf {
     explicit
+        .or_else(|| std::env::var_os("MOCHIOS_PREVIEW_ROOT").map(PathBuf::from))
         .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
         .and_then(|path| fs::canonicalize(path).ok())
         .or_else(|| {
@@ -887,7 +904,7 @@ mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn temporary_directory(name: &str) -> PathBuf {
+    pub(super) fn temporary_directory(name: &str) -> PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
