@@ -11,6 +11,7 @@ pub mod clipboard;
 pub mod content_type;
 #[cfg(feature = "ui")]
 pub mod control_center;
+pub mod status_item;
 pub mod document;
 #[cfg(feature = "ui")]
 pub mod document_controller;
@@ -79,6 +80,7 @@ pub mod prelude {
     pub use crate::alert::Alert;
     #[cfg(feature = "ui")]
     pub use crate::control_center::{ControlCenterCard, ControlCenterCardRow, ControlCenterItem};
+    pub use crate::status_item::{ApplicationStatusAction,StatusItem,StatusItemAction,StatusItemPlacement,StatusItemRegistry,SystemStatusItem};
     #[cfg(feature = "ui")]
     pub use crate::document_controller::{DocumentController, DocumentInfo, DocumentMetadata};
     #[cfg(feature = "ui")]
@@ -109,3 +111,5 @@ pub fn request_close_key_window() {
 pub fn request_quit() {
     viewkit::request_exit();
 }
+
+pub use status_item::{ApplicationStatusAction,StatusItem,StatusItemAction,StatusItemPlacement,StatusItemRegistry,SystemStatusItem};
