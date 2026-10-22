@@ -3957,6 +3957,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tiny-skia",
  "ui_layout",
+ "unicode-script",
  "wgpu",
  "winit",
 ]
