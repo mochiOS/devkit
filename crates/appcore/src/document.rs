@@ -287,7 +287,18 @@ mod platform {
     pub fn handlers(_: &str, _: &str, _: u16) -> Result<Vec<AssociationHandler>> {
         Err(Error::UnsupportedPlatform)
     }
-    pub fn open(_: &str, _: &str, _: &str, _: u16) -> Result<u64> {
+    pub fn open(path: &str, content_type: &str, bundle_id: &str, roles: u16) -> Result<u64> {
+        #[cfg(all(target_os = "linux", feature = "ui"))]
+        if std::env::var_os(viewkit::platform::linux::preview::SOCKET_ENV).is_some() {
+            return viewkit::platform::linux::preview::open_document(
+                std::path::Path::new(path),
+                content_type,
+                bundle_id,
+                roles,
+            )
+            .map_err(|error| Error::System(error.raw_os_error().unwrap_or(5) as i64));
+        }
+        let _ = (path, content_type, bundle_id, roles);
         Err(Error::UnsupportedPlatform)
     }
 }
