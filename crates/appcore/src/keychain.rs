@@ -9,6 +9,7 @@ static NEXT: AtomicU64 = AtomicU64::new(1);
 pub struct Status {
     pub initialized: bool,
     pub unlocked: bool,
+    pub session_epoch: u64,
 }
 pub trait Transport {
     fn exchange(&self, frame: &[u8]) -> Result<Zeroizing<Vec<u8>>>;
@@ -44,9 +45,11 @@ impl<T: Transport> Keychain<T> {
             Reply::Status {
                 initialized,
                 unlocked,
+                session_epoch,
             } => Ok(Status {
                 initialized,
                 unlocked,
+                session_epoch,
             }),
             _ => Err(Error::Invalid),
         }
@@ -111,19 +114,41 @@ impl<T: Transport> Keychain<T> {
         }
     }
     pub fn manager(&self) -> Manager<'_, T> {
-        Manager { keychain: self }
+        Manager {
+            keychain: self,
+            epoch: None,
+        }
     }
 }
 /// 管理操作の権限はサービスが検証します。この型の作成だけでは権限は得られません。
 pub struct Manager<'a, T: Transport> {
     keychain: &'a Keychain<T>,
+    epoch: Option<u64>,
 }
 impl<T: Transport> Manager<'_, T> {
+    /// Bind a user's approval before queuing asynchronous work. An OS lock or
+    /// session change invalidates it; never silently refresh/retry approval.
+    pub fn at_epoch(mut self, epoch: u64) -> Self {
+        self.epoch = Some(epoch);
+        self
+    }
+    fn epoch(&self) -> Result<u64> {
+        match self.epoch {
+            Some(epoch) => Ok(epoch),
+            None => Ok(self.keychain.status()?.session_epoch),
+        }
+    }
     pub fn initialize(&self, password: Secret) -> Result<()> {
-        self.keychain.ok(Request::Initialize { password })
+        self.initialize_at_epoch(password, self.epoch()?)
+    }
+    pub fn initialize_at_epoch(&self, password: Secret, epoch: u64) -> Result<()> {
+        self.keychain.ok(Request::Initialize { epoch, password })
     }
     pub fn unlock(&self, password: Secret) -> Result<()> {
-        self.keychain.ok(Request::Unlock { password })
+        self.unlock_at_epoch(password, self.epoch()?)
+    }
+    pub fn unlock_at_epoch(&self, password: Secret, epoch: u64) -> Result<()> {
+        self.keychain.ok(Request::Unlock { epoch, password })
     }
     pub fn lock(&self) -> Result<()> {
         self.keychain.ok(Request::Lock)
@@ -165,16 +190,25 @@ impl<T: Transport> Manager<'_, T> {
         }
     }
     pub fn reveal(&self, id: ItemId, password: Secret) -> Result<Secret> {
-        match self.keychain.request(Request::Reveal { id, password })? {
+        match self.keychain.request(Request::Reveal {
+            epoch: self.epoch()?,
+            id,
+            password,
+        })? {
             Reply::Secret(s) => Ok(s),
             _ => Err(Error::Invalid),
         }
     }
     pub fn delete(&self, id: ItemId, password: Secret) -> Result<()> {
-        self.keychain.ok(Request::ManageDelete { id, password })
+        self.keychain.ok(Request::ManageDelete {
+            epoch: self.epoch()?,
+            id,
+            password,
+        })
     }
     pub fn grant(&self, id: ItemId, target: Application, password: Secret) -> Result<()> {
         self.keychain.ok(Request::Grant {
+            epoch: self.epoch()?,
             id,
             target,
             revoke: false,
@@ -183,6 +217,7 @@ impl<T: Transport> Manager<'_, T> {
     }
     pub fn revoke(&self, id: ItemId, target: Application, password: Secret) -> Result<()> {
         self.keychain.ok(Request::Grant {
+            epoch: self.epoch()?,
             id,
             target,
             revoke: true,
@@ -190,7 +225,11 @@ impl<T: Transport> Manager<'_, T> {
         })
     }
     pub fn change_password(&self, old: Secret, new: Secret) -> Result<()> {
-        self.keychain.ok(Request::ChangePassword { old, new })
+        self.keychain.ok(Request::ChangePassword {
+            epoch: self.epoch()?,
+            old,
+            new,
+        })
     }
 }
 #[cfg(target_os = "mochios")]
@@ -325,6 +364,7 @@ mod tests {
             let (id, r) = Request::decode(b)?;
             match r {
                 Request::Status => Reply::Status {
+                    session_epoch: 1,
                     initialized: true,
                     unlocked: false,
                 }
@@ -332,6 +372,27 @@ mod tests {
                 _ => Ok(Reply::error(id, Error::Denied)),
             }
         }
+    }
+    #[test]
+    fn bound_management_never_silently_refreshes_stale_approval() {
+        struct Stale;
+        impl Transport for Stale {
+            fn exchange(&self, bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
+                let (id, request) = Request::decode(bytes)?;
+                match request {
+                    Request::Reveal { epoch: 7, .. } => Ok(Reply::error(id, Error::Conflict)),
+                    _ => panic!("approval was refreshed or retried instead of remaining bound"),
+                }
+            }
+        }
+        let keychain = Keychain::with_transport(Stale);
+        assert!(matches!(
+            keychain
+                .manager()
+                .at_epoch(7)
+                .reveal([1; 16], Secret::new(b"test password".to_vec())),
+            Err(Error::Conflict)
+        ));
     }
     #[test]
     fn management_api_does_not_grant_its_own_authority() {
