@@ -10,6 +10,8 @@ pub struct Status {
     pub initialized: bool,
     pub unlocked: bool,
     pub session_epoch: u64,
+    pub login_managed: bool,
+    pub needs_recovery: bool,
 }
 pub trait Transport {
     fn exchange(&self, frame: &[u8]) -> Result<Zeroizing<Vec<u8>>>;
@@ -46,10 +48,14 @@ impl<T: Transport> Keychain<T> {
                 initialized,
                 unlocked,
                 session_epoch,
+                login_managed,
+                needs_recovery,
             } => Ok(Status {
                 initialized,
                 unlocked,
                 session_epoch,
+                login_managed,
+                needs_recovery,
             }),
             _ => Err(Error::Invalid),
         }
@@ -365,6 +371,8 @@ mod tests {
             match r {
                 Request::Status => Reply::Status {
                     session_epoch: 1,
+                    login_managed: false,
+                    needs_recovery: false,
                     initialized: true,
                     unlocked: false,
                 }
