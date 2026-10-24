@@ -8,6 +8,7 @@
 #[cfg(feature = "ui")]
 pub mod alert;
 pub mod clipboard;
+pub mod keychain;
 pub mod content_type;
 #[cfg(feature = "ui")]
 pub mod control_center;

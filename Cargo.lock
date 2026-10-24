@@ -1838,11 +1838,14 @@ dependencies = [
 name = "mochios-appcore"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "mochi-user-platform",
+ "mochios-keychain-protocol",
  "mochios-posix-client",
  "mochios-posix-protocol",
  "mochios-workspace-protocol",
  "viewkit",
+ "zeroize",
 ]
 
 [[package]]
@@ -1872,6 +1875,13 @@ dependencies = [
 [[package]]
 name = "mochios-filesystem-protocol"
 version = "0.1.0"
+
+[[package]]
+name = "mochios-keychain-protocol"
+version = "0.1.0"
+dependencies = [
+ "zeroize",
+]
 
 [[package]]
 name = "mochios-posix-client"
