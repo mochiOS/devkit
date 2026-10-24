@@ -77,6 +77,7 @@ impl<T: Transport> Keychain<T> {
     fn list(&self, manager: bool) -> Result<Vec<Item>> {
         let mut out = vec![];
         let mut generation = 0;
+        let mut expected_total = None;
         loop {
             match self.request(Request::List {
                 manager,
@@ -89,12 +90,17 @@ impl<T: Transport> Keychain<T> {
                     items,
                 } => {
                     if (generation != 0 && next != generation)
+                        || expected_total.is_some_and(|n| n != total)
                         || out.len() + items.len() > total as usize
                         || items.is_empty() && out.len() < total as usize
+                        || items
+                            .iter()
+                            .any(|item| out.iter().any(|previous: &Item| previous.id == item.id))
                     {
                         return Err(Error::Conflict);
                     }
                     generation = next;
+                    expected_total = Some(total);
                     out.extend(items);
                     if out.len() == total as usize {
                         return Ok(out);
@@ -126,9 +132,36 @@ impl<T: Transport> Manager<'_, T> {
         self.keychain.list(true)
     }
     pub fn applications(&self) -> Result<Vec<Application>> {
-        match self.keychain.request(Request::Applications)? {
-            Reply::Applications(a) => Ok(a),
-            _ => Err(Error::Invalid),
+        let mut out = Vec::new();
+        let mut generation = 0;
+        let mut expected_total = None;
+        loop {
+            match self.keychain.request(Request::Applications {
+                offset: out.len() as u16,
+                generation,
+            })? {
+                Reply::Applications {
+                    generation: next,
+                    total,
+                    applications,
+                } => {
+                    if (generation != 0 && next != generation)
+                        || expected_total.is_some_and(|n| n != total)
+                        || out.len() + applications.len() > usize::from(total)
+                        || applications.is_empty() && out.len() < usize::from(total)
+                        || applications.iter().any(|a| out.contains(a))
+                    {
+                        return Err(Error::Conflict);
+                    }
+                    generation = next;
+                    expected_total = Some(total);
+                    out.extend(applications);
+                    if out.len() == usize::from(total) {
+                        return Ok(out);
+                    }
+                }
+                _ => return Err(Error::Invalid),
+            }
         }
     }
     pub fn reveal(&self, id: ItemId, password: Secret) -> Result<Secret> {
