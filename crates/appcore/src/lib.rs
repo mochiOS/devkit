@@ -25,6 +25,7 @@ pub mod notification;
 pub mod panel;
 pub mod recovery;
 pub mod session;
+pub mod storage;
 pub mod undo;
 #[cfg(feature = "ui")]
 pub mod undo_responder;
