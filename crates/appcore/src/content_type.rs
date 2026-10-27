@@ -21,6 +21,9 @@ pub const GIF: &str = "image/gif";
 pub const BMP: &str = "image/bmp";
 pub const SVG: &str = "image/svg+xml";
 pub const PDF: &str = "application/pdf";
+pub const TRUE_TYPE_FONT: &str = "font/ttf";
+pub const OPEN_TYPE_FONT: &str = "font/otf";
+pub const FONT_COLLECTION: &str = "font/collection";
 
 /// A validated, canonical MIME-style content identifier.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -74,6 +77,9 @@ impl ContentType {
             "bmp" => BMP,
             "svg" => SVG,
             "pdf" => PDF,
+            "ttf" => TRUE_TYPE_FONT,
+            "otf" => OPEN_TYPE_FONT,
+            "ttc" | "otc" => FONT_COLLECTION,
             _ => DATA,
         };
         Self(identifier.to_owned())
@@ -167,5 +173,15 @@ mod tests {
         let utf8 = ContentType::parse(UTF8_PLAIN_TEXT).unwrap();
         assert!(utf8.conforms_to(&ContentType::parse(PLAIN_TEXT).unwrap()));
         assert!(utf8.conforms_to(&ContentType::parse(DATA).unwrap()));
+    }
+}
+
+#[cfg(test)] mod font_type_tests {
+    use super::*;
+    #[test] fn font_file_panels_use_the_same_types_as_the_font_manager() {
+        for (name,mime) in [("Example.TTF",TRUE_TYPE_FONT),("Example.otf",OPEN_TYPE_FONT),("Collection.ttc",FONT_COLLECTION),("Collection.otc",FONT_COLLECTION)] {
+            assert!(ContentType::for_path(name).conforms_to(&ContentType::parse(mime).unwrap()));
+        }
+        assert_eq!(ContentType::for_path("font.ttf.disabled").identifier(),DATA);
     }
 }

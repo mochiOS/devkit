@@ -15,6 +15,7 @@ default = ["ui"]
 ui = ["dep:viewkit"]
 
 [dependencies]
+mochios-fonts = { path = "../../../../libraries/fonts" }
 mochios-filesystem-protocol = { path = "../../../../user/crates/filesystem-protocol" }
 mochios-keychain-protocol = { path = "../../../../user/crates/keychain-protocol" }
 zeroize = { version = "1.8", features = ["alloc"] }

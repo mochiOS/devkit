@@ -18,6 +18,8 @@ pub mod document;
 pub mod document_controller;
 pub mod error;
 pub mod ffi;
+/// Shared font catalogue and user-only font management.
+pub mod fonts { pub use mochios_fonts::*; }
 #[cfg(feature = "ui")]
 pub mod menu;
 pub mod notification;
