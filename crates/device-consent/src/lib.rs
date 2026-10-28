@@ -8,7 +8,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 pub const PENDING_RETENTION_SECONDS: u64 = 7 * 24 * 60 * 60;
 const MAX_RECORD_BYTES: u64 = 64 * 1024;
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(1);
@@ -49,31 +49,57 @@ impl DocumentReceipt {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DataCategory {
-    ActiveUsage,
+    UsageDiagnostics,
     CrashReports,
-    PerformanceDiagnostics,
+    UpdateResults,
 }
 impl DataCategory {
     pub const ALL: [Self; 3] = [
-        Self::ActiveUsage,
+        Self::UsageDiagnostics,
         Self::CrashReports,
-        Self::PerformanceDiagnostics,
+        Self::UpdateResults,
     ];
+    /// Provisional description/specification revision, not a server API version.
+    pub const fn policy_version(self) -> &'static str {
+        "placeholder-2"
+    }
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::UsageDiagnostics => "usage_diagnostics",
+            Self::CrashReports => "crash_reports",
+            Self::UpdateResults => "update_results",
+        }
+    }
     pub const fn index(self) -> usize {
         match self {
-            Self::ActiveUsage => 0,
+            Self::UsageDiagnostics => 0,
             Self::CrashReports => 1,
-            Self::PerformanceDiagnostics => 2,
+            Self::UpdateResults => 2,
         }
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ConsentDecision {
+    Agree,
+    Disagree,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DataPermission {
-    pub allowed: bool,
+    pub decision: ConsentDecision,
     pub policy_version: String,
     pub decided_at: u64,
+    /// Changes on every decision, even if two decisions share a timestamp.
+    pub revision: u64,
 }
+impl DataPermission {
+    pub fn agreed(&self) -> bool {
+        self.decision == ConsentDecision::Agree
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConsentRecord {
@@ -81,9 +107,9 @@ pub struct ConsentRecord {
     pub terms: Option<DocumentReceipt>,
     pub privacy: Option<DocumentReceipt>,
     pub open_source_licenses: Option<DocumentReceipt>,
-    pub active_usage: Option<DataPermission>,
+    pub usage_diagnostics: Option<DataPermission>,
     pub crash_reports: Option<DataPermission>,
-    pub performance_diagnostics: Option<DataPermission>,
+    pub update_results: Option<DataPermission>,
 }
 impl Default for ConsentRecord {
     fn default() -> Self {
@@ -92,18 +118,18 @@ impl Default for ConsentRecord {
             terms: None,
             privacy: None,
             open_source_licenses: None,
-            active_usage: None,
+            usage_diagnostics: None,
             crash_reports: None,
-            performance_diagnostics: None,
+            update_results: None,
         }
     }
 }
 impl ConsentRecord {
     pub fn permission(&self, category: DataCategory) -> Option<&DataPermission> {
         match category {
-            DataCategory::ActiveUsage => &self.active_usage,
+            DataCategory::UsageDiagnostics => &self.usage_diagnostics,
             DataCategory::CrashReports => &self.crash_reports,
-            DataCategory::PerformanceDiagnostics => &self.performance_diagnostics,
+            DataCategory::UpdateResults => &self.update_results,
         }
         .as_ref()
     }
@@ -114,15 +140,23 @@ impl ConsentRecord {
         policy_version: &str,
         now: u64,
     ) {
+        let revision = self
+            .permission(category)
+            .map_or(1, |p| p.revision.saturating_add(1));
         let slot = match category {
-            DataCategory::ActiveUsage => &mut self.active_usage,
+            DataCategory::UsageDiagnostics => &mut self.usage_diagnostics,
             DataCategory::CrashReports => &mut self.crash_reports,
-            DataCategory::PerformanceDiagnostics => &mut self.performance_diagnostics,
+            DataCategory::UpdateResults => &mut self.update_results,
         };
         *slot = Some(DataPermission {
-            allowed,
+            decision: if allowed {
+                ConsentDecision::Agree
+            } else {
+                ConsentDecision::Disagree
+            },
             policy_version: policy_version.into(),
             decided_at: now,
+            revision,
         });
     }
     /// Shared gate for both acquisition and transmission. Callers supply the
@@ -132,7 +166,7 @@ impl ConsentRecord {
             && valid_version(current_policy_version)
             && self
                 .permission(category)
-                .is_some_and(|p| p.allowed && p.policy_version == current_policy_version)
+                .is_some_and(|p| p.agreed() && p.policy_version == current_policy_version)
     }
     pub fn complete(&self) -> bool {
         self.valid()
@@ -152,7 +186,9 @@ impl ConsentRecord {
             && DataCategory::ALL
                 .into_iter()
                 .filter_map(|c| self.permission(c))
-                .all(|p| valid_version(&p.policy_version))
+                .all(|p| {
+                    valid_version(&p.policy_version) && p.revision > 0 && p.revision < u64::MAX
+                })
     }
 }
 fn valid_version(value: &str) -> bool {
@@ -172,7 +208,6 @@ impl ConsentStore {
             directory: directory.into(),
         }
     }
-    #[cfg(target_os = "mochios")]
     pub fn system() -> Self {
         Self::at_directory("/var/config/privacy")
     }
@@ -290,13 +325,13 @@ mod tests {
         for category in DataCategory::ALL {
             assert!(!record.allows(category, "policy-v1"));
         }
-        record.set_permission(DataCategory::ActiveUsage, true, "policy-v1", 5);
-        assert!(!record.allows(DataCategory::ActiveUsage, "policy-v1"));
+        record.set_permission(DataCategory::UsageDiagnostics, true, "policy-v1", 5);
+        assert!(!record.allows(DataCategory::UsageDiagnostics, "policy-v1"));
         let mut record = complete();
         record.set_permission(DataCategory::CrashReports, true, "policy-v1", 6);
         assert!(record.allows(DataCategory::CrashReports, "policy-v1"));
-        assert!(!record.allows(DataCategory::ActiveUsage, "policy-v1"));
-        assert!(!record.allows(DataCategory::PerformanceDiagnostics, "policy-v1"));
+        assert!(!record.allows(DataCategory::UsageDiagnostics, "policy-v1"));
+        assert!(!record.allows(DataCategory::UpdateResults, "policy-v1"));
         assert!(!record.allows(DataCategory::CrashReports, "policy-v2"));
         record.set_permission(DataCategory::CrashReports, false, "policy-v1", 7);
         assert!(!record.allows(DataCategory::CrashReports, "policy-v1"));
@@ -366,5 +401,59 @@ mod tests {
         assert!(store.load().is_err());
         assert!(!root.join("real/consent.json").exists());
         let _ = fs::remove_dir_all(root);
+    }
+    #[test]
+    fn schema_two_serializes_only_the_three_current_categories_and_explicit_decisions() {
+        let mut record = complete();
+        record.set_permission(DataCategory::UsageDiagnostics, true, "usage-v2", 31);
+        let value = serde_json::to_value(&record).unwrap();
+        assert_eq!(value["schema_version"], 2);
+        assert_eq!(value["usage_diagnostics"]["decision"], "AGREE");
+        assert_eq!(value["crash_reports"]["decision"], "DISAGREE");
+        assert_eq!(value["usage_diagnostics"]["decided_at"], 31);
+        assert_eq!(value["usage_diagnostics"]["policy_version"], "usage-v2");
+        assert!(value.get("active_usage").is_none());
+        assert!(value.get("performance_diagnostics").is_none());
+        for category in DataCategory::ALL {
+            assert_eq!(serde_json::to_value(category).unwrap(), category.key());
+            assert!(value.get(category.key()).is_some());
+        }
+        let mut legacy = value.clone();
+        legacy["schema_version"] = serde_json::json!(1);
+        assert!(
+            !serde_json::from_value::<ConsentRecord>(legacy)
+                .unwrap()
+                .valid()
+        );
+        let mut legacy = value;
+        let prior = legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("usage_diagnostics")
+            .unwrap();
+        legacy["active_usage"] = prior;
+        assert!(serde_json::from_value::<ConsentRecord>(legacy).is_err());
+    }
+
+    #[test]
+    fn every_category_revokes_independently_and_decisions_advance_with_the_same_clock() {
+        let mut record = complete();
+        for category in DataCategory::ALL {
+            record.set_permission(category, true, category.policy_version(), 9);
+        }
+        for category in DataCategory::ALL {
+            let mut revoked = record.clone();
+            let old = revoked.permission(category).unwrap().revision;
+            revoked.set_permission(category, false, category.policy_version(), 9);
+            assert!(!revoked.allows(category, category.policy_version()));
+            for other in DataCategory::ALL {
+                if other != category {
+                    assert!(revoked.allows(other, other.policy_version()));
+                }
+            }
+            revoked.set_permission(category, true, category.policy_version(), 9);
+            assert!(revoked.permission(category).unwrap().revision > old);
+            assert!(revoked.allows(category, category.policy_version()));
+        }
     }
 }

@@ -5,6 +5,7 @@ members = [
     "crates/kome",
     "crates/development-pki",
     "crates/appcore",
+    "crates/device-consent",
     "xtask", "crates/komeup",
 ]
 resolver = "2"

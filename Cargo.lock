@@ -1846,9 +1846,6 @@ dependencies = [
  "mochios-posix-client",
  "mochios-posix-protocol",
  "mochios-workspace-protocol",
- "serde",
- "serde_json",
- "sha2",
  "viewkit",
  "zeroize",
 ]
@@ -1874,6 +1871,15 @@ dependencies = [
  "base64",
  "ed25519-dalek",
  "serde",
+ "sha2",
+]
+
+[[package]]
+name = "mochios-device-consent"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
  "sha2",
 ]
 
@@ -5134,11 +5140,11 @@ name = "mnu"
 version = "0.1.0"
 
 [[patch.unused]]
-name = "mboot-protocol"
+name = "mochios-mdriver-protocol"
 version = "0.1.0"
 
 [[patch.unused]]
-name = "mochios-mdriver-protocol"
+name = "mboot-protocol"
 version = "0.1.0"
 
 [[patch.unused]]
