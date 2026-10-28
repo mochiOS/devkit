@@ -8,6 +8,8 @@
 #[cfg(feature = "ui")]
 pub mod alert;
 pub mod clipboard;
+/// Device-wide local consent records shared by Installer and system settings.
+pub mod consent;
 pub mod keychain;
 pub mod content_type;
 #[cfg(feature = "ui")]
