@@ -102,7 +102,10 @@ pub mod prelude {
     pub use viewkit::prelude::*;
 }
 
-/// Requests that the current ViewKit application terminate cleanly.
+/// UIスレッドでアプリ全体の終了を要求します。
+///
+/// App::close_requestedが許可した場合だけ終了します。拒否した要求は取り消し、
+/// 処理完了後に自動再試行しません。ワーカーの強制停止や終了待ちは行いません。
 #[cfg(feature = "ui")]
 pub fn request_exit() {
     viewkit::request_exit();
@@ -114,7 +117,9 @@ pub fn request_close_key_window() {
     viewkit::request_close_key_window();
 }
 
-/// Requests application-wide termination.
+/// アプリ全体の終了を要求します。request_exitと同じ終了確認を通します。
+///
+/// App::close_requestedがfalseなら終了しません。戻り値はなく、終了済みを意味しません。
 #[cfg(feature = "ui")]
 pub fn request_quit() {
     viewkit::request_exit();
