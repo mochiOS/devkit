@@ -1,8 +1,17 @@
-//! Read-only storage inventory, queried through a retained namespace-root Handle.
-//! Requires `fs.read.all`. Does not request raw disk, write or CONTROL authority.
+//! Storage observations and explicit owner-side reservations.
+//! Inventory uses READ authority; reservations separately require device.storage.
 use crate::{Error, Result};
+mod reservation;
 #[cfg(any(target_os = "mochios", test))]
 use mochios_filesystem_protocol::storage_inventory as wire;
+pub use reservation::StorageReservation;
+
+/// Generation is a selection freshness check, not disk authority.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Observation {
+    pub generation: u64,
+    pub snapshot: Snapshot,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -61,9 +70,9 @@ fn entry(record: wire::Record<'_>) -> Result<Entry> {
     })
 }
 #[cfg(any(target_os = "mochios", test))]
-fn collect(
+fn collect_observation(
     mut query: impl FnMut(wire::Request) -> Result<[u8; wire::RECORD_LEN]>,
-) -> Result<Snapshot> {
+) -> Result<Observation> {
     let mut generation = 0;
     let mut entries = vec![];
     let mut warning = None;
@@ -82,9 +91,12 @@ fn collect(
         }
         if record.kind == 0 {
             validate_tree(&entries)?;
-            return Ok(Snapshot {
-                entries,
-                physical_inventory_unavailable: record.warning != 0,
+            return Ok(Observation {
+                generation,
+                snapshot: Snapshot {
+                    entries,
+                    physical_inventory_unavailable: record.warning != 0,
+                },
             });
         }
         if index == wire::MAX_RECORDS {
@@ -116,7 +128,7 @@ fn validate_tree(entries: &[Entry]) -> Result<()> {
 }
 /// Performs blocking service I/O; call from a worker, never from painting.
 #[cfg(target_os = "mochios")]
-pub fn inventory() -> Result<Snapshot> {
+pub fn inventory_observation() -> Result<Observation> {
     use mochi_user_platform::handle;
     use mochios_posix_client::{Client, ClientError, OpenAtBase, SyscallEndpointTransport};
     fn error(e: ClientError<mochi_user_platform::syscall::SysError>) -> Error {
@@ -152,7 +164,7 @@ pub fn inventory() -> Result<Snapshot> {
         Root(handle::duplicate(opened_root.0, handle::HANDLE_RIGHT_READ).map_err(Error::from)?);
     drop(opened_root);
     for attempt in 0..3 {
-        let result = collect(|request| {
+        let result = collect_observation(|request| {
             let mut bytes = [0; wire::RECORD_LEN];
             let count = handle::query(root.0, wire::GET, &request.encode(), &mut bytes)
                 .map_err(Error::from)?;
@@ -168,8 +180,18 @@ pub fn inventory() -> Result<Snapshot> {
     unreachable!()
 }
 #[cfg(not(target_os = "mochios"))]
-pub fn inventory() -> Result<Snapshot> {
+pub fn inventory_observation() -> Result<Observation> {
     Err(Error::UnsupportedPlatform)
+}
+
+/// Existing read-only API; callers needing a reservation also retain its generation.
+pub fn inventory() -> Result<Snapshot> {
+    inventory_observation().map(|observed| observed.snapshot)
+}
+
+#[cfg(test)]
+fn collect(query: impl FnMut(wire::Request) -> Result<[u8; wire::RECORD_LEN]>) -> Result<Snapshot> {
+    collect_observation(query).map(|observed| observed.snapshot)
 }
 
 #[cfg(test)]
@@ -251,5 +273,15 @@ mod tests {
             .unwrap()))
             .is_err()
         );
+    }
+    #[test]
+    fn observations_retain_the_owner_generation_without_granting_authority() {
+        let observation = collect_observation(|request| {
+            assert_eq!(request.index, 0);
+            Ok(wire::Record::end(73, 0).encode().unwrap())
+        })
+        .unwrap();
+        assert_eq!(observation.generation, 73);
+        assert!(observation.snapshot.entries.is_empty());
     }
 }
