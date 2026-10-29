@@ -107,7 +107,7 @@ impl Drop for StorageReservation {
 }
 
 #[cfg(any(target_os = "mochios", test))]
-fn take_reply(
+pub(super) fn take_reply(
     bytes: &[u8],
     delivery: u32,
     count: usize,

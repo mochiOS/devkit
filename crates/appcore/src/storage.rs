@@ -285,3 +285,6 @@ mod tests {
         assert!(observation.snapshot.entries.is_empty());
     }
 }
+
+mod region;
+pub use region::StorageRegion;
