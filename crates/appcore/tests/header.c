@@ -2,7 +2,9 @@
 
 _Static_assert(sizeof(MochiosStringView) == 16, "MochiosStringView ABI changed");
 _Static_assert(sizeof(MochiosMutableBuffer) == 16, "MochiosMutableBuffer ABI changed");
-_Static_assert(MOCHIOS_ABI_VERSION == 0x00010000u, "unexpected AppCore ABI version");
+_Static_assert(MOCHIOS_ABI_VERSION == 0x00010100u, "unexpected AppCore ABI version");
+
+_Static_assert(sizeof(MochiosTaskCompletion) == 32, "Task completion ABI changed");
 
 static int compile_api_surface(void) {
     uint64_t process_id = 0;

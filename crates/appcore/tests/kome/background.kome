@@ -1,0 +1,20 @@
+use appcore::*
+
+// Compile-only API contract. The application must retain tasks for its UI lifetime.
+fn checkBackground(tasks: BackgroundTasks, maximumBytes: usize) {
+	let submitted = tasks.readText("/home/user/note.txt", maximumBytes, |result| {
+		let success = result.isOk()
+		let contents = result.text()
+		let failure = result.error()
+	})
+}
+
+fn checkHandle(pending: BackgroundTask) {
+	let current = pending.status()
+	pending.requestCancellation()
+	pending.release()
+}
+
+fn main() {
+	let tasks = BackgroundTasks.make()
+}

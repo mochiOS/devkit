@@ -18,6 +18,8 @@ pub mod document;
 pub mod document_controller;
 pub mod error;
 pub mod ffi;
+#[cfg(feature = "ui")]
+pub mod ffi_task;
 /// Shared font catalogue and user-only font management.
 pub mod fonts { pub use mochios_fonts::*; }
 #[cfg(feature = "ui")]
@@ -28,6 +30,8 @@ pub mod panel;
 pub mod recovery;
 pub mod session;
 pub mod storage;
+#[cfg(feature = "ui")]
+pub mod task;
 pub mod undo;
 #[cfg(feature = "ui")]
 pub mod undo_responder;

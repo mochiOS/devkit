@@ -6,6 +6,7 @@ version = "0.1.0"
 source = "lib/src/lib.kome"
 sources = [
 	"lib/src/result.kome",
+	"lib/src/background.kome",
 	"lib/src/viewkit.kome",
 	"lib/src/clipboard.kome",
 	"lib/src/content_type.kome",

@@ -16,7 +16,7 @@ use crate::document::AssociationRoles;
 use crate::{Error, UserNotification, clipboard, content_type::ContentType, document};
 
 pub const ABI_VERSION_MAJOR: u32 = 1;
-pub const ABI_VERSION_MINOR: u32 = 0;
+pub const ABI_VERSION_MINOR: u32 = 1;
 pub const ABI_VERSION_PATCH: u32 = 0;
 pub const ABI_VERSION: u32 =
     (ABI_VERSION_MAJOR << 16) | (ABI_VERSION_MINOR << 8) | ABI_VERSION_PATCH;
@@ -212,6 +212,10 @@ pub extern "C" fn mochios_status_name(status: i32) -> StringView {
         4 => "buffer_too_small",
         5 => "unsupported_platform",
         6 => "system_error",
+        1001 => "task_queue_full",
+        1002 => "task_resource_limit",
+        1003 => "task_invalid_handle",
+        1004 => "task_unavailable",
         255 => "panic",
         _ => "unknown_status",
     };
@@ -2538,7 +2542,7 @@ mod tests {
 
     #[test]
     fn abi_version_has_stable_encoding() {
-        assert_eq!(ABI_VERSION, 0x0001_0000);
+        assert_eq!(ABI_VERSION, 0x0001_0100);
         assert_eq!(mochios_abi_version(), ABI_VERSION);
     }
 

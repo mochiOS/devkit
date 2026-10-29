@@ -1,0 +1,225 @@
+use std::core::Drop
+
+extern "C" from "appcore" {
+	// Creates a UI-owned native task scope. Zero means failure.
+	fn mochios_task_scope_create() -> u64
+	// Drops subscriptions and results without joining workers.
+	fn mochios_task_scope_destroy(scope: u64) -> i32
+	// Returns synchronous submission status, not asynchronous results.
+	fn mochios_task_last_status() -> i32
+	// Reads regular UTF-8 files in native workers; invokes completion on UI.
+	fn mochios_task_read_text_utf8(scope: u64, path: *const u8, length: usize, maximumBytes: usize, completion: (identifier: u64) -> Void) -> u64
+	// Queries work state, requests cancellation or releases a handle.
+	fn mochios_task_status(identifier: u64) -> u32
+	fn mochios_task_cancel(identifier: u64) -> u8
+	fn mochios_task_release(identifier: u64) -> i32
+	// Returns a stable outcome tag and borrowed bytes owned by the task scope.
+	fn mochios_task_result_status(identifier: u64) -> u32
+	fn mochios_task_text_data(identifier: u64) -> *const u8
+	fn mochios_task_text_length(identifier: u64) -> usize
+	fn mochios_task_error_data(identifier: u64) -> *const u8
+	fn mochios_task_error_length(identifier: u64) -> usize
+}
+
+/// ネイティブワーカーの実行状態です。UIへの結果配送とは別に確認できます。
+///
+/// @since 26.0.0
+pub enum BackgroundTaskState {
+	/// 実行待ちです。
+	queued,
+	/// 処理を実行しています。
+	running,
+	/// 中止要求済みですが、終了は未確認です。
+	cancellationRequested,
+	/// 処理が成功しました。
+	succeeded,
+	/// 処理が失敗しました。
+	failed,
+	/// キャンセルに応答して終了しました。
+	cancelled,
+	/// 結果を得られずワーカーが停止しました。
+	workerStopped,
+	/// 解放済み、または別UIスレッドの識別子です。
+	invalid,
+}
+
+/// 通知後の読み取り結果です。元のBackgroundTasksが破棄されるか、対応する
+/// BackgroundTask.releaseを呼ぶまで有効です。textとerrorは所有するStringへ複製します。
+///
+/// @since 26.0.0
+pub struct BackgroundTextResult { raw: u64 }
+
+for BackgroundTextResult {
+	/// 成功結果を保持していればtrueを返します。
+	///
+	/// ## Returns
+	/// 読み取りとUTF-8検証が成功している場合にtrueを返します。
+	///
+	/// ## Example
+	/// ```kome
+	/// if result.isOk() { result.text() }
+	/// ```
+	///
+	/// @since 26.0.0
+	pub fn isOk(self) -> bool { return mochios_task_result_status(self.raw) == 0 }
+
+	/// 成功した文字列をKomeが所有するStringへ複製します。
+	///
+	/// ## Returns
+	/// 成功時は文字列、失敗・中止・解放済みならnullを返します。
+	/// 返したStringはScopeを破棄した後も使用できます。
+	///
+	/// ## Example
+	/// ```kome
+	/// let contents = result.text()
+	/// ```
+	///
+	/// @since 26.0.0
+	pub fn text(self) -> String? {
+		if mochios_task_result_status(self.raw) != 0 { return null }
+		return __kome_string_create(mochios_task_text_data(self.raw), mochios_task_text_length(self.raw))
+	}
+
+	/// 失敗または中止の説明をKomeが所有するStringへ複製します。
+	///
+	/// ## Returns
+	/// 説明文を返します。成功・未配送・解放済みならnullです。
+	///
+	/// ## Example
+	/// ```kome
+	/// let message = result.error()
+	/// ```
+	///
+	/// @since 26.0.0
+	pub fn error(self) -> String? {
+		let status = mochios_task_result_status(self.raw)
+		if status == 0 || status >= 4 { return null }
+		return __kome_string_create(mochios_task_error_data(self.raw), mochios_task_error_length(self.raw))
+	}
+}
+
+/// ネイティブワーカーの状態確認・中止要求のための参照です。破棄だけでは中止しません。
+/// Scopeがタスクを所有するため、ハンドルを保持しなくても完了通知を受け取れます。
+///
+/// @since 26.0.0
+pub struct BackgroundTask { raw: u64 }
+
+for BackgroundTask {
+	/// 現在の実行状態を返します。終了待ちは行いません。
+	///
+	/// ## Returns
+	/// 実際の処理状態です。cancellationRequestedは終了済みを意味しません。
+	///
+	/// ## Example
+	/// ```kome
+	/// let current = pending.status()
+	/// ```
+	///
+	/// @since 26.0.0
+	pub fn status(self) -> BackgroundTaskState {
+		let current = mochios_task_status(self.raw)
+		if current == 0 { return .queued }
+		if current == 1 { return .running }
+		if current == 2 { return .cancellationRequested }
+		if current == 3 { return .succeeded }
+		if current == 4 { return .failed }
+		if current == 5 { return .cancelled }
+		if current == 6 { return .workerStopped }
+		return .invalid
+	}
+
+	/// 協調的な中止を要求します。I/Oの強制停止や終了待ちはしません。
+	///
+	/// ## Returns
+	/// 初回要求を受け付けた場合にtrueを返します。
+	///
+	/// ## Example
+	/// ```kome
+	/// pending.requestCancellation()
+	/// ```
+	///
+	/// @since 26.0.0
+	pub fn requestCancellation(self) -> bool { return mochios_task_cancel(self.raw) != 0 }
+
+	/// 中止を要求し、保持結果と以後の通知を解放します。同じハンドルのコピーも無効です。
+	///
+	/// ## Returns
+	/// 0は成功、1003は解放済みまたは別UIスレッドです。
+	///
+	/// ## Example
+	/// ```kome
+	/// pending.release()
+	/// ```
+	///
+	/// @since 26.0.0
+	pub fn release(self) -> i32 { return mochios_task_release(self.raw) }
+}
+
+/// UIに所有されるネイティブバックグラウンド処理のScopeです。
+///
+/// Komeのtask/waitは同一スレッドの協調実行です。このAPIはネイティブの同期I/Oを
+/// ワーカーで実行します。Komeの処理クロージャをワーカーへ移動しません。
+/// Scopeの最後の参照を破棄すると、中止を要求しUI通知を解除します。終了待ちはしません。
+/// 完了処理にScope自身を捕捉すると参照循環になるため、表示用Stateだけを捕捉してください。
+///
+/// @since 26.0.0
+pub struct BackgroundTasks { raw: u64 }
+
+for BackgroundTasks {
+	/// 現在のUIスレッドへScopeを作成します。Windowと同じUIスレッドで呼びます。
+	///
+	/// ## Returns
+	/// Scopeまたは受付エラーを含むAppCoreResultです。
+	///
+	/// ## Errors
+	/// - 1002: Scopeまたは通知登録の上限です。
+	/// - 1004: ワーカーを作成できません。
+	///
+	/// ## Example
+	/// ```kome
+	/// let tasks = BackgroundTasks.make()
+	/// ```
+	///
+	/// @since 26.0.0
+	pub fn make() -> AppCoreResult<BackgroundTasks> {
+		let raw = mochios_task_scope_create()
+		let status = mochios_task_last_status()
+		if status != 0 { return AppCoreResult<BackgroundTasks> { status: status, value: null } }
+		return AppCoreResult<BackgroundTasks> { status: 0, value: BackgroundTasks { raw: raw } }
+	}
+
+	/// 通常のUTF-8ファイルをワーカーで読み、結果をUIスレッドへ一度だけ通知します。
+	///
+	/// ## Parameters
+	/// - `path`: 現在のアプリに読み取り権限があるパスです。権限を追加しません。
+	/// - `maximumBytes`: 読み取り上限です。1〜16MiBを指定します。
+	/// - `completed`: UIで呼ぶ完了処理です。Scope破棄後やrelease後は呼びません。
+	///
+	/// ## Returns
+	/// 受付成功時はBackgroundTaskです。読み取りの結果はcompletedへ配送します。
+	///
+	/// ## Errors
+	/// - 1〜3: 不正な引数です。
+	/// - 1001: 実行待ちが満杯です。
+	/// - 1002: 保持数またはUI単位の予約メモリ64MiBを超えています。
+	/// - 1003: Scopeが解放済み、または別UIスレッドです。
+	/// - 1004: 実行環境を利用できません。
+	///
+	/// ## Example
+	/// ```kome
+	/// tasks.readText("/home/user/note.txt", 1048576, |result| { let contents = result.text() })
+	/// ```
+	///
+	/// @since 26.0.0
+	pub fn readText(self, path: String, maximumBytes: usize, completed: (result: BackgroundTextResult) -> Void) -> AppCoreResult<BackgroundTask> {
+		let action: (identifier: u64) -> Void = |identifier| { completed(BackgroundTextResult { raw: identifier }) }
+		let raw = mochios_task_read_text_utf8(self.raw, __kome_string_data(path), __kome_string_len(path), maximumBytes, action)
+		let status = mochios_task_last_status()
+		if status != 0 { return AppCoreResult<BackgroundTask> { status: status, value: null } }
+		return AppCoreResult<BackgroundTask> { status: 0, value: BackgroundTask { raw: raw } }
+	}
+}
+
+for BackgroundTasks: Drop {
+	fn drop(self) { mochios_task_scope_destroy(self.raw) }
+}

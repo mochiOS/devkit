@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #define MOCHIOS_ABI_VERSION_MAJOR 1u
-#define MOCHIOS_ABI_VERSION_MINOR 0u
+#define MOCHIOS_ABI_VERSION_MINOR 1u
 #define MOCHIOS_ABI_VERSION_PATCH 0u
 #define MOCHIOS_ABI_VERSION ((MOCHIOS_ABI_VERSION_MAJOR << 16) | (MOCHIOS_ABI_VERSION_MINOR << 8) | MOCHIOS_ABI_VERSION_PATCH)
 
@@ -50,6 +50,44 @@ typedef struct MochiosClipboardContent MochiosClipboardContent;
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* Background tasks: create/query/release on the same UI thread. No Kome
+ * closure is ever invoked or released on a worker. IDs are never reused. */
+#define MOCHIOS_TASK_QUEUE_FULL 1001
+#define MOCHIOS_TASK_RESOURCE_LIMIT 1002
+#define MOCHIOS_TASK_INVALID_HANDLE 1003
+#define MOCHIOS_TASK_UNAVAILABLE 1004
+/* code has signature void(environment, task_id), retain/release take the
+ * address of this descriptor. Retain must keep the descriptor itself alive. */
+typedef struct MochiosTaskCompletion {
+    uint64_t code;
+    uint64_t environment;
+    void (*retain)(uint64_t descriptor);
+    void (*release)(uint64_t descriptor);
+} MochiosTaskCompletion;
+/* Zero ID on failure; last_status is synchronous and thread-local. */
+uint64_t mochios_task_scope_create(void);
+int32_t mochios_task_scope_destroy(uint64_t scope);
+int32_t mochios_task_last_status(void);
+/* A regular UTF-8 file, at most max_bytes (1..16MiB), read under existing
+ * permissions. 64MiB of maximum result space may be reserved per UI thread. */
+uint64_t mochios_task_read_text_utf8(uint64_t scope, const uint8_t *path,
+    size_t length, size_t max_bytes, const MochiosTaskCompletion *completion);
+/* queued=0, running=1, cancellation_requested=2, succeeded=3, failed=4,
+ * cancelled=5, worker_stopped=6, invalid=7. This is not callback delivery. */
+uint32_t mochios_task_status(uint64_t task);
+/* 1 means a request was accepted, not that I/O stopped. */
+uint8_t mochios_task_cancel(uint64_t task);
+/* success=0, operation_error=1, cancelled=2, stopped=3, pending=4, invalid=5. */
+uint32_t mochios_task_result_status(uint64_t task);
+/* Borrowed UTF-8 spans, UI-only, valid until release or scope destruction.
+ * Copy before releasing the task. These results never use last-result TLS. */
+const uint8_t *mochios_task_text_data(uint64_t task);
+size_t mochios_task_text_length(uint64_t task);
+const uint8_t *mochios_task_error_data(uint64_t task);
+size_t mochios_task_error_length(uint64_t task);
+/* Cancels and releases this ID, suppressing future callbacks, without joining. */
+int32_t mochios_task_release(uint64_t task);
 
 uint32_t mochios_abi_version(void);
 int64_t mochios_last_system_error(void);

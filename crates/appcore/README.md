@@ -109,6 +109,50 @@ fn main() {
 }
 ```
 
+## Background tasks
+
+`appcore::task`は、同期I/Oや計算をUIの外で実行する共通APIです。
+ワーカーへ渡す入力・出力は`Send`、完了・進捗コールバックは作成元のUIスレッド専用です。
+ViewKitのイベントループが通知を受けて起床するため、アプリ側の定期ポーリングは不要です。
+
+```rust,no_run
+use appcore::task::{TaskScope, TaskError, TaskResult};
+
+let tasks = TaskScope::new()?; // ウィンドウなどの所有者に保持する
+let handle = tasks.spawn(
+    |task| -> TaskResult<String, std::io::Error> {
+        task.check_cancelled()?;
+        std::fs::read_to_string("/home/user/note.txt").map_err(TaskError::Operation)
+    },
+    |result| { /* UIのStateを更新する */ },
+)?;
+# Ok::<(), appcore::task::TaskStartError>(())
+```
+
+- `spawn`の戻り値は受付結果、完了コールバックの引数は処理結果です。
+- `TaskHandle::cancel`は協調的な中止要求です。終了やロールバックを保証しません。
+- `TaskScope`を破棄すると中止を要求し、その後のUI通知を解除します。終了待ちはしません。
+- 保存・インストールなどを完了させる必要がある場合は、アプリの終了確認で保護します。
+- `spawn_with_progress`は途中経過を最新値に集約し、完了結果は別に保持します。
+- `TaskSlot`は検索などの最後の要求だけを表示する用途です。書き込みには使いません。
+- `TaskExecutor::new`で実行数・待ち行列を制限できます。Scopeの未配送結果も64件に制限します。
+- 権限は追加しません。失敗時も既存のCapability制約に従います。
+
+Komeの`BackgroundTasks`は、ネイティブワーカーによる上限付きUTF-8ファイル読み取りを
+提供します。Komeの`task / wait`は同一スレッドの協調実行であり、用途が異なります。
+Komeクロージャをネイティブワーカーへ渡すAPIは提供していません。
+完了クロージャはUIでのみ保持・実行・解放します。
+APIの引数・寿命・失敗条件・使用例はRust/Komeの公開宣言のDocを参照してください。
+
+Komeの新APIの構文・型を、実コンパイラーで検査できます。
+
+```sh
+python3 crates/appcore/scripts/check-background.py --compiler /path/to/komec
+```
+
+この検査は新APIとその依存定義に限定したコンパイル検査です。
+ネイティブABIの配送・所有権は`ffi_task::tests`、タスクの状態遷移は`task::tests`で検査します。
+
 ## Release
 
 Run `crates/appcore/scripts/release.pl` from the DevKit repository. It builds
