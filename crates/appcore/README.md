@@ -151,6 +151,8 @@ python3 crates/appcore/scripts/check-background.py --compiler /path/to/komec
 ```
 
 この検査は新APIとその依存定義に限定したコンパイル検査です。
+`--viewkit /path/to/ViewKit/lib`を追加すると、AppCoreとViewKitの全Komeラッパーも
+読み込んで互換性を検査します。
 ネイティブABIの配送・所有権は`ffi_task::tests`、タスクの状態遷移は`task::tests`で検査します。
 
 ## Release

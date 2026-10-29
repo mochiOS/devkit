@@ -200,7 +200,7 @@ for ApplicationMenu {
 	///
 	/// @since 27.0-dp.1
 	pub fn beginItems(self, runtime: *mut VkRuntime, nodeId: u64) -> i32 {
-		return beginViewVStack(runtime, nodeId, 0, 3, 0)
+		return beginViewVStack(runtime, nodeId, .none, .stretch, .start)
 	}
 
 	/// メニュー項目のコンテナーを終了します。
@@ -238,7 +238,7 @@ for ApplicationMenuBar {
 	///
 	/// @since 27.0-dp.1
 	pub fn begin(runtime: *mut VkRuntime, nodeId: u64) -> i32 {
-		return beginViewHStack(runtime, nodeId, 2, 1, 0)
+		return beginViewHStack(runtime, nodeId, .small, .center, .start)
 	}
 
 	/// メニューバーを終了します。
