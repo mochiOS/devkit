@@ -207,7 +207,11 @@ for BackgroundTasks {
 	///
 	/// ## Example
 	/// ```kome
-	/// tasks.readText("/home/user/note.txt", 1048576, |result| { let contents = result.text() })
+	/// fn loadNote(tasks: BackgroundTasks, maximumBytes: usize) {
+	///     tasks.readText("/home/user/note.txt", maximumBytes, |result| {
+	///         let contents = result.text()
+	///     })
+	/// }
 	/// ```
 	///
 	/// @since 26.0.0
