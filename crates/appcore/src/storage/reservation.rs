@@ -15,7 +15,7 @@ pub struct StorageReservation {
 impl StorageReservation {
     /// Blocking operation: call on a worker. `endpoint` is an explicitly
     /// delegated filesystem SEND Handle, not a global service/object number.
-    /// The service checks the actual IPC sender's `device.storage` capability.
+    /// The service checks the actual IPC sender's `device.storage.scoped` capability.
     #[cfg(target_os = "mochios")]
     pub fn acquire(endpoint: u32, observation: &Observation, disk: u64) -> Result<Self> {
         use mochi_user_platform::{handle, ipc};

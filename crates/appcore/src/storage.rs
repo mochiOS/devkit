@@ -1,5 +1,5 @@
 //! Storage observations and explicit owner-side reservations.
-//! Inventory uses READ authority; reservations separately require device.storage.
+//! Inventory uses READ authority; reservations separately require device.storage.scoped.
 use crate::{Error, Result};
 mod reservation;
 #[cfg(any(target_os = "mochios", test))]
