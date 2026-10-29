@@ -1,5 +1,6 @@
 //! Storage observations and explicit owner-side reservations.
-//! Inventory uses READ authority; reservations separately require device.storage.scoped.
+//! Inventory uses READ authority. Reservations require device.storage.scoped;
+//! writable regions separately require device.storage.scoped.write.
 use crate::{Error, Result};
 mod reservation;
 #[cfg(any(target_os = "mochios", test))]
@@ -128,7 +129,7 @@ fn validate_tree(entries: &[Entry]) -> Result<()> {
 }
 /// Performs blocking service I/O; call from a worker, never from painting.
 #[cfg(target_os = "mochios")]
-pub fn inventory_observation() -> Result<Observation> {
+pub(crate) fn with_inventory_root<T>(query: impl FnOnce(u32) -> Result<T>) -> Result<T> {
     use mochi_user_platform::handle;
     use mochios_posix_client::{Client, ClientError, OpenAtBase, SyscallEndpointTransport};
     fn error(e: ClientError<mochi_user_platform::syscall::SysError>) -> Error {
@@ -163,21 +164,33 @@ pub fn inventory_observation() -> Result<Observation> {
     let root =
         Root(handle::duplicate(opened_root.0, handle::HANDLE_RIGHT_READ).map_err(Error::from)?);
     drop(opened_root);
-    for attempt in 0..3 {
-        let result = collect_observation(|request| {
-            let mut bytes = [0; wire::RECORD_LEN];
-            let count = handle::query(root.0, wire::GET, &request.encode(), &mut bytes)
+    query(root.0)
+}
+/// Blocking read-only inventory, retaining the owner generation for selection.
+#[cfg(target_os = "mochios")]
+pub fn inventory_observation() -> Result<Observation> {
+    with_inventory_root(|root| {
+        for attempt in 0..3 {
+            let result = collect_observation(|request| {
+                let mut bytes = [0; wire::RECORD_LEN];
+                let count = mochi_user_platform::handle::query(
+                    root,
+                    wire::GET,
+                    &request.encode(),
+                    &mut bytes,
+                )
                 .map_err(Error::from)?;
-            if count != bytes.len() {
-                return Err(Error::InvalidArgument);
+                if count != bytes.len() {
+                    return Err(Error::InvalidArgument);
+                }
+                Ok(bytes)
+            });
+            if result != Err(Error::System(11)) || attempt == 2 {
+                return result;
             }
-            Ok(bytes)
-        });
-        if result != Err(Error::System(11)) || attempt == 2 {
-            return result;
         }
-    }
-    unreachable!()
+        unreachable!()
+    })
 }
 #[cfg(not(target_os = "mochios"))]
 pub fn inventory_observation() -> Result<Observation> {
@@ -288,3 +301,31 @@ mod tests {
 
 mod region;
 pub use region::StorageRegion;
+
+/// Ephemeral hardware identity for a reviewed inventory selection. Retain it in
+/// the plan and supply the same value when opening a writable region.
+#[cfg(target_os = "mochios")]
+pub fn hardware_epoch(observation: &Observation, disk: u64) -> Result<u64> {
+    with_inventory_root(|root| {
+        let mut input = [0; 16];
+        input[..8].copy_from_slice(&observation.generation.to_le_bytes());
+        input[8..].copy_from_slice(&disk.to_le_bytes());
+        let mut output = [0; 8];
+        let n = mochi_user_platform::handle::query(
+            root,
+            mochios_filesystem_protocol::storage_region::EPOCH,
+            &input,
+            &mut output,
+        )
+        .map_err(Error::from)?;
+        let epoch = u64::from_le_bytes(output);
+        if n != 8 || epoch == 0 {
+            return Err(Error::InvalidArgument);
+        }
+        Ok(epoch)
+    })
+}
+#[cfg(not(target_os = "mochios"))]
+pub fn hardware_epoch(_: &Observation, _: u64) -> Result<u64> {
+    Err(Error::UnsupportedPlatform)
+}

@@ -8,6 +8,9 @@ pub struct StorageRegion {
     handle: u32,
 }
 impl StorageRegion {
+    /// Blocking worker operation. Supply the epoch captured during review,
+    /// an explicit delegated endpoint, and a region within the observed disk.
+    /// The owner checks the real sender's device.storage.scoped.write grant.
     #[cfg(target_os = "mochios")]
     pub fn acquire(
         endpoint: u32,
@@ -15,6 +18,7 @@ impl StorageRegion {
         disk: u64,
         first: u64,
         sectors: u64,
+        epoch: u64,
     ) -> Result<Self> {
         use mochi_user_platform::{handle, ipc};
         use mochios_filesystem_protocol::storage_region as wire;
@@ -28,7 +32,8 @@ impl StorageRegion {
             .iter()
             .find(|e| e.id == disk && e.kind == super::Kind::Disk)
             .ok_or(Error::InvalidArgument)?;
-        if endpoint == 0
+        if epoch == 0
+            || endpoint == 0
             || observation.snapshot.physical_inventory_unavailable
             || target.sector_bytes != 512
             || first
@@ -43,6 +48,7 @@ impl StorageRegion {
             disk,
             first,
             sectors,
+            epoch,
         };
         let mut response = [0; 8];
         let mut attached = ipc::IpcObjectHandles::default();
@@ -72,7 +78,7 @@ impl StorageRegion {
         Ok(Self { bytes, handle: raw })
     }
     #[cfg(not(target_os = "mochios"))]
-    pub fn acquire(_: u32, _: &Observation, _: u64, _: u64, _: u64) -> Result<Self> {
+    pub fn acquire(_: u32, _: &Observation, _: u64, _: u64, _: u64, _: u64) -> Result<Self> {
         Err(Error::UnsupportedPlatform)
     }
     pub fn byte_len(&self) -> u64 {
