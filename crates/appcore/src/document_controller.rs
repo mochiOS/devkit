@@ -18,9 +18,18 @@ use viewkit::view::{Constraints, MeasureContext, PaintContext};
 use crate::{Alert, OpenPanel, OpenPanelOptions, SavePanel, SavePanelOptions, request_exit};
 
 type RevisionProvider = dyn Fn() -> u64;
-type DocumentOperation = dyn Fn(&Path) -> Result<DocumentMetadata, String>;
+mod background;
+mod io;
+pub use io::{DocumentFile, DocumentFormat, DocumentIo};
+
+enum OperationOutcome {
+    Complete(DocumentMetadata),
+    Pending,
+}
+type DocumentOperation = dyn Fn(&Path) -> Result<OperationOutcome, String>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+/// 文書形式・エンコーディング・保存可否の表示情報です。権限自体は付与しません。
 pub struct DocumentMetadata {
     pub file_type: String,
     pub encoding: String,
@@ -28,6 +37,7 @@ pub struct DocumentMetadata {
 }
 
 impl DocumentMetadata {
+    /// 形式名とエンコーディング名を指定します。保存可否の既定値はtrueです。
     pub fn new(file_type: impl Into<String>, encoding: impl Into<String>) -> Self {
         Self {
             file_type: file_type.into(),
@@ -37,6 +47,7 @@ impl DocumentMetadata {
     }
 
     #[must_use]
+    /// 同じ場所へ保存可能かを設定します。falseなら通常の保存もSave Asを使います。
     pub const fn writable(mut self, writable: bool) -> Self {
         self.writable = writable;
         self
@@ -44,6 +55,7 @@ impl DocumentMetadata {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+/// 現在の文書の表示名・パス・メタデータです。パスはアクセス権限を意味しません。
 pub struct DocumentInfo {
     pub display_name: String,
     pub path: Option<PathBuf>,
@@ -51,6 +63,7 @@ pub struct DocumentInfo {
 }
 
 impl DocumentInfo {
+    /// 名前のない新規文書の表示情報を作成します。
     pub fn untitled(metadata: DocumentMetadata) -> Self {
         Self {
             display_name: String::from("Untitled"),
@@ -59,6 +72,7 @@ impl DocumentInfo {
         }
     }
 
+    /// パスから表示名を作成します。ファイルのオープンや存在確認は行いません。
     pub fn at(path: PathBuf, metadata: DocumentMetadata) -> Self {
         Self {
             display_name: display_name(&path),
@@ -66,6 +80,21 @@ impl DocumentInfo {
             metadata,
         }
     }
+}
+
+/// 保存要求を受け付けた時点の結果です。StartedやSelectingDestinationは保存完了ではありません。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SaveRequest {
+    /// 同期保存が完了しました。
+    Completed,
+    /// ワーカーへ保存を依頼しました。is_busyとstatusで実際の完了を確認します。
+    Started,
+    /// 保存先選択を要求しました。選択のキャンセルや後続のI/O失敗も起こり得ます。
+    SelectingDestination,
+    /// 別のI/Oが実行中のため受け付けませんでした。
+    Busy,
+    /// 保存の受付または同期保存に失敗し、標準エラーを表示しました。
+    Failed,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -80,6 +109,7 @@ enum PendingAction {
 enum SaveCurrentResult {
     Saved,
     NeedsSaveAs,
+    Pending,
 }
 
 struct ControllerState {
@@ -89,12 +119,21 @@ struct ControllerState {
     confirmation_window: Cell<Option<WindowId>>,
     pending: Cell<PendingAction>,
     close: RefCell<Rc<dyn Fn()>>,
+    busy: Cell<bool>,
+    close_approved: Cell<Option<u64>>,
+    tasks: RefCell<Option<Rc<crate::task::TaskScope>>>,
+    alert: Alert,
+    file: RefCell<Option<DocumentFile>>,
+    open_panel: RefCell<Option<crate::panel::WeakOpenPanel>>,
+    revision: Rc<RevisionProvider>,
+    pending_open: RefCell<Option<Box<dyn FnOnce()>>>,
 }
 
 struct Operations {
     revision: Rc<RevisionProvider>,
     open: Rc<DocumentOperation>,
     save: Rc<DocumentOperation>,
+    received: RefCell<Option<Rc<dyn Fn(DocumentFile) -> Result<(), String>>>>,
 }
 
 /// Coordinates the standard lifecycle of one file-backed document window.
@@ -108,12 +147,31 @@ pub struct DocumentController {
 }
 
 impl DocumentController {
+    /// UI上で同期コールバックを実行する互換コンストラクターです。
+    /// revisionは編集世代、open/saveはパスでの読み書きとメタデータの返却を行います。
+    /// エラーは文字列で返し、成功扱いにしないでください。重いI/Oにはnew_backgroundを使います。
     pub fn new(
         info: DocumentInfo,
         root_directory: Option<PathBuf>,
         revision: impl Fn() -> u64 + 'static,
         open: impl Fn(&Path) -> Result<DocumentMetadata, String> + 'static,
         save: impl Fn(&Path) -> Result<DocumentMetadata, String> + 'static,
+    ) -> Self {
+        Self::with_operations(
+            info,
+            root_directory,
+            revision,
+            move |path| open(path).map(OperationOutcome::Complete),
+            move |path| save(path).map(OperationOutcome::Complete),
+        )
+    }
+
+    fn with_operations(
+        info: DocumentInfo,
+        root_directory: Option<PathBuf>,
+        revision: impl Fn() -> u64 + 'static,
+        open: impl Fn(&Path) -> Result<OperationOutcome, String> + 'static,
+        save: impl Fn(&Path) -> Result<OperationOutcome, String> + 'static,
     ) -> Self {
         let revision = Rc::new(revision);
         let state = Rc::new(ControllerState {
@@ -123,13 +181,22 @@ impl DocumentController {
             confirmation_window: Cell::new(None),
             pending: Cell::new(PendingAction::None),
             close: RefCell::new(Rc::new(request_exit)),
+            busy: Cell::new(false),
+            close_approved: Cell::new(None),
+            tasks: RefCell::new(None),
+            alert: Alert::new(),
+            file: RefCell::new(None),
+            open_panel: RefCell::new(None),
+            revision: revision.clone(),
+            pending_open: RefCell::new(None),
         });
         let operations = Rc::new(Operations {
             revision,
             open: Rc::new(open),
             save: Rc::new(save),
+            received: RefCell::new(None),
         });
-        let alert = Alert::new();
+        let alert = state.alert.clone();
 
         let open_state = Rc::clone(&state);
         let open_operations = Rc::clone(&operations);
@@ -139,10 +206,11 @@ impl DocumentController {
                 ..OpenPanelOptions::default()
             },
             move |path| {
-                let metadata = (open_operations.open)(path)?;
-                *open_state.info.borrow_mut() = DocumentInfo::at(path.to_path_buf(), metadata);
-                open_state.saved_revision.set((open_operations.revision)());
-                open_state.status.borrow_mut().take();
+                if let OperationOutcome::Complete(metadata) = (open_operations.open)(path)? {
+                    *open_state.info.borrow_mut() = DocumentInfo::at(path.to_path_buf(), metadata);
+                    open_state.saved_revision.set((open_operations.revision)());
+                    open_state.status.borrow_mut().take();
+                }
                 Ok(())
             },
         );
@@ -157,16 +225,19 @@ impl DocumentController {
                 ..SavePanelOptions::default()
             },
             move |path| {
-                save_to_path(&save_state, &save_operations, path)?;
-                complete_pending(&save_state, &after_save_open_panel);
+                if save_to_path(&save_state, &save_operations, path)? {
+                    complete_pending(&save_state, &after_save_open_panel);
+                }
                 Ok(())
             },
             move || {
                 save_cancel_state.pending.set(PendingAction::None);
+                save_cancel_state.pending_open.borrow_mut().take();
                 save_cancel_state.confirmation_window.set(None);
             },
         );
 
+        *state.open_panel.borrow_mut() = Some(open_panel.downgrade());
         Self {
             state,
             operations,
@@ -176,6 +247,7 @@ impl DocumentController {
         }
     }
 
+    /// 最後に正常に開いた、または保存した文書の表示情報を複製します。
     pub fn info(&self) -> DocumentInfo {
         self.state.info.borrow().clone()
     }
@@ -188,19 +260,27 @@ impl DocumentController {
         self
     }
 
+    /// 現在の処理状況または直前の結果・エラーを複製します。
     pub fn status(&self) -> Option<String> {
         self.state.status.borrow().clone()
     }
 
+    /// 表示用の状況文を消します。処理や未保存状態は変更しません。
     pub fn clear_status(&self) {
         self.state.status.borrow_mut().take();
     }
 
+    /// 現在の編集世代が最後に正常保存したスナップショットと違えばtrueを返します。
     pub fn is_edited(&self) -> bool {
         (self.operations.revision)() != self.state.saved_revision.get()
     }
 
+    /// 未保存確認を通してOpenPanelを表示します。I/O実行中は要求を受け付けません。
     pub fn open(&self) {
+        if self.is_busy() {
+            return;
+        }
+        self.state.pending_open.borrow_mut().take();
         if self.is_edited() {
             self.confirm(PendingAction::Open);
         } else {
@@ -208,30 +288,49 @@ impl DocumentController {
         }
     }
 
+    /// 互換用の保存操作です。同期保存完了だけtrueを返します。
+    /// 非同期受付やパネル表示はfalseです。新しいコードではrequest_saveを使用してください。
     pub fn save(&self) -> bool {
+        self.request_save() == SaveRequest::Completed
+    }
+
+    /// 保存を要求し、受付結果を区別して返します。UIスレッド専用です。
+    ///
+    /// Startedは完了ではありません。保存先未設定・読み取り専用ならSave Asを要求します。
+    /// エラーはstatusと標準エラー表示へ反映します。重複要求はBusyです。
+    pub fn request_save(&self) -> SaveRequest {
+        if self.is_busy() {
+            return SaveRequest::Busy;
+        }
         match save_current_document(&self.state, &self.operations) {
-            Ok(SaveCurrentResult::Saved) => true,
+            Ok(SaveCurrentResult::Saved) => SaveRequest::Completed,
+            Ok(SaveCurrentResult::Pending) => SaveRequest::Started,
             Ok(SaveCurrentResult::NeedsSaveAs) => {
                 present_save_panel(&self.state, &self.save_panel);
-                false
+                SaveRequest::SelectingDestination
             }
             Err(error) => {
                 *self.state.status.borrow_mut() = Some(error.clone());
                 self.alert
                     .present_error("The document could not be saved.", error);
-                false
+                SaveRequest::Failed
             }
         }
     }
 
+    /// 保存先・名前を選ぶSavePanelを表示します。I/O実行中は要求を受け付けません。
     pub fn save_as(&self) {
+        if self.is_busy() {
+            return;
+        }
         present_save_panel(&self.state, &self.save_panel);
     }
 
     /// Saves an already named, writable document without presenting UI.
-    /// Returns `false` for clean, untitled, read-only, or failed saves.
+    /// Returns `false` for clean, untitled, read-only, failed or asynchronous saves.
+    /// 非同期保存の受付後はis_busyがtrueです。falseを保存失敗とは解釈しないでください。
     pub fn autosave(&self) -> bool {
-        if !self.is_edited() {
+        if self.is_busy() || !self.is_edited() {
             return false;
         }
         matches!(
@@ -242,17 +341,22 @@ impl DocumentController {
 
     /// Reloads the current on-disk representation and discards local edits.
     /// Untitled documents cannot be reverted.
+    /// new_backgroundでは完了前にfalseを返します。読み込み失敗時や処理中の追加編集は保持します。
     pub fn revert(&self) -> bool {
+        if self.is_busy() {
+            return false;
+        }
         let Some(path) = self.state.info.borrow().path.clone() else {
             return false;
         };
         match (self.operations.open)(&path) {
-            Ok(metadata) => {
+            Ok(OperationOutcome::Complete(metadata)) => {
                 *self.state.info.borrow_mut() = DocumentInfo::at(path, metadata);
                 self.state.saved_revision.set((self.operations.revision)());
                 *self.state.status.borrow_mut() = Some(String::from("Reverted"));
                 true
             }
+            Ok(OperationOutcome::Pending) => false,
             Err(error) => {
                 let error = format!("Unable to revert: {error}");
                 *self.state.status.borrow_mut() = Some(error.clone());
@@ -264,9 +368,14 @@ impl DocumentController {
     }
 
     /// Returns `true` when the window may close immediately. A `false` result
-    /// means the controller presented its unsaved-changes confirmation.
+    /// means I/O is pending or the controller presented its unsaved-changes confirmation.
     pub fn request_close(&self) -> bool {
-        if !self.is_edited() {
+        if self.is_busy() {
+            return false;
+        }
+        if self.state.close_approved.take() == Some((self.operations.revision)())
+            || !self.is_edited()
+        {
             true
         } else {
             self.confirm(PendingAction::Close);
@@ -281,6 +390,7 @@ impl DocumentController {
         self.request_close()
     }
 
+    /// ファイルパネル、未保存確認、または標準エラーを表示中か返します。I/O状態はis_busyで確認します。
     pub fn is_presenting(&self) -> bool {
         self.alert.is_visible()
             || self.state.confirmation_window.get().is_some()
@@ -313,6 +423,7 @@ impl DocumentController {
                     Ok(SaveCurrentResult::Saved) => {
                         complete_pending(&save_state, &save_open_panel);
                     }
+                    Ok(SaveCurrentResult::Pending) => {}
                     Ok(SaveCurrentResult::NeedsSaveAs) => {
                         present_save_panel(&save_state, &save_panel);
                     }
@@ -329,6 +440,7 @@ impl DocumentController {
             move || {
                 cancel_state.confirmation_window.set(None);
                 cancel_state.pending.set(PendingAction::None);
+                cancel_state.pending_open.borrow_mut().take();
             },
         );
         self.state.confirmation_window.set(Some(window));
@@ -342,9 +454,17 @@ impl View for DocumentController {
 
     fn paint(&self, bounds: Rect, context: &mut PaintContext<'_>) {
         let info = self.state.info.borrow();
-        context.record_command_status(CommandStatus::new(commands::OPEN, bounds, true));
-        context.record_command_status(CommandStatus::new(commands::SAVE, bounds, self.is_edited()));
-        context.record_command_status(CommandStatus::new(commands::SAVE_AS, bounds, true));
+        context.record_command_status(CommandStatus::new(commands::OPEN, bounds, !self.is_busy()));
+        context.record_command_status(CommandStatus::new(
+            commands::SAVE,
+            bounds,
+            !self.is_busy() && self.is_edited(),
+        ));
+        context.record_command_status(CommandStatus::new(
+            commands::SAVE_AS,
+            bounds,
+            !self.is_busy(),
+        ));
         context.record_command_status(CommandStatus::new(
             commands::REVERT,
             bounds,
@@ -408,6 +528,7 @@ impl View for DocumentController {
             let result = self.save_panel.handle_event(bounds, event, context);
             if was_visible
                 && !self.save_panel.is_visible()
+                && !self.is_busy()
                 && self.state.pending.get() != PendingAction::None
             {
                 self.state.pending.set(PendingAction::None);
@@ -464,12 +585,16 @@ fn save_to_path(
     state: &ControllerState,
     operations: &Operations,
     path: &Path,
-) -> Result<(), String> {
-    let metadata = (operations.save)(path).map_err(|error| format!("Unable to save: {error}"))?;
+) -> Result<bool, String> {
+    let metadata =
+        match (operations.save)(path).map_err(|error| format!("Unable to save: {error}"))? {
+            OperationOutcome::Pending => return Ok(false),
+            OperationOutcome::Complete(metadata) => metadata,
+        };
     *state.info.borrow_mut() = DocumentInfo::at(path.to_path_buf(), metadata);
     state.saved_revision.set((operations.revision)());
     *state.status.borrow_mut() = Some(String::from("Saved"));
-    Ok(())
+    Ok(true)
 }
 
 fn save_current_document(
@@ -483,16 +608,27 @@ fn save_current_document(
     if !info.metadata.writable {
         return Ok(SaveCurrentResult::NeedsSaveAs);
     }
-    save_to_path(state, operations, &path)?;
-    Ok(SaveCurrentResult::Saved)
+    if save_to_path(state, operations, &path)? {
+        Ok(SaveCurrentResult::Saved)
+    } else {
+        Ok(SaveCurrentResult::Pending)
+    }
 }
 
 fn complete_pending(state: &ControllerState, open_panel: &OpenPanel) {
     state.confirmation_window.set(None);
     match state.pending.replace(PendingAction::None) {
         PendingAction::None => {}
-        PendingAction::Open => present_open_panel(state, open_panel),
+        PendingAction::Open => {
+            let action = state.pending_open.borrow_mut().take();
+            if let Some(action) = action {
+                action();
+            } else {
+                present_open_panel(state, open_panel);
+            }
+        }
         PendingAction::Close => {
+            state.close_approved.set(Some((state.revision)()));
             let close = Rc::clone(&state.close.borrow());
             close();
         }
@@ -660,3 +796,6 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 }
+
+#[cfg(test)]
+mod background_tests;

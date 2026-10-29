@@ -157,6 +157,35 @@ python3 crates/appcore/scripts/check-background.py --compiler /path/to/komec
 読み込んで互換性を検査します。
 ネイティブABIの配送・所有権は`ffi_task::tests`、タスクの状態遷移は`task::tests`で検査します。
 
+## Background documents
+
+ファイルを扱うRustアプリは`DocumentController::new_background`と`DocumentIo`で
+文書形式を登録できます。使用例はEdit.appの`TextFormat`と
+`make_document_controller`を参照してください。
+
+- `DocumentFormat::read/write`はワーカー上で動きます。UIのStateは持たせません。
+- `DocumentIo::new`のsnapshot/applyはUI上で動き、内容の所有権だけをワーカーと移動します。
+- Open／Save Asは既存のFiles.appパネルを使います。パネルの終了はI/O成功の通知ではありません。
+- `request_save`は`SaveRequest`で「同期完了・非同期受付・保存先選択・実行中・受付失敗」を区別します。
+  非同期の完了待ちはせず、`is_busy`と`status`で表示を更新します。
+- 保存済み世代は保存開始時のスナップショットに結び付きます。保存中の追加編集を消さず、
+  未保存の追加編集がある場合は保留中のOpen／Closeを続行しません。
+- 読み込み中に編集された場合も、読み込み結果でその編集を上書きしません。
+- `open_file(DocumentFile::from_received(document))`はIPCで受け取った資源を使い、
+  表示用パスで開き直しません。現行の受信資源は読み取り専用とし、保存はSave Asを使います。
+- I/O中はウィンドウ終了・Quitを保留します。失敗時は文書を保存済みにせず、標準エラーを表示します。
+- 既存の`DocumentController::new`は同期の互換APIです。`save`のboolを非同期の成否として
+  解釈せず、新しいコードでは`request_save`を使ってください。
+
+Files.appの現行ネイティブパネルはパスを返します。選択だけで新しいアクセス権限は
+付与されません。パスのオープンは既存のCapability検査に従い、その後は開いたファイルを
+保持して読み書きします。SDKは追加の権限を要求・付与せず、権限不足はエラーにします。
+
+`DocumentFile::replace_contents`は同じファイルへ書き込み、長さ調整と`sync_all`を行います。
+ディレクトリの権限を使う一時ファイルや原子的置換は行いません。途中で失敗した場合は
+部分的な書き込みが残る可能性があります。エラーを成功に変換しないでください。
+書き込みを開始した後の強制キャンセル・自動ロールバックは提供しません。
+
 ## Release
 
 Run `crates/appcore/scripts/release.pl` from the DevKit repository. It builds

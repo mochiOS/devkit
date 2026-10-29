@@ -771,7 +771,13 @@ impl View for SavePanel {
 #[derive(Clone)]
 pub struct OpenPanel(Rc<FilePanel>);
 
+pub(crate) struct WeakOpenPanel(std::rc::Weak<FilePanel>);
+impl WeakOpenPanel {
+    pub(crate) fn upgrade(&self) -> Option<OpenPanel> { self.0.upgrade().map(OpenPanel) }
+}
+
 impl OpenPanel {
+    pub(crate) fn downgrade(&self) -> WeakOpenPanel { WeakOpenPanel(Rc::downgrade(&self.0)) }
     pub fn new(
         options: OpenPanelOptions,
         handler: impl Fn(&Path) -> Result<(), String> + 'static,

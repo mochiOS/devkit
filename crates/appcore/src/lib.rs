@@ -48,7 +48,7 @@ pub use alert::Alert;
 #[cfg(feature = "ui")]
 pub use control_center::{ControlCenterCard, ControlCenterCardRow, ControlCenterItem};
 #[cfg(feature = "ui")]
-pub use document_controller::{DocumentController, DocumentInfo, DocumentMetadata};
+pub use document_controller::{DocumentController, DocumentInfo, DocumentMetadata, DocumentFile, DocumentFormat, DocumentIo, SaveRequest};
 
 #[cfg(feature = "ui")]
 pub use menu::{ApplicationMenu, ApplicationMenuBar, ApplicationMenuItem, MenuShortcut};
@@ -90,7 +90,7 @@ pub mod prelude {
     pub use crate::control_center::{ControlCenterCard, ControlCenterCardRow, ControlCenterItem};
     pub use crate::status_item::{ApplicationStatusAction,StatusItem,StatusItemAction,StatusItemPlacement,StatusItemRegistry,SystemStatusItem};
     #[cfg(feature = "ui")]
-    pub use crate::document_controller::{DocumentController, DocumentInfo, DocumentMetadata};
+    pub use crate::document_controller::{DocumentController, DocumentInfo, DocumentMetadata, DocumentFile, DocumentFormat, DocumentIo, SaveRequest};
     #[cfg(feature = "ui")]
     pub use crate::menu::{ApplicationMenu, ApplicationMenuBar, ApplicationMenuItem, MenuShortcut};
     pub use crate::notification::UserNotification;
