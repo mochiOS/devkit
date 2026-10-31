@@ -70,11 +70,17 @@ response fileをそのまま転送すると非公開の`-o`を上書きできる
 テストは`services/posix/tests/linker_driver.rs`にあります。失敗注入11件に加え、
 実LLD・msignでの署名と改変拒否、実driver CLIと既存SDK入力によるCRT・runtime・libcの
 リンクと失敗時の出力維持を、明示実行する2件で確認します。
-mochiOS向けdriverのビルドも確認していますが、ゲストでのdriver / msignの実行は未検証です。
-既存msign全体のnative buildは、証明書取得用ネットワーク依存のmio / socket2で失敗しました。
-mioのmochiOS向けselectorとwaker、およびsocket2が参照するlibc宣言が不足しています。
-ELF署名の実装を複製せず、ローカル署名のビルド範囲とネットワーク依存の移植を整理する必要があります。
+mochiOSの通常Terminalから専用fixtureを実行し、実clangのコンパイル、driver経由の
+LLDリンク、既存msignのAdHoc署名・検証、生成ELFのstdoutと終了コード37を確認しました。
+ネイティブ乱数による鍵生成と鍵付き署名・検証、一時ディレクトリ解放も成功しています。
+改変拒否はmsign verifyでの確認であり、実行認可gateへの署名検証接続はまだありません。
+fixtureは`services/posix/tests/native_signer_flow.rs`、記録は
+`out/checks/mochios-signer-native-314-flow-second-final.png`です。
 
-通常clangのdefault driver設定、ゲストへのツール配置、ELF内manifest宣言、実行時の
+msignは`--no-default-features`でオンライン証明書取得だけを省いた同じ実装です。
+通常のネットワーク依存を含むnative buildには、mioのselector / wakerとsocket2の移植が
+引き続き必要です。[ビルド構成と共通公開処理](elf-signature-v1.md#native-build-profile)を参照してください。
+
+通常clangのdefault driver設定、製品イメージへのツール配置、ELF内manifest宣言、実行時の
 署名検証と共通Capability同意の接続はまだありません。この段階で通常の
 `clang main.c -o main; ./main`や完全なPOSIX環境を完成扱いにはしません。
