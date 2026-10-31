@@ -511,7 +511,7 @@ impl View for FilePanel {
         }
         let geometry = self.geometry(bounds);
         Rectangle::new()
-            .color(RectangleColor::Custom(context.theme.shell.scrim))
+            .color(RectangleColor::Custom(context.theme.dialog.backdrop))
             .paint(bounds, context);
         Rectangle::new()
             .color(RectangleColor::Custom(context.theme.dialog.background))
