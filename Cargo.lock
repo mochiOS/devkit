@@ -1846,6 +1846,7 @@ dependencies = [
  "mochios-posix-client",
  "mochios-posix-protocol",
  "mochios-workspace-protocol",
+ "toml 1.1.2+spec-1.1.0",
  "viewkit",
  "zeroize",
 ]
@@ -4008,6 +4009,7 @@ dependencies = [
  "tiny-skia",
  "ui_layout",
  "unicode-script",
+ "unicode-segmentation",
  "wgpu",
  "winit",
  "zeroize",

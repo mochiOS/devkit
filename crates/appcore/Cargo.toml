@@ -19,6 +19,7 @@ mochios-fonts = { path = "../../../../libraries/fonts" }
 mochios-filesystem-protocol = { path = "../../../../user/crates/filesystem-protocol" }
 mochios-keychain-protocol = { path = "../../../../user/crates/keychain-protocol" }
 zeroize = { version = "1.8", features = ["alloc"] }
+toml = "1.1.2"
 viewkit = { version = "2.0.0", path = "../../../../libraries/viewkit", optional = true }
 mochios-workspace-protocol = { path = "../../../../user/crates/workspace-protocol" }
 

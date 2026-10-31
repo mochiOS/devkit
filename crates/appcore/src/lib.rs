@@ -76,7 +76,7 @@ where
 pub mod prelude {
     pub use crate::clipboard;
     pub use crate::content_type::{self, ContentType};
-    pub use crate::document::{self, AssociationHandler, AssociationRoles};
+    pub use crate::document::{self, AssociationHandler, AssociationRoles, DocumentIcon, DocumentIconFormat, DocumentIconResolver};
     pub use crate::error::{Error as ApplicationError, Result as ApplicationResult};
     pub use crate::recovery::{RecoveryRecord, RecoveryStore};
     pub use crate::session::{ApplicationSession, RestorableWindow, SessionStore, WindowFrame};

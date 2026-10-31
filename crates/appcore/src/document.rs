@@ -6,6 +6,9 @@
 
 use crate::{Error, Result};
 
+mod icons;
+pub use icons::{DocumentIcon, DocumentIconFormat, DocumentIconResolver};
+
 #[cfg(feature = "ui")]
 use std::path::PathBuf;
 
