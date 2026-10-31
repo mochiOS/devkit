@@ -1858,7 +1858,6 @@ version = "0.1.0"
 [[package]]
 name = "mochios-certificate"
 version = "0.1.0"
-source = "git+https://github.com/mochiOS/syscalls?rev=af217f5ca6a585110aabac813eb46dff8ccb7bfc#af217f5ca6a585110aabac813eb46dff8ccb7bfc"
 dependencies = [
  "ed25519-dalek",
  "sha2",
@@ -1901,6 +1900,13 @@ name = "mochios-keychain-protocol"
 version = "0.1.0"
 dependencies = [
  "zeroize",
+]
+
+[[package]]
+name = "mochios-linker-driver"
+version = "0.1.0"
+dependencies = [
+ "toml 0.8.23",
 ]
 
 [[package]]
@@ -5138,7 +5144,15 @@ dependencies = [
 ]
 
 [[patch.unused]]
+name = "mboot-protocol"
+version = "0.1.0"
+
+[[patch.unused]]
 name = "mnu"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "mochios-mdriver-protocol"
 version = "0.1.0"
 
 [[patch.unused]]
@@ -5163,12 +5177,4 @@ version = "0.1.0"
 
 [[patch.unused]]
 name = "mochios-virtio-gpu-protocol"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "mboot-protocol"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "mochios-mdriver-protocol"
 version = "0.1.0"

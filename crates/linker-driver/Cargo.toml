@@ -1,0 +1,13 @@
+[package]
+name = "mochios-linker-driver"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+toml = "0.8"
+
+[[bin]]
+name = "ld"
+path = "src/main.rs"
+test = false
+bench = false

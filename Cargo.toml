@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/linker-driver",
     "crates/msign",
     "crates/mpack",
     "crates/kome",
