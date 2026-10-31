@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/file-publication",
     "crates/linker-driver",
     "crates/msign",
     "crates/mpack",

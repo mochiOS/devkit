@@ -15,7 +15,10 @@ serde_json = "1"
 toml = "0.8"
 tar = "0.4"
 flate2 = "1"
-tempfile = "3"
+mochios-file-publication = { path = "../file-publication" }
 reqwest = { version = "0.13.4", features = ["blocking", "json", "rustls"] }
 mochios-certificate = { git = "https://github.com/mochiOS/syscalls", rev = "af217f5ca6a585110aabac813eb46dff8ccb7bfc", package = "mochios-certificate" }
 mochios-signature-protocol = { path = "../../../../user/crates/signature-protocol" }
+
+[dev-dependencies]
+tempfile = "3"

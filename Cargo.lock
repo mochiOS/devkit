@@ -1884,6 +1884,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "mochios-file-publication"
+version = "0.1.0"
+
+[[package]]
 name = "mochios-filesystem-protocol"
 version = "0.1.0"
 
@@ -1906,6 +1910,7 @@ dependencies = [
 name = "mochios-linker-driver"
 version = "0.1.0"
 dependencies = [
+ "mochios-file-publication",
  "toml 0.8.23",
 ]
 
@@ -1917,6 +1922,7 @@ version = "0.1.0"
 name = "mochios-posix-client"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.2.17",
  "mnu-abi",
  "mochi-user-syscall",
  "mochios-filesystem-protocol",
@@ -1981,7 +1987,10 @@ dependencies = [
  "clap",
  "ed25519-dalek",
  "flate2",
+ "getrandom 0.2.17",
  "mochios-certificate",
+ "mochios-file-publication",
+ "mochios-posix-client",
  "mochios-signature-protocol",
  "rand_core 0.6.4",
  "reqwest",

@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 use ed25519_dalek::VerifyingKey;
+use mochios_file_publication::PrivateDirectory;
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -222,24 +223,18 @@ fn atomic_write(path: &Path, bytes: &[u8], mode_source: &Path) -> Result<()> {
             mode_source.display()
         )
     })?;
-    let mut temporary = tempfile::NamedTempFile::new_in(&parent)
+    let directory = PrivateDirectory::new_in(&parent, "msign")
         .with_context(|| format!("failed to create temporary ELF in {}", parent.display()))?;
+    let mut temporary = directory.create_file("signed.elf")?;
     temporary
-        .as_file_mut()
         .set_permissions(source_metadata.permissions())
         .context("failed to preserve ELF permissions")?;
     temporary
         .write_all(bytes)
         .context("failed to write signed ELF")?;
-    temporary
-        .as_file_mut()
-        .sync_all()
-        .context("failed to sync signed ELF")?;
-    temporary
-        .persist(path)
-        .map_err(|error| error.error)
+    directory
+        .publish("signed.elf", &temporary, path)
         .with_context(|| format!("failed to atomically replace ELF: {}", path.display()))?;
-    sync_directory(&parent)?;
     Ok(())
 }
 
@@ -248,19 +243,6 @@ fn normalized_parent(path: &Path) -> PathBuf {
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf()
-}
-
-#[cfg(unix)]
-fn sync_directory(path: &Path) -> Result<()> {
-    fs::File::open(path)
-        .with_context(|| format!("failed to open output directory: {}", path.display()))?
-        .sync_all()
-        .with_context(|| format!("failed to sync output directory: {}", path.display()))
-}
-
-#[cfg(not(unix))]
-fn sync_directory(_path: &Path) -> Result<()> {
-    Ok(())
 }
 
 fn encode_hex(bytes: &[u8]) -> String {

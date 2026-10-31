@@ -6,9 +6,9 @@ use std::path::Path;
 use anyhow::{anyhow, bail, Context, Result};
 use ed25519_dalek::{Signature, Signer, VerifyingKey};
 use mochios_certificate::{is_valid_package_id, DeveloperCertificate, SIGNATURE_LEN};
+use mochios_file_publication::PrivateDirectory;
 use sha2::{Digest, Sha256};
 use tar::{Archive, Builder, EntryType, Header};
-use tempfile::NamedTempFile;
 
 use crate::cli::{PackageSignArgs, PackageVerifyArgs};
 use crate::commands::certificate::CertificateRequest;
@@ -408,8 +408,13 @@ fn write_mpkg(path: &Path, entries: &[MpkgEntry]) -> Result<()> {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
-    let mut temporary = NamedTempFile::new_in(path.parent().unwrap_or_else(|| Path::new(".")))
+    let parent = path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let directory = PrivateDirectory::new_in(parent, "msign")
         .context("failed to create temporary MPKG")?;
+    let mut temporary = directory.create_file("package.mpkg")?;
     temporary
         .write_all(&header)
         .and_then(|_| temporary.write_all(&tar_bytes))
@@ -417,9 +422,8 @@ fn write_mpkg(path: &Path, entries: &[MpkgEntry]) -> Result<()> {
     temporary
         .flush()
         .context("failed to flush temporary MPKG")?;
-    temporary
-        .persist(path)
-        .map_err(|error| error.error)
+    directory
+        .publish("package.mpkg", &temporary, path)
         .with_context(|| format!("failed to replace {}", path.display()))?;
     Ok(())
 }

@@ -1,6 +1,7 @@
 use crate::{Error, Options, sdk};
+use mochios_file_publication::PrivateDirectory;
 use std::os::unix::{
-    fs::{DirBuilderExt, MetadataExt, PermissionsExt},
+    fs::{MetadataExt, PermissionsExt},
     process::ExitStatusExt,
 };
 use std::{
@@ -9,41 +10,7 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
     process::{Command, ExitStatus},
-    sync::atomic::{AtomicU64, Ordering},
 };
-
-static NEXT: AtomicU64 = AtomicU64::new(0);
-
-struct Temporary(PathBuf);
-impl Temporary {
-    fn new(parent: &Path) -> Result<Self, Error> {
-        for _ in 0..128 {
-            let path = parent.join(format!(
-                ".mochios-ld-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            match fs::DirBuilder::new().mode(0o700).create(&path) {
-                Ok(()) => return Ok(Self(path)),
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(error) => {
-                    return Err(Error::diagnostic(format!(
-                        "create temporary output in {}: {error}",
-                        parent.display()
-                    )));
-                }
-            }
-        }
-        Err(Error::diagnostic(
-            "cannot create a unique private link directory",
-        ))
-    }
-}
-impl Drop for Temporary {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
 
 fn tool(explicit: &Option<PathBuf>, variable: &str, name: &str, executable: &Path) -> PathBuf {
     let path = explicit
@@ -177,11 +144,14 @@ pub fn run(options: Options) -> Result<(), Error> {
     let temporary = if options.dry_run {
         None
     } else {
-        Some(Temporary::new(parent)?)
+        Some(
+            PrivateDirectory::new_in(parent, "mochios-ld")
+                .map_err(|error| Error::diagnostic(format!("create link output: {error}")))?,
+        )
     };
     let linked = temporary
         .as_ref()
-        .map(|temp| temp.0.join("linked.elf"))
+        .map(|temp| temp.path().join("linked.elf"))
         .unwrap_or_else(|| parent.join(".mochios-ld-DRY-RUN/linked.elf"));
     arguments.push("-o".into());
     arguments.push(linked.clone().into());
@@ -211,16 +181,16 @@ pub fn run(options: Options) -> Result<(), Error> {
         execute(&msign, &verify, &options)?;
     }
     if !options.dry_run {
-        fs::File::open(&linked)
-            .and_then(|file| file.sync_all())
-            .map_err(|error| Error::diagnostic(format!("sync linked ELF: {error}")))?;
         check_output(&options)?;
-        fs::rename(&linked, &options.output).map_err(|error| {
-            Error::diagnostic(format!("publish {}: {error}", options.output.display()))
-        })?;
-        fs::File::open(parent)
-            .and_then(|file| file.sync_all())
-            .map_err(|error| Error::diagnostic(format!("sync output directory: {error}")))?;
+        let file = fs::File::open(&linked)
+            .map_err(|error| Error::diagnostic(format!("open final output: {error}")))?;
+        temporary
+            .as_ref()
+            .expect("live link directory")
+            .publish("linked.elf", &file, &options.output)
+            .map_err(|error| {
+                Error::diagnostic(format!("publish {}: {error}", options.output.display()))
+            })?;
     }
     Ok(())
 }

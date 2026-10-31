@@ -105,8 +105,14 @@ msign elf verify FILE [--public-key PUBLIC_KEY]
 ```
 
 Signing refuses an already signed or ambiguously signed ELF. Output is written
-to a temporary file in the destination directory, flushed, atomically renamed,
-and the directory is flushed on Unix. Input permissions are preserved.
+inside a private staging directory in the destination directory. The common
+`mochios-file-publication` helper checks that the held descriptor and named
+regular file have the same device/inode, syncs the descriptor, atomically
+renames the file, and syncs the destination directory on Unix. Input permissions
+are preserved without reopening the file after applying those permissions.
+The linker driver and MPKG writer use the same publication helper. A directory
+sync error can be reported after publication; ordinary failure cleanup removes
+only the owned staging directory. Forced-termination recovery is not provided.
 Symbolic-link inputs and outputs are rejected, and an output that aliases the
 private key is rejected.
 
