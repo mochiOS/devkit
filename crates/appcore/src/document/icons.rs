@@ -57,6 +57,7 @@ struct Application {
     fallback: Option<String>,
     entry: PathBuf,
     thumbnail: bool,
+    preview: bool,
 }
 
 /// インストール済みアプリの宣言を一度読み取るアイコン解決器。
@@ -219,6 +220,33 @@ impl DocumentIconResolver {
         Ok(provider)
     }
 
+    /// `preview = true` を宣言した関連付け先アプリのプレビュー生成担当を返します。
+    /// この関数はアプリを起動しません。生成はバックグラウンドで実行してください。
+    /// mochiOSでは通常の関連付け読取り権限が必要です。未対応なら `Ok(None)` です。
+    #[cfg(any(target_os = "linux", target_os = "mochios"))]
+    pub fn preview_provider(
+        &self,
+        extension: &str,
+        content_type: &str,
+    ) -> Result<Option<super::preview::PreviewProvider>> {
+        super::validate_key(extension, content_type)?;
+        if extension.len() > 63
+            || !extension
+                .trim_start_matches('.')
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric())
+            || crate::content_type::ContentType::parse(content_type).is_err()
+        {
+            return Err(Error::InvalidArgument);
+        }
+        let extension = extension.trim_start_matches('.').to_ascii_lowercase();
+        let content_type = content_type.to_ascii_lowercase();
+        Ok(self
+            .provider(&extension, &content_type, AssociationRoles::VIEW)?
+            .filter(|app| app.preview)
+            .map(|app| super::preview::PreviewProvider::new(app.id.clone(), app.entry.clone())))
+    }
+
     /// 関連付け先が明示的に `thumbnail = true` を宣言した場合、生成担当を返します。
     /// mochiOSでは既存の関連付け権限を検証します。未対応なら `Ok(None)` です。
     /// この関数ではアプリを起動しません。生成にはバックグラウンドで
@@ -379,6 +407,10 @@ fn parse_application(root: &Path) -> Option<Application> {
         rules,
         fallback,
         entry: root.join(entry),
+        preview: table
+            .get("preview")
+            .and_then(toml::Value::as_bool)
+            .unwrap_or(false),
         thumbnail: table
             .get("thumbnail")
             .and_then(toml::Value::as_bool)
@@ -441,6 +473,38 @@ document_roles = ["view", "edit"]
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn document_preview_requires_opt_in_and_preserves_handler_selection() {
+        let fixture = Fixture::new();
+        fixture.app("Editor.app", "preview = false");
+        assert!(
+            fixture
+                .resolver()
+                .preview_provider("txt", "text/plain")
+                .unwrap()
+                .is_none()
+        );
+        let path = fixture.0.join("Editor.app/manifest.toml");
+        let manifest = fs::read_to_string(&path).unwrap();
+        fs::write(&path, manifest.replace("preview = false", "preview = true")).unwrap();
+        let resolver = fixture.resolver();
+        assert_eq!(
+            resolver
+                .preview_provider("txt", "text/plain")
+                .unwrap()
+                .unwrap()
+                .bundle_id,
+            "org.example.editor"
+        );
+        assert!(
+            resolver
+                .preview_provider("zip", "application/zip")
+                .unwrap()
+                .is_none()
+        );
+        assert!(resolver.preview_provider("../txt", "text/plain").is_err());
     }
 
     #[test]

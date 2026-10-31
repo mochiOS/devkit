@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 //! アプリが提供する動的サムネイル。ファイル名やパスは生成担当へ渡しません。
-//! 入力32MiB、出力512px以内のpremultiplied RGBA8、期限3秒。永続キャッシュは作りません。
+//! 入力32MiB、出力1024px以内のpremultiplied RGBA8、期限3秒。永続キャッシュは作りません。
 use crate::worker::{self, WorkerLimits};
 use std::{
     io::{self, Read, Write},
@@ -13,7 +13,7 @@ pub const WORKER_ARGUMENT: &str = "--appcore-thumbnail-v1";
 /// 入力データの最大サイズ。
 pub const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
 /// 出力の幅・高さの上限。
-pub const MAX_EDGE: u32 = 512;
+pub const MAX_EDGE: u32 = 1024;
 
 /// 検証済みサイズのサムネイル画像。
 #[derive(Clone, Debug)]

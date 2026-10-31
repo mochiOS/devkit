@@ -175,6 +175,8 @@ pub fn run(
     let mut eof = false;
     let mut status = None;
     loop {
+        let previous_written = written;
+        let previous_output = bytes.len();
         if cancelled() {
             return Err(io::Error::new(
                 io::ErrorKind::Interrupted,
@@ -226,8 +228,9 @@ pub fn run(
             }
         }
         // Drain and discard diagnostics, without storing untrusted output.
+        let mut diagnostic_progress = false;
         match errors.read(&mut buffer) {
-            Ok(_) => {}
+            Ok(count) => diagnostic_progress = count != 0,
             Err(error)
                 if matches!(
                     error.kind(),
@@ -252,7 +255,11 @@ pub fn run(
                 return Ok(bytes);
             }
         }
-        std::thread::sleep(Duration::from_millis(2));
+        // A large preview can span hundreds of pipe chunks. Yield only when
+        // waiting for I/O, rather than adding a delay after each ready chunk.
+        if written == previous_written && bytes.len() == previous_output && !diagnostic_progress {
+            std::thread::sleep(Duration::from_millis(2));
+        }
     }
 }
 

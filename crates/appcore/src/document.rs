@@ -9,6 +9,8 @@ use crate::{Error, Result};
 mod icons;
 #[cfg(any(target_os = "linux", target_os = "mochios"))]
 pub mod thumbnail;
+#[cfg(any(target_os = "linux", target_os = "mochios"))]
+pub mod preview;
 pub use icons::{DocumentIcon, DocumentIconFormat, DocumentIconResolver};
 
 #[cfg(feature = "ui")]
