@@ -1,4 +1,6 @@
-use std::{fs, io::Read};
+use std::fs;
+#[cfg(feature = "developer-ca")]
+use std::io::Read;
 
 use anyhow::{anyhow, bail, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -7,11 +9,16 @@ use mochios_certificate::{
     key_id, DeveloperCertificate, PackageIdScope, KEY_USAGE_PACKAGE_SIGNING, SIGNATURE_LEN,
 };
 use rand_core::{OsRng, RngCore};
-use reqwest::blocking::{Client, Response};
-use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+#[cfg(feature = "developer-ca")]
+use reqwest::{
+    blocking::{Client, Response},
+    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
+};
 use serde::{Deserialize, Serialize};
 
-use crate::cli::{CertificateInspectArgs, CertificateIssueArgs, CertificateObtainArgs};
+#[cfg(feature = "developer-ca")]
+use crate::cli::CertificateObtainArgs;
+use crate::cli::{CertificateInspectArgs, CertificateIssueArgs};
 use crate::commands::mpkg;
 use crate::crypto;
 
@@ -94,6 +101,7 @@ struct ObtainResponse {
     developer_id: String,
 }
 
+#[cfg(feature = "developer-ca")]
 pub fn obtain(args: CertificateObtainArgs) -> Result<()> {
     let public_key = crypto::read_public_key(&args.public_key)?;
     let request = mpkg::certificate_request(&args.package, &args.developer, &public_key)?;
@@ -133,6 +141,7 @@ pub(crate) struct CertificateRequest {
     pub capabilities: Vec<String>,
 }
 
+#[cfg(feature = "developer-ca")]
 fn request_certificate(
     api_base: &str,
     bearer_token: Option<&str>,
@@ -206,6 +215,7 @@ fn validate_idempotency_key(value: &str) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "developer-ca")]
 fn read_response_body_limited(response: Response, limit: u64) -> Result<Vec<u8>> {
     let mut body = Vec::new();
     response
@@ -515,6 +525,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "developer-ca")]
     fn obtain_request_contains_only_public_certificate_inputs() {
         let (api_base, received, server) = serve_once(
             200,
@@ -555,6 +566,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "developer-ca")]
     fn obtain_writes_valid_certificate_wire_bytes() {
         let temporary = tempfile::tempdir().unwrap();
         let package_path = temporary.path().join("Example-unsigned.mpkg");
@@ -613,6 +625,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "developer-ca")]
     fn certificate_api_error_is_not_success() {
         let (api_base, _received, server) =
             serve_once(403, "Developer is not verified".to_string());
@@ -633,6 +646,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "developer-ca")]
     fn certificate_response_size_is_limited() {
         let oversized = "x".repeat(MAX_CERTIFICATE_RESPONSE_BYTES as usize + 1);
         let (api_base, _received, server) = serve_once(200, oversized);
@@ -652,6 +666,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "developer-ca")]
     fn certificate_request_capability_count_matches_developer_ca_policy() {
         let request = CertificateRequest {
             developer_id: "019f9e5ac6687902b0e72fe53abfbef1".to_string(),
@@ -673,6 +688,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "developer-ca")]
     fn certificate_request_body_matches_developer_ca_size_limit() {
         let request = CertificateRequest {
             developer_id: "019f9e5ac6687902b0e72fe53abfbef1".to_string(),
@@ -773,7 +789,7 @@ mod tests {
         let payload = b"elf";
         let digest = Sha256::digest(payload);
         let manifest = format!(
-            "format = 1\n\n[package]\nid = \"org.example.application\"\nname = \"Example\"\nversion = \"0.1.0\"\nkind = \"application\"\n\n[[file]]\nid = \"entry\"\npath = \"$/entry.elf\"\ndigest = \"sha256:{}\"\nsize = {}\nmode = \"0755\"\n\n[[binary]]\npath = \"/applications/Example.app/entry.elf\"\nfile = \"entry\"\nkind = \"application\"\nrequires = [\"window.create\"]\n",
+            "format = 1\n\n[package]\nid = \"org.example.application\"\nname = \"Example\"\nversion = \"0.1.0\"\nkind = \"application\"\n\n[application]\nentry = \"entry.elf\"\ndescription = \"Example\"\nicon = \"\"\nresources = []\n\n[[file]]\nid = \"entry\"\npath = \"$/entry.elf\"\ndigest = \"sha256:{}\"\nsize = {}\nmode = \"0755\"\n\n[[binary]]\npath = \"/applications/Example.app/entry.elf\"\nfile = \"entry\"\nkind = \"application\"\nrequires = [\"window.create\"]\n",
             hex(&digest),
             payload.len()
         );

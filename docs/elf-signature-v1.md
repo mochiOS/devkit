@@ -118,3 +118,23 @@ private key is rejected.
 
 AdHoc proves only self-consistency. It does not identify a signer or establish
 trust, provenance, execution permission, or capabilities.
+
+## Native build profile
+
+The default `developer-ca` feature includes the HTTP `certificate obtain`
+command. `cargo build -p msign --no-default-features` omits that command and
+reqwest, while retaining the same ELF signing/verifying, key generation,
+certificate issue/inspect, package, and identity implementations. Unsupported
+commands are rejected by the CLI. This profile does not implement the missing
+mochiOS mio/socket2 port required by the default network-enabled build.
+
+On mochiOS the binary registers posix-client's getrandom 0.2 adapter, using the
+same native randomness primitive as getentropy. Partial transfers and EINTR
+are handled without replacing entropy or hiding permission/readiness errors.
+The production dependency graph uses std file publication and in-memory tar
+processing; tempfile remains a host test dependency, and unused tar xattrs are
+disabled. No cryptographic format or trust policy changes with the profile.
+
+Regression tests reside under `services/posix/tests/`. The native signer test
+uses explicitly staged tools and SDK inputs; it is separate from ordinary
+clang defaults and the execution-time Capability consent path.

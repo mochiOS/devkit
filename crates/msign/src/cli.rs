@@ -71,6 +71,7 @@ pub enum KeyCommand {
 pub enum CertificateCommand {
     Issue(CertificateIssueArgs),
     Inspect(CertificateInspectArgs),
+    #[cfg(feature = "developer-ca")]
     Obtain(CertificateObtainArgs),
 }
 
@@ -160,6 +161,7 @@ pub struct CertificateInspectArgs {
     pub certificate: PathBuf,
 }
 
+#[cfg(feature = "developer-ca")]
 #[derive(Debug, Args)]
 pub struct CertificateObtainArgs {
     #[arg(long)]

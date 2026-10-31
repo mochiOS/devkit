@@ -3,6 +3,9 @@ mod commands;
 mod crypto;
 mod elf_signature;
 
+#[cfg(target_os = "mochios")]
+getrandom02::register_custom_getrandom!(mochios_posix_client::random::getrandom02::fill);
+
 use anyhow::Result;
 use clap::Parser;
 
@@ -29,6 +32,7 @@ fn main() -> Result<()> {
         Command::Certificate {
             command: CertificateCommand::Inspect(args),
         } => commands::certificate::inspect(args),
+        #[cfg(feature = "developer-ca")]
         Command::Certificate {
             command: CertificateCommand::Obtain(args),
         } => commands::certificate::obtain(args),

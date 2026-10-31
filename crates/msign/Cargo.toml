@@ -3,6 +3,13 @@ name = "msign"
 version = "0.1.0"
 edition = "2021"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("mochios"))'] }
+
+[features]
+default = ["developer-ca"]
+developer-ca = ["dep:reqwest"]
+
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
@@ -13,12 +20,16 @@ base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
-tar = "0.4"
+tar = { version = "0.4", default-features = false }
 flate2 = "1"
 mochios-file-publication = { path = "../file-publication" }
-reqwest = { version = "0.13.4", features = ["blocking", "json", "rustls"] }
+reqwest = { version = "0.13.4", features = ["blocking", "json", "rustls"], optional = true }
 mochios-certificate = { git = "https://github.com/mochiOS/syscalls", rev = "af217f5ca6a585110aabac813eb46dff8ccb7bfc", package = "mochios-certificate" }
 mochios-signature-protocol = { path = "../../../../user/crates/signature-protocol" }
+
+[target.'cfg(target_os = "mochios")'.dependencies]
+getrandom02 = { package = "getrandom", version = "0.2", features = ["custom"] }
+mochios-posix-client = { path = "../../../../user/crates/posix-client", default-features = false, features = ["getrandom02"] }
 
 [dev-dependencies]
 tempfile = "3"
