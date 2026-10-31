@@ -55,6 +55,8 @@ struct Application {
     types: Vec<String>,
     rules: Vec<Rule>,
     fallback: Option<String>,
+    entry: PathBuf,
+    thumbnail: bool,
 }
 
 /// インストール済みアプリの宣言を一度読み取るアイコン解決器。
@@ -80,9 +82,11 @@ impl DocumentIconResolver {
             PathBuf::from("/applications"),
         ];
         #[cfg(target_os = "linux")]
-        let roots = vec![std::env::var_os("MOCHIOS_PREVIEW_APPS")
-            .map(PathBuf::from)
-            .ok_or(Error::UnsupportedPlatform)?];
+        let roots = vec![
+            std::env::var_os("MOCHIOS_PREVIEW_APPS")
+                .map(PathBuf::from)
+                .ok_or(Error::UnsupportedPlatform)?,
+        ];
         #[cfg(not(any(target_os = "mochios", target_os = "linux")))]
         return Err(Error::UnsupportedPlatform);
         #[cfg(any(target_os = "mochios", target_os = "linux"))]
@@ -137,23 +141,7 @@ impl DocumentIconResolver {
         {
             return Err(Error::InvalidArgument);
         }
-        #[cfg(target_os = "mochios")]
-        let provider = match super::resolve_default(&extension, &content_type, roles) {
-            Ok(id) => self.applications.iter().find(|app| app.id == id),
-            Err(Error::System(2)) => return Ok(None),
-            Err(error) => return Err(error),
-        };
-        #[cfg(not(target_os = "mochios"))]
-        let provider = [true, false].into_iter().find_map(|mime| {
-            self.applications.iter().find(|app| {
-                app.roles & roles.bits() != 0
-                    && if mime {
-                        !content_type.is_empty() && app.types.contains(&content_type)
-                    } else {
-                        !extension.is_empty() && app.extensions.contains(&extension)
-                    }
-            })
-        });
+        let provider = self.provider(&extension, &content_type, roles)?;
         let Some(app) = provider else {
             return Ok(None);
         };
@@ -202,6 +190,62 @@ impl DocumentIconResolver {
             format,
             bytes,
         }))
+    }
+    fn provider(
+        &self,
+        extension: &str,
+        content_type: &str,
+        roles: AssociationRoles,
+    ) -> Result<Option<&Application>> {
+        #[cfg(target_os = "mochios")]
+        let provider = match super::resolve_default(extension, content_type, roles) {
+            Ok(id) => self.applications.iter().find(|app| app.id == id),
+            Err(Error::System(2)) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        #[cfg(not(target_os = "mochios"))]
+        let provider = [true, false].into_iter().find_map(|mime| {
+            self.applications.iter().find(|app| {
+                app.roles & roles.bits() != 0
+                    && if mime {
+                        !content_type.is_empty()
+                            && app.types.iter().any(|value| value == content_type)
+                    } else {
+                        !extension.is_empty()
+                            && app.extensions.iter().any(|value| value == extension)
+                    }
+            })
+        });
+        Ok(provider)
+    }
+
+    /// 関連付け先が明示的に `thumbnail = true` を宣言した場合、生成担当を返します。
+    /// mochiOSでは既存の関連付け権限を検証します。未対応なら `Ok(None)` です。
+    /// この関数ではアプリを起動しません。生成にはバックグラウンドで
+    /// [`super::thumbnail::ThumbnailProvider::generate`] を呼び出してください。
+    #[cfg(any(target_os = "linux", target_os = "mochios"))]
+    pub fn thumbnail_provider(
+        &self,
+        extension: &str,
+        content_type: &str,
+    ) -> Result<Option<super::thumbnail::ThumbnailProvider>> {
+        super::validate_key(extension, content_type)?;
+        if extension.len() > 63
+            || !extension
+                .trim_start_matches('.')
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric())
+            || (!content_type.is_empty()
+                && crate::content_type::ContentType::parse(content_type).is_err())
+        {
+            return Err(Error::InvalidArgument);
+        }
+        let extension = extension.trim_start_matches('.').to_ascii_lowercase();
+        let content_type = content_type.to_ascii_lowercase();
+        Ok(self
+            .provider(&extension, &content_type, AssociationRoles::VIEW)?
+            .filter(|app| app.thumbnail)
+            .map(|app| super::thumbnail::ThumbnailProvider::new(app.id.clone(), app.entry.clone())))
     }
 }
 
@@ -334,6 +378,11 @@ fn parse_application(root: &Path) -> Option<Application> {
         types,
         rules,
         fallback,
+        entry: root.join(entry),
+        thumbnail: table
+            .get("thumbnail")
+            .and_then(toml::Value::as_bool)
+            .unwrap_or(false),
     })
 }
 
@@ -395,6 +444,32 @@ document_roles = ["view", "edit"]
     }
 
     #[test]
+    fn thumbnail_generation_requires_explicit_provider_opt_in() {
+        let fixture = Fixture::new();
+        fixture.app("Editor.app", "document_icon = \"icons/default.svg\"");
+        assert!(
+            fixture
+                .resolver()
+                .thumbnail_provider("txt", "text/plain")
+                .unwrap()
+                .is_none()
+        );
+        let root = fixture.0.join("Editor.app/manifest.toml");
+        let manifest = fs::read_to_string(&root).unwrap();
+        fs::write(&root, format!("{manifest}\nthumbnail = true\n")).unwrap();
+        let resolver = fixture.resolver();
+        assert_eq!(
+            resolver
+                .thumbnail_provider("txt", "text/plain")
+                .unwrap()
+                .unwrap()
+                .bundle_id,
+            "org.example.editor"
+        );
+        assert!(resolver.thumbnail_provider("png", "not mime").is_err());
+    }
+
+    #[test]
     fn extension_rule_precedes_mime_and_fallback() {
         let fixture = Fixture::new();
         fixture.app(
@@ -434,10 +509,12 @@ resource = "icons/rust.svg"
                 .data(),
             b"default"
         );
-        assert!(resolver
-            .resolve("unknown", "", AssociationRoles::VIEW)
-            .unwrap()
-            .is_none());
+        assert!(
+            resolver
+                .resolve("unknown", "", AssociationRoles::VIEW)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -465,12 +542,16 @@ resource = "icons/rust.svg"
                 .data(),
             b"default"
         );
-        assert!(resolver
-            .resolve("../txt", "", AssociationRoles::VIEW)
-            .is_err());
-        assert!(resolver
-            .resolve("txt", "bad mime", AssociationRoles::VIEW)
-            .is_err());
+        assert!(
+            resolver
+                .resolve("../txt", "", AssociationRoles::VIEW)
+                .is_err()
+        );
+        assert!(
+            resolver
+                .resolve("txt", "bad mime", AssociationRoles::VIEW)
+                .is_err()
+        );
     }
 
     #[test]
@@ -494,15 +575,19 @@ resource = "icons/rust.svg"
         fixture.app("A.app", "document_icon = \"icons/default.svg\"");
         let resolver = fixture.resolver();
         fixture.app("B.app", "document_icon = \"icons/default.svg\"");
-        assert!(fixture
-            .resolver()
-            .resolve("txt", "", AssociationRoles::VIEW)
-            .unwrap()
-            .is_none());
-        assert!(resolver
-            .resolve("txt", "", AssociationRoles::VIEW)
-            .unwrap()
-            .is_some());
+        assert!(
+            fixture
+                .resolver()
+                .resolve("txt", "", AssociationRoles::VIEW)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            resolver
+                .resolve("txt", "", AssociationRoles::VIEW)
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[test]
@@ -514,9 +599,11 @@ resource = "icons/rust.svg"
         png.extend_from_slice(&64u32.to_be_bytes());
         fs::write(root.join("icons/image.png"), &png).unwrap();
         let resolver = fixture.resolver();
-        assert!(resolver
-            .resolve("png", "image/png", AssociationRoles::VIEW)
-            .is_err());
+        assert!(
+            resolver
+                .resolve("png", "image/png", AssociationRoles::VIEW)
+                .is_err()
+        );
         png[16..20].copy_from_slice(&64u32.to_be_bytes());
         fs::write(root.join("icons/image.png"), &png).unwrap();
         assert_eq!(
