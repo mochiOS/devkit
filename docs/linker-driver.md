@@ -89,6 +89,13 @@ clangのpipe出力を失っていたnewlibの終了callback登録上限はソー
 記録は`out/checks/mochios-exit317-clang-positive.png`、詳細は
 `docs/services/posix-native-clang-pipeline.md`です。
 
-このfixtureの後半は最終PASSなしで約900秒後に終了しており、nativeの失敗経路まで成功とは扱いません。
-製品イメージへのツール配置、ELF内manifest宣言、実行時の署名検証と共通Capability同意の接続、
-完全なPOSIX環境も未完了です。
+317時点ではfixtureの後半が約900秒で終了していました。319で静的ELFのdigestと
+owned snapshotにも共有転送を接続し、compile / link失敗時の旧ELF維持、改変拒否、
+cleanupまで全gateが成功しました。321では通常PATHのclang / ld / ld.lld / msignを
+使って同じ全gateが成功しています。追加のSDK / target引数や診断tool directoryは使いません。
+ツールと提供SDKは/system/developerへまとめ、/system/binの相対symlinkから利用します。
+USER_INSTALL_DEVELOPER_TOOLS=yで既存のbuild済み入力を配置し、SDK生成は行いません。
+詳細はrootのdocs/services/posix-native-development-tools.mdです。
+
+ELF内manifest宣言、実行時の共通署名検証とCapability同意、ネットワーク依存を含むmsign、
+完全なPOSIX環境は引き続き未完了です。msign verifyの改変拒否は実行認可gateの完成とは区別します。
