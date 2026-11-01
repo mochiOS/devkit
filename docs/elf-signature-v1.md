@@ -138,3 +138,22 @@ disabled. No cryptographic format or trust policy changes with the profile.
 Regression tests reside under `services/posix/tests/`. The native signer test
 uses explicitly staged tools and SDK inputs; it is separate from ordinary
 clang defaults and the execution-time Capability consent path.
+
+## Shared userspace codec
+
+`user/crates/elf-signature` provides `mochios-elf-signature`, a `no_std + alloc`
+library containing the v1 encoder, parser, normalized hashing, and strict
+verification. msign uses this library and continues to own file/key access and
+publication. The library operates on supplied bytes and keys; consumers own
+trust, revocation, execution policy, and allocation/work budgets.
+
+`decode` returns unverified record metadata. `verify` establishes cryptographic
+integrity. Its result's `digest` is the normalized v1 signature digest above;
+launch authorization must separately measure the full captured source bytes
+and bind the actual prepared image to its commit-time measurement.
+
+The eight existing codec tests moved to `services/posix/tests/elf_signature.rs`.
+They include the production codec directly to check internal wire/bounds cases.
+msign's CLI tests additionally exercise the library through its public API.
+The wire format and signing policy are unchanged. Services can now consume the
+same verifier; execution-gate integration is still pending.

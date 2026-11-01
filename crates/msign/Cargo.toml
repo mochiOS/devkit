@@ -23,6 +23,7 @@ toml = "0.8"
 tar = { version = "0.4", default-features = false }
 flate2 = "1"
 mochios-file-publication = { path = "../file-publication" }
+mochios-elf-signature = { path = "../../../../user/crates/elf-signature" }
 reqwest = { version = "0.13.4", features = ["blocking", "json", "rustls"], optional = true }
 mochios-certificate = { git = "https://github.com/mochiOS/syscalls", rev = "af217f5ca6a585110aabac813eb46dff8ccb7bfc", package = "mochios-certificate" }
 mochios-signature-protocol = { path = "../../../../user/crates/signature-protocol" }
