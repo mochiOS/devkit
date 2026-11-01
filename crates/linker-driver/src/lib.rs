@@ -40,6 +40,7 @@ usage: ld [OPTIONS] FILE...
   --no-sign                 Publish unsigned output explicitly
   --sign-key FILE           msign private key; requires --public-key
   --public-key FILE         Verify keyed output with msign
+  --manifest FILE           Embed manifest.toml into the ELF before signing
   -nostdlib                 Omit startup and default libraries
   -nostartfiles             Omit crt0.o
   -nodefaultlibs            Omit default libraries

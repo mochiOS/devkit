@@ -82,12 +82,12 @@ fn check_output(options: &Options) -> Result<(), Error> {
                     "output must be a regular file, not a symlink or directory",
                 ));
             }
-            for key in [&options.key, &options.public_key].into_iter().flatten() {
-                let key_metadata = fs::metadata(key)
-                    .map_err(|error| Error::diagnostic(format!("{}: {error}", key.display())))?;
+            for input in [&options.key, &options.public_key, &options.manifest].into_iter().flatten() {
+                let key_metadata = fs::metadata(input)
+                    .map_err(|error| Error::diagnostic(format!("{}: {error}", input.display())))?;
                 if metadata.dev() == key_metadata.dev() && metadata.ino() == key_metadata.ino() {
                     return Err(Error::diagnostic(
-                        "output must not replace a signing or verification key",
+                        "output must not replace a signing key, verification key or manifest",
                     ));
                 }
             }
@@ -167,6 +167,10 @@ pub fn run(options: Options) -> Result<(), Error> {
             sign.push(key.clone().into());
         } else {
             sign.push("--adhoc".into());
+        }
+        if let Some(manifest) = &options.manifest {
+            sign.push("--manifest".into());
+            sign.push(manifest.clone().into());
         }
         execute(&msign, &sign, &options)?;
         let mut verify = vec![

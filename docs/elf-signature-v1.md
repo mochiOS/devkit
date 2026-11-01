@@ -169,4 +169,43 @@ of all original file bytes, including the signature fields. Its `source_digest`
 is suitable for binding that snapshot to native execution; the normalized
 `signature().digest` is not interchangeable with it. `SuppliedPublicKey` only
 resolves a caller-provided verification key and confers no developer trust.
-The codec suite now has 14 cases covering these measurements and scan bounds.
+The codec suite now has 18 cases covering these measurements, scan bounds and
+the embedded declaration format below.
+
+## Embedded manifest declarations
+
+`msign elf sign program --adhoc --manifest manifest.toml` embeds the exact input
+declaration before computing the existing v1 signature. Keyed signing accepts
+the same option. The input must be a bounded regular file containing valid UTF-8
+TOML. Its maximum text length is 65536 bytes; empty text and NUL bytes are rejected.
+The signer refuses symlink inputs and output aliases of the manifest or key.
+No manifest is implicitly discovered in the working directory.
+
+The optional, unique `.mochios.manifest` section is SHT_PROGBITS, with zero flags,
+address, link, info and entry size, and four-byte alignment. It is outside all
+PT_LOAD and PT_NOTE regions, both header tables and all other file-backed sections.
+Its payload starts with this little-endian envelope, followed immediately by
+the exact manifest.toml text, without a terminator:
+
+| Offset | Size | Value |
+| --- | --- | --- |
+| 0 | 8 | ASCII `MOELFMAN` |
+| 8 | 2 | Envelope version 1 |
+| 10 | 2 | UTF-8 manifest.toml encoding 1 |
+| 12 | 4 | Reserved zero |
+| 16 | 1–65536 | Manifest text |
+
+`embed_manifest` operates only on unsigned bytes and refuses existing manifests
+or signatures. It and the signature encoder share the section-table builder;
+neither changes program mappings. `verify` and `verify_image` reject malformed,
+duplicate, overlapping or unsupported manifest sections. `VerifiedImage::manifest`
+borrows the declaration from the same verified snapshot as `source_digest`.
+TOML schema interpretation, capability classification, signer trust and consent
+remain userspace policy outside the ELF codec. The declaration grants nothing.
+
+This optional metadata is covered by the existing full-file v1 digest. It does
+not change the signature NOTE format or normalized digest algorithm. Without
+`--manifest`, the AdHoc output was compared byte-for-byte with the prior signer.
+Tests are in services/posix/tests/elf_signature.rs, embedded_manifest_tools.rs
+and linker_driver.rs. Enforcing declarations throughout ordinary exec remains
+a separate, incomplete integration step.

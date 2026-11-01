@@ -56,6 +56,14 @@ rename後のdirectory syncが失敗した場合、公開済みでもエラーを
 その失敗からAdHocへfallbackしません。鍵またはそのhard linkを出力先にする指定も拒否します。
 `--no-sign`は明示的に署名を省きます。AdHoc署名は信頼やCapability許可を意味しません。
 
+`--manifest manifest.toml`は、同じ入力をmsignへ渡し、宣言をELF内へ埋め込んでから署名します。
+clangからは`-Wl,--manifest,manifest.toml`で指定できます。後からsidecarを変更・削除しても、
+ELF内の署名対象宣言は変わりません。`--no-sign` / `-r`との併用は拒否し、LLDへ転送しません。
+出力でmanifest本体やそのhard linkを置換する指定も拒否します。
+不正なTOMLや署名の失敗は既存ELFを維持したまま失敗します。暗黙のmanifest探索は行いません。
+形式は[埋め込みmanifest](elf-signature-v1.md#embedded-manifest-declarations)を参照してください。
+要求Capabilityの認可や実行時gateの強制まで完成したものではありません。
+
 子ツールの終了コードを返し、signal終了は128+signalです。起動・SDK・公開の失敗は1です。
 `-v`は実行コマンド、`--dry-run`は実行・出力作成なしで予定コマンドを表示します。
 `--version`はSDKを要求せずLLDのversionを表示します。
@@ -97,5 +105,5 @@ cleanupまで全gateが成功しました。321では通常PATHのclang / ld / l
 USER_INSTALL_DEVELOPER_TOOLS=yで既存のbuild済み入力を配置し、SDK生成は行いません。
 詳細はrootのdocs/services/posix-native-development-tools.mdです。
 
-ELF内manifest宣言、実行時の共通署名検証とCapability同意、ネットワーク依存を含むmsign、
+埋め込み宣言の共通認可policyへの接続、実行時の共通署名検証とCapability同意、ネットワーク依存を含むmsign、
 完全なPOSIX環境は引き続き未完了です。msign verifyの改変拒否は実行認可gateの完成とは区別します。

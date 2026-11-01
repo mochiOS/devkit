@@ -38,7 +38,19 @@ pub fn sign(args: ElfSignArgs) -> Result<()> {
     if let Some(key_path) = args.key.as_deref() {
         reject_same_file(output, key_path)?;
     }
-    let input = read_regular_file(&args.elf)?;
+    let input = read_regular_file(&args.elf, elf_signature::MAX_ELF_LEN)?;
+    let embedded = args
+        .manifest
+        .as_deref()
+        .map(|path| -> Result<Vec<u8>> {
+            reject_same_file(output, path)?;
+            let bytes = read_regular_file(path, elf_signature::MAX_MANIFEST_LEN)?;
+            let declaration = std::str::from_utf8(&bytes).context("manifest must be UTF-8")?;
+            let _: toml::Value = toml::from_str(declaration).context("invalid manifest.toml")?;
+            elf_signature::embed_manifest(&input, declaration)
+        })
+        .transpose()?;
+    let input = embedded.as_deref().unwrap_or(&input);
     let signing_key = if args.adhoc {
         None
     } else {
@@ -49,8 +61,8 @@ pub fn sign(args: ElfSignArgs) -> Result<()> {
         Some(crypto::read_private_key(key_path)?)
     };
     let signed = match &signing_key {
-        None => elf_signature::sign_adhoc(&input)?,
-        Some(key) => elf_signature::sign_ed25519(&input, key)?,
+        None => elf_signature::sign_adhoc(input)?,
+        Some(key) => elf_signature::sign_ed25519(input, key)?,
     };
 
     // Verify the exact bytes that will be persisted. This catches accidental
@@ -68,7 +80,7 @@ pub fn sign(args: ElfSignArgs) -> Result<()> {
 }
 
 pub fn verify(args: ElfVerifyArgs) -> Result<()> {
-    let bytes = read_regular_file(&args.elf)?;
+    let bytes = read_regular_file(&args.elf, elf_signature::MAX_ELF_LEN)?;
     let decoded = elf_signature::decode(&bytes)?;
     if decoded.kind == SignatureKind::AdHoc && args.public_key.is_some() {
         bail!("--public-key was provided, but the ELF contains an AdHoc signature");
@@ -104,7 +116,7 @@ pub fn verify(args: ElfVerifyArgs) -> Result<()> {
     Ok(())
 }
 
-fn read_regular_file(path: &Path) -> Result<Vec<u8>> {
+fn read_regular_file(path: &Path, limit: usize) -> Result<Vec<u8>> {
     let path_metadata = fs::symlink_metadata(path)
         .with_context(|| format!("failed to inspect ELF: {}", path.display()))?;
     if path_metadata.file_type().is_symlink() {
@@ -116,8 +128,8 @@ fn read_regular_file(path: &Path) -> Result<Vec<u8>> {
     if !path_metadata.is_file() {
         bail!("ELF input is not a regular file: {}", path.display());
     }
-    if path_metadata.len() > elf_signature::MAX_ELF_LEN as u64 {
-        bail!("ELF exceeds the v1 size limit");
+    if path_metadata.len() > limit as u64 {
+        bail!("input exceeds the size limit ({limit} bytes)");
     }
     let mut file =
         fs::File::open(path).with_context(|| format!("failed to open ELF: {}", path.display()))?;
@@ -127,8 +139,8 @@ fn read_regular_file(path: &Path) -> Result<Vec<u8>> {
     if !opened_metadata.is_file() {
         bail!("opened ELF is not a regular file: {}", path.display());
     }
-    if opened_metadata.len() > elf_signature::MAX_ELF_LEN as u64 {
-        bail!("ELF exceeds the v1 size limit");
+    if opened_metadata.len() > limit as u64 {
+        bail!("input exceeds the size limit ({limit} bytes)");
     }
     #[cfg(unix)]
     if !metadata_identifies_same_file(&path_metadata, &opened_metadata) {
@@ -176,13 +188,13 @@ fn read_regular_file(path: &Path) -> Result<Vec<u8>> {
 
 fn reject_same_file(left: &Path, right: &Path) -> Result<()> {
     if left == right {
-        bail!("ELF output must not replace the private key");
+        bail!("ELF output must not replace its signing key or manifest input");
     }
     let (Ok(left_metadata), Ok(right_metadata)) = (fs::metadata(left), fs::metadata(right)) else {
         return Ok(());
     };
     if metadata_identifies_same_file(&left_metadata, &right_metadata) {
-        bail!("ELF output must not replace the private key");
+        bail!("ELF output must not replace its signing key or manifest input");
     }
     Ok(())
 }
@@ -314,6 +326,7 @@ mod tests {
 
         sign(ElfSignArgs {
             elf: input.clone(),
+            manifest: None,
             adhoc: true,
             key: None,
             output: Some(adhoc.clone()),
@@ -330,6 +343,7 @@ mod tests {
         crypto::write_public_key(&public_key, &verifying_key).unwrap();
         sign(ElfSignArgs {
             elf: input,
+            manifest: None,
             adhoc: false,
             key: Some(private_key),
             output: Some(keyed.clone()),
@@ -360,6 +374,7 @@ mod tests {
         symlink(&input, &input_link).unwrap();
         assert!(sign(ElfSignArgs {
             elf: input_link,
+            manifest: None,
             adhoc: true,
             key: None,
             output: None,
@@ -371,6 +386,7 @@ mod tests {
         let original_key = fs::read(&private_key).unwrap();
         assert!(sign(ElfSignArgs {
             elf: input,
+            manifest: None,
             adhoc: false,
             key: Some(private_key.clone()),
             output: Some(private_key.clone()),

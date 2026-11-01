@@ -44,6 +44,10 @@ pub enum ElfCommand {
 pub struct ElfSignArgs {
     pub elf: PathBuf,
 
+    /// Embed these exact manifest.toml declarations before signing.
+    #[arg(long)]
+    pub manifest: Option<PathBuf>,
+
     #[arg(long, required_unless_present = "key", conflicts_with = "key")]
     pub adhoc: bool,
 

@@ -16,6 +16,7 @@ pub struct Options {
     pub compiler_runtime: Option<String>,
     pub key: Option<PathBuf>,
     pub public_key: Option<PathBuf>,
+    pub manifest: Option<PathBuf>,
     pub sign: bool,
     pub relocatable: bool,
     pub startup: bool,
@@ -39,6 +40,7 @@ impl Options {
             compiler_runtime: None,
             key: None,
             public_key: None,
+            manifest: None,
             sign: true,
             relocatable: false,
             startup: true,
@@ -116,6 +118,7 @@ impl Options {
                 }
                 b"--sign-key" => result.key = Some(value()?.into()),
                 b"--public-key" => result.public_key = Some(value()?.into()),
+                b"--manifest" => result.manifest = Some(value()?.into()),
                 b"--output" | b"-o" if joined.is_some() || bytes == name => {
                     result.output = value()?.into()
                 }
@@ -174,6 +177,11 @@ impl Options {
         if (!result.sign || result.relocatable) && result.key.is_some() {
             return Err(Error::diagnostic(
                 "keyed signing conflicts with --no-sign or -r",
+            ));
+        }
+        if (!result.sign || result.relocatable) && result.manifest.is_some() {
+            return Err(Error::diagnostic(
+                "--manifest requires a signed final ELF, and conflicts with --no-sign or -r",
             ));
         }
         Ok(result)
