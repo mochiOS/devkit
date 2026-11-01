@@ -46,7 +46,8 @@ pub fn sign(args: ElfSignArgs) -> Result<()> {
             reject_same_file(output, path)?;
             let bytes = read_regular_file(path, elf_signature::MAX_MANIFEST_LEN)?;
             let declaration = std::str::from_utf8(&bytes).context("manifest must be UTF-8")?;
-            let _: toml::Value = toml::from_str(declaration).context("invalid manifest.toml")?;
+            mochios_package_manifest::parse_manifest_checked(declaration)
+                .map_err(|error| anyhow::anyhow!("invalid manifest.toml: {error:?}"))?;
             elf_signature::embed_manifest(&input, declaration)
         })
         .transpose()?;

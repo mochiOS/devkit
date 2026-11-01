@@ -177,7 +177,10 @@ the embedded declaration format below.
 `msign elf sign program --adhoc --manifest manifest.toml` embeds the exact input
 declaration before computing the existing v1 signature. Keyed signing accepts
 the same option. The input must be a bounded regular file containing valid UTF-8
-TOML. Its maximum text length is 65536 bytes; empty text and NUL bytes are rejected.
+TOML satisfying `mochios-package-manifest`, the shared userspace schema also
+re-exported by platform::package. This rejects duplicate keys, malformed escapes
+and invalid declaration types before signing. Its maximum text length is 65536
+bytes; empty text and NUL bytes are rejected.
 The signer refuses symlink inputs and output aliases of the manifest or key.
 No manifest is implicitly discovered in the working directory.
 
