@@ -1858,6 +1858,7 @@ version = "0.1.0"
 [[package]]
 name = "mochios-certificate"
 version = "0.1.0"
+source = "git+https://github.com/mochiOS/syscalls?rev=af217f5ca6a585110aabac813eb46dff8ccb7bfc#af217f5ca6a585110aabac813eb46dff8ccb7bfc"
 dependencies = [
  "ed25519-dalek",
  "sha2",
@@ -5168,10 +5169,6 @@ version = "0.1.0"
 
 [[patch.unused]]
 name = "mnu"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "mochios-mdriver-protocol"
 version = "0.1.0"
 
 [[patch.unused]]

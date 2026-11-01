@@ -157,3 +157,16 @@ They include the production codec directly to check internal wire/bounds cases.
 msign's CLI tests additionally exercise the library through its public API.
 The wire format and signing policy are unchanged. Services can now consume the
 same verifier; execution-gate integration is still pending.
+
+`verify_with_limits` bounds image bytes, header counts, and cumulative NOTE/name
+scans, including repeated references to overlapping file ranges. `verify` uses
+the default budgets. These are consumer resource limits, not a new wire format
+or permission to fall back to unsigned execution. Header/reference allocation
+is fallible, and the signing message uses a fixed 96-byte array.
+
+`verify_image` additionally returns a borrowed `VerifiedImage` with the SHA-256
+of all original file bytes, including the signature fields. Its `source_digest`
+is suitable for binding that snapshot to native execution; the normalized
+`signature().digest` is not interchangeable with it. `SuppliedPublicKey` only
+resolves a caller-provided verification key and confers no developer trust.
+The codec suite now has 14 cases covering these measurements and scan bounds.
