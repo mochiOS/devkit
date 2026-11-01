@@ -81,6 +81,14 @@ msignは`--no-default-features`でオンライン証明書取得だけを省い�
 通常のネットワーク依存を含むnative buildには、mioのselector / wakerとsocket2の移植が
 引き続き必要です。[ビルド構成と共通公開処理](elf-signature-v1.md#native-build-profile)を参照してください。
 
-通常clangのdefault driver設定、製品イメージへのツール配置、ELF内manifest宣言、実行時の
-署名検証と共通Capability同意の接続はまだありません。この段階で通常の
-`clang main.c -o main; ./main`や完全なPOSIX環境を完成扱いにはしません。
+mochiOS専用clang ToolChainのdefault設定も追加し、診断SDKの実clangへ追加target / SDK引数なしで
+`clang main.c -o main`を渡す経路を確認しました。stdio / stdintを含むCを共通ldでリンク・自動署名し、
+msign verifyのAdHoc判定、`./main`のstdoutと終了コード37が一致しています。
+clangのpipe出力を失っていたnewlibの終了callback登録上限はソースで修正し、検証用clangへリンクしました。
+供給SDKは変更・再生成しておらず、一般アプリへの同修正の反映はSDK管理側の取り込みが必要です。
+記録は`out/checks/mochios-exit317-clang-positive.png`、詳細は
+`docs/services/posix-native-clang-pipeline.md`です。
+
+このfixtureの後半は最終PASSなしで約900秒後に終了しており、nativeの失敗経路まで成功とは扱いません。
+製品イメージへのツール配置、ELF内manifest宣言、実行時の署名検証と共通Capability同意の接続、
+完全なPOSIX環境も未完了です。
