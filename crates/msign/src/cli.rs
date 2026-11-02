@@ -84,7 +84,24 @@ pub enum PackageCommand {
     Sign(PackageSignArgs),
     SignAuto(PackageSignAutoArgs),
     Verify(PackageVerifyArgs),
+    BindBuiltIn(BindBuiltInArgs),
     BuiltInRecord(BuiltInRecordArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct BindBuiltInArgs {
+    pub manifest: PathBuf,
+    #[arg(long)]
+    pub rootfs: PathBuf,
+    #[arg(long)]
+    pub output: PathBuf,
+    /// Explicit build-namespace mapping, for example /bin=/system/bin.
+    #[arg(long)]
+    pub map_path: Vec<String>,
+    /// Exact declarations omitted by this build configuration. Missing inputs
+    /// are otherwise errors, never implicitly optional.
+    #[arg(long)]
+    pub exclude_binary: Vec<String>,
 }
 
 #[derive(Debug, Args)]

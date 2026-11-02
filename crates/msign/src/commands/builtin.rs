@@ -1,56 +1,41 @@
 use std::collections::BTreeSet;
 use std::fs;
+use std::io::Read;
+use std::path::Path;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use mochios_signature_protocol::{InstallProvenance, InstallRecord, VerifiedResponse};
-use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 use crate::cli::BuiltInRecordArgs;
 
 const BUILT_IN_DEVELOPER_ID: &str = "org.mochios.system";
 
-#[derive(Deserialize)]
-struct ManifestDocument {
-    package: ManifestPackage,
-    #[serde(default)]
-    binary: Vec<ManifestBinary>,
-}
-
-#[derive(Deserialize)]
-struct ManifestPackage {
-    id: String,
-    provenance: String,
-}
-
-#[derive(Deserialize)]
-struct ManifestBinary {
-    #[serde(default)]
-    requires: Vec<String>,
+pub(super) fn read_manifest(
+    path: &Path,
+) -> Result<(Vec<u8>, mochios_package_manifest::PackageManifest)> {
+    let file =
+        fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+    if !file.metadata()?.is_file() {
+        bail!("manifest is not a regular file");
+    }
+    let mut manifest_bytes = Vec::new();
+    file.take(mochios_package_manifest::MAX_MANIFEST_LEN as u64 + 1)
+        .read_to_end(&mut manifest_bytes)?;
+    let manifest_text = std::str::from_utf8(&manifest_bytes)
+        .with_context(|| format!("{} is not UTF-8", path.display()))?;
+    let manifest = mochios_package_manifest::parse_manifest_checked(manifest_text)
+        .map_err(|e| anyhow::anyhow!("invalid manifest {}: {e:?}", path.display()))?;
+    if manifest.install_provenance.as_deref() != Some("built-in") {
+        bail!("built-in record requires package.provenance = \"built-in\"");
+    }
+    Ok((manifest_bytes, manifest))
 }
 
 pub(crate) fn record(args: BuiltInRecordArgs) -> Result<()> {
-    let manifest_bytes = fs::read(&args.manifest)
-        .with_context(|| format!("failed to read {}", args.manifest.display()))?;
-    let manifest_text = std::str::from_utf8(&manifest_bytes)
-        .with_context(|| format!("{} is not UTF-8", args.manifest.display()))?;
-    let manifest: ManifestDocument = toml::from_str(manifest_text)
-        .with_context(|| format!("failed to parse {}", args.manifest.display()))?;
-    if manifest.package.provenance != "built-in" {
-        bail!("built-in record requires package.provenance = \"built-in\"");
-    }
-    if manifest.package.id.is_empty()
-        || manifest
-            .package
-            .id
-            .bytes()
-            .any(|byte| byte == 0 || byte.is_ascii_control())
-    {
-        bail!("invalid built-in Package ID");
-    }
-
+    let (manifest_bytes, manifest) = read_manifest(&args.manifest)?;
     let mut capabilities = BTreeSet::new();
-    for binary in manifest.binary {
+    for binary in manifest.binaries {
         for capability in binary.requires {
             if capability.is_empty()
                 || capability
@@ -73,7 +58,7 @@ pub(crate) fn record(args: BuiltInRecordArgs) -> Result<()> {
         manifest_digest: digest,
         package_digest: digest,
         developer_id: BUILT_IN_DEVELOPER_ID,
-        verified_package_id: &manifest.package.id,
+        verified_package_id: &manifest.package_id,
         allowed_capabilities: &capability_refs,
     };
     let record = InstallRecord {

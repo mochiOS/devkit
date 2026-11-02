@@ -1859,7 +1859,6 @@ version = "0.1.0"
 [[package]]
 name = "mochios-certificate"
 version = "0.1.0"
-source = "git+https://github.com/mochiOS/syscalls?rev=af217f5ca6a585110aabac813eb46dff8ccb7bfc#af217f5ca6a585110aabac813eb46dff8ccb7bfc"
 dependencies = [
  "ed25519-dalek",
  "sha2",
@@ -2019,7 +2018,7 @@ dependencies = [
  "sha2",
  "tar",
  "tempfile",
- "toml 0.8.23",
+ "toml 1.1.6+spec-1.1.0",
 ]
 
 [[package]]

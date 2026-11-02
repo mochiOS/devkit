@@ -46,6 +46,9 @@ fn main() -> Result<()> {
             command: PackageCommand::Verify(args),
         } => commands::mpkg::verify(args),
         Command::Package {
+            command: PackageCommand::BindBuiltIn(args),
+        } => commands::builtin_bind::bind(args),
+        Command::Package {
             command: PackageCommand::BuiltInRecord(args),
         } => commands::builtin::record(args),
         Command::Identity {

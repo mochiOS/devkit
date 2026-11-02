@@ -123,3 +123,36 @@ because verification metadata is absent.
 Development fixture keys are for tests and local fixtures only. They are not
 production trust roots and must not be copied into a user identity store for
 real software distribution.
+
+## Binding built-in code during image construction
+
+The host tool binds binary declarations to the completed, build-owned rootfs:
+
+```bash
+msign package bind-built-in manifest.toml \
+  --rootfs out/mmake/image/rootfs.new \
+  --map-path /bin=/system/bin \
+  --output out/mmake/image/rootfs.new/system/packages/example/manifest.toml
+msign package built-in-record \
+  out/mmake/image/rootfs.new/system/packages/example/manifest.toml \
+  --output out/mmake/image/rootfs.new/system/packages/example/verification.bin
+```
+
+Each selected binary receives a file binding containing the complete file's
+SHA-256, size and actual Unix mode. Existing bindings must already match; the
+command does not replace them with a new hash after a mismatch. It requires
+nonempty regular code files and rejects paths escaping the staging tree or an
+output aliasing a code file. Measurement assumes exclusive ownership of the
+staging tree. Manifest publication uses the shared private-directory helper.
+
+Mappings are explicit, component-aligned prefixes, with the longest match
+selected. `--exclude-binary /absolute/declared/path` removes an exact declaration
+disabled by the build configuration; other missing inputs are errors. The
+rootfs script uses this only for the optional performance tool and filesystem
+selftests. It copies application code before binding its manifest.
+
+The shared manifest schema validates both commands. Standard TOML serialization
+preserves other configuration values, including prompt and application settings;
+comments and formatting are not retained. The resulting record is still built-in
+metadata for the verified System image. Neither this build command nor a hash
+alone grants execution rights or makes caller-supplied metadata trusted.
