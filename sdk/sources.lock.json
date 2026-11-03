@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "version": "27.0-dp.1-shared.2",
+  "version": "27.0-dp.1-shared.3",
   "target": "x86_64-unknown-mochios",
   "abi": "mochios-1",
   "host": "x86_64-linux-gnu-ubuntu24.04",
@@ -110,11 +110,11 @@
   "sources": {
     "user": {
       "url": "https://github.com/mochiOS/syscalls.git",
-      "commit": "1fd10582de1d866939ee3e60a921ba71d186d1d3"
+      "commit": "6a9a3dd2142012d4624f2decef570fcb522917f6"
     },
     "mnu": {
       "url": "https://github.com/mochiOS/mnu.git",
-      "commit": "57b32ac89aad5f359d4e22d695830f05467e57b8"
+      "commit": "8a25154f7d238799c8e146c91fe57373796c1f48"
     },
     "libc": {
       "url": "https://github.com/mochiOS/libc.git",
