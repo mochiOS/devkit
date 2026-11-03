@@ -38,20 +38,3 @@ jobs:
           name: shared-sdk-build-logs
           path: out/shared-sdk/logs
           retention-days: 14
-  publish:
-    needs: build
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: shared-sdk
-          path: out/shared-sdk/releases
-      - name: Verify checksums and publish a distinct SDK prerelease
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 sdk/publish.py --repository "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA"
