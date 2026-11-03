@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(name = "komeup")]
 #[command(version)]
-#[command(about = "Kome toolchain installer")]
+#[command(about = "Kome toolchain and mochiOS SDK manager")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -11,6 +11,12 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
+    /// Manage separately versioned mochiOS C/C++ SDKs.
+    Sdk {
+        #[command(subcommand)]
+        command: crate::sdk::SdkCommand,
+    },
+
     Install {
         #[arg(long, default_value = "stable")]
         channel: String,

@@ -2,6 +2,7 @@ mod cli;
 mod commands;
 mod config;
 mod github;
+mod sdk;
 
 use anyhow::Result;
 use clap::Parser;
@@ -11,6 +12,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Command::Sdk { command } => sdk::run(command)?,
         Command::Install { channel, force } => {
             commands::install::run(&channel, force)?;
         }
