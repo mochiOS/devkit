@@ -177,10 +177,24 @@ def build_builtins(sources, sdk, out, env, jobs, policy):
 def prepared_sources(lock, sources, out):
     """Patch disposable copies, keeping fetched Git inputs pristine and reviewable."""
     prepared={}
+    work=out/'prepared'
+    work.mkdir(parents=True,exist_ok=True)
+    # A cached working copy must never retain source from a previous lock.
+    # Patch changes also require pristine input, rather than patching an old
+    # already-patched tree whose final contents are not the requested recipe.
     for name in ['user','newlib','llvm']:
-        target=out/'prepared'/name
-        if not target.exists():
+        target=work/name
+        stamp=work/('.'+name+'-inputs.json')
+        component_patches={key:value for key,value in lock['patches'].items()
+            if ('user' if key.startswith('syscalls') else 'newlib' if key.startswith('newlib') else 'llvm')==name}
+        identity=dict(format=1,source=lock['llvm'] if name=='llvm' else lock['sources'][name],patches=component_patches)
+        if target.is_symlink() or stamp.is_symlink():raise ValueError('Invalid prepared source path: '+name)
+        previous=json.loads(stamp.read_text()) if stamp.is_file() else None
+        if not target.is_dir() or previous!=identity:
+            if target.exists():shutil.rmtree(target)
+            stamp.unlink(missing_ok=True)
             shutil.copytree(sources[name],target,ignore=shutil.ignore_patterns('.git','target'))
+            stamp.write_text(json.dumps(identity,sort_keys=True)+'\n')
         prepared[name]=target
     # This recipe owns the disposable builder script; refresh it when patch versions change.
     copy_stable(sources['user']/'scripts/build-newlib.sh',prepared['user']/'scripts/build-newlib.sh')
