@@ -28,8 +28,12 @@ def main():
     """Validate real outputs, a failed transactional link, dependency imports and a relocated SDK path."""
     sdk=Path(sys.argv[1]).resolve();build=Path(sys.argv[2]).resolve()
     os.environ['LD_LIBRARY_PATH']=str(sdk/'host/lib')
-    objects=[p for p in build.rglob('*') if p.is_file() and not p.is_symlink() and (p.name=='sdk_probe' or p.name.startswith('libsdk_probe_shared.so'))]
+    objects=[p for p in build.rglob('*') if p.is_file() and not p.is_symlink() and (p.name in {'sdk_probe', 'sdk_resolver_probe'} or p.name.startswith(('libsdk_probe_shared.so', 'libsdk_resolver_probe_shared.so')))]
     if len(objects)<2:raise ValueError('Missing C++ executable/shared probe outputs')
+    resolver_available=(sdk/'sysroot/include/resolv.h').is_file()
+    if resolver_available:
+        if not any(p.name=='sdk_resolver_probe' for p in objects) or not any(p.name.startswith('libsdk_resolver_probe_shared.so') for p in objects):
+            raise ValueError('Resolver headers require executable/shared ABI probes')
     for path in objects:inspect(sdk,path)
     with tempfile.TemporaryDirectory(prefix='sdk checks ',dir=build) as tmp:
         tmp=Path(tmp);source=tmp/'source.c';output=tmp/'libcheck.so'
@@ -51,6 +55,7 @@ def main():
         subprocess.run(['cmake','-S',Path(__file__).resolve().parent/'probe','-B',tmp/'relocated build','-DCMAKE_TOOLCHAIN_FILE='+str(alias/'share/cmake/mochios.cmake')],env=relocated_env,check=True)
         subprocess.run(['cmake','--build',tmp/'relocated build','--parallel','2'],env=relocated_env,check=True)
     report={'format':1,'compile_link_passed':True,'runtime_tested':False,'checks':['cxx23','thread-and-exception-symbols','elf-wx-relro','no-host-runtime','unknown-import-rejection','atomic-link-output','runtime-imports','declared-dso-imports','paths-with-spaces']}
+    if resolver_available:report['checks'].append('native-resolver-c-abi')
     (build/'verification.json').write_text(json.dumps(report,indent=2)+'\n')
     print('SDK compile/link/ELF checks passed; mochiOS runtime execution not performed.')
 

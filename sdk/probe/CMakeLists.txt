@@ -30,3 +30,10 @@ if(LIBRARY_PROBE)
     target_link_directories(library_probe PRIVATE /work/stage/usr/lib /deps/usr/lib)
     target_link_libraries(library_probe PRIVATE ${LIBRARY_LINKS})
 endif()
+# Older SDKs do not advertise the resolver API. Once the target header is
+# installed, both executable exports and shared-library imports must link.
+if(EXISTS "${CMAKE_SYSROOT}/include/resolv.h")
+    add_library(sdk_resolver_probe_shared SHARED resolver.c)
+    add_executable(sdk_resolver_probe resolver-main.c)
+    target_link_libraries(sdk_resolver_probe PRIVATE sdk_resolver_probe_shared)
+endif()
