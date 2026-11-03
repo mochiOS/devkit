@@ -1,0 +1,139 @@
+{
+  "format": 1,
+  "version": "27.0-dp.1-shared.1",
+  "target": "x86_64-unknown-mochios",
+  "abi": "mochios-1",
+  "host": "x86_64-linux-gnu-ubuntu24.04",
+  "rust_toolchain": "nightly-2026-05-14",
+  "host_packages": [
+    {
+      "name": "clang-18",
+      "version": "1:18.1.3-1ubuntu1",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/l/llvm-toolchain-18/clang-18_18.1.3-1ubuntu1_amd64.deb",
+      "sha256": "628b16701014ef7ad648380b20ea74b90dd543857f933b3e34d2fc042783de25"
+    },
+    {
+      "name": "libllvm18",
+      "version": "1:18.1.3-1ubuntu1",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/l/llvm-toolchain-18/libllvm18_18.1.3-1ubuntu1_amd64.deb",
+      "sha256": "af6197096ce3b89aab86de59f01c1b5feb008b2ae1514a03906c0664edb8b0b1"
+    },
+    {
+      "name": "libclang-cpp18",
+      "version": "1:18.1.3-1ubuntu1",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/l/llvm-toolchain-18/libclang-cpp18_18.1.3-1ubuntu1_amd64.deb",
+      "sha256": "e91eda104813ee0468d145d010a4a4e142401f3f17f9a65596c66d416298d018"
+    },
+    {
+      "name": "libclang-common-18-dev",
+      "version": "1:18.1.3-1ubuntu1",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/l/llvm-toolchain-18/libclang-common-18-dev_18.1.3-1ubuntu1_amd64.deb",
+      "sha256": "d41631bb752815a8196261d1030c096591c59678c8adfbf2e6a740a691b49e80"
+    },
+    {
+      "name": "llvm-18",
+      "version": "1:18.1.3-1ubuntu1",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/l/llvm-toolchain-18/llvm-18_18.1.3-1ubuntu1_amd64.deb",
+      "sha256": "139cb82e16e75fcdd4a56562804ff9bfb482b65d0929580d621d28088075a27e"
+    },
+    {
+      "name": "lld-18",
+      "version": "1:18.1.3-1ubuntu1",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/l/llvm-toolchain-18/lld-18_18.1.3-1ubuntu1_amd64.deb",
+      "sha256": "c574594d714bf445f4c2323fa99374c05b79be09a3899edbf9d4b7265c9ccc57"
+    },
+    {
+      "name": "libmd0",
+      "version": "1.1.0-2build1.1",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libm/libmd/libmd0_1.1.0-2build1.1_amd64.deb",
+      "sha256": "e5ba01d3c41f256aaf57ec59aa0554857162e3e7f97cdfbff1ed2c0e8d720ee7"
+    },
+    {
+      "name": "libxml2",
+      "version": "2.9.14+dfsg-1.3ubuntu3.10",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxml2/libxml2_2.9.14+dfsg-1.3ubuntu3.10_amd64.deb",
+      "sha256": "c5a065f85c1e6f605741e365e40cad71c3ceb0e85e2791400bd35b8896e12ad1"
+    },
+    {
+      "name": "libffi8",
+      "version": "3.4.6-1build1",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libf/libffi/libffi8_3.4.6-1build1_amd64.deb",
+      "sha256": "637e6a7744de08cd331a41f4efd0d24e6ea9064843dea9d1c6ca87bdb5f038a2"
+    },
+    {
+      "name": "libicu74",
+      "version": "74.2-1ubuntu3.1",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu74_74.2-1ubuntu3.1_amd64.deb",
+      "sha256": "c9a70989678660eed9a1e904c74fa043da8bec8e2036856fc16e31ced79b04f8"
+    },
+    {
+      "name": "liblzma5",
+      "version": "5.6.1+really5.4.5-1ubuntu0.4",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/x/xz-utils/liblzma5_5.6.1+really5.4.5-1ubuntu0.4_amd64.deb",
+      "sha256": "5bcf5da2339331e21d3f42a831e82c61c54c6b2f29804010e8d59abd0ae52167"
+    },
+    {
+      "name": "libbsd0",
+      "version": "0.12.1-1build1.1",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libb/libbsd/libbsd0_0.12.1-1build1.1_amd64.deb",
+      "sha256": "f3857b0863ac5cfd4263e9bf6cfb1d4be88d5321e4070d5bc2b62b0949e6c86f"
+    },
+    {
+      "name": "libzstd1",
+      "version": "1.5.5+dfsg2-2build1.1",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libz/libzstd/libzstd1_1.5.5+dfsg2-2build1.1_amd64.deb",
+      "sha256": "dfcf25061e07aad7efd3f4f880ba5ad4d4d09ebe7fc8cc77ab6b8a161d6d4727"
+    },
+    {
+      "name": "libtinfo6",
+      "version": "6.4+20240113-1ubuntu2.2",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/n/ncurses/libtinfo6_6.4+20240113-1ubuntu2.2_amd64.deb",
+      "sha256": "b67a6df2bdab61d273eabebd208bb6a3fb12618a390a067e1ee305a409ff03d9"
+    },
+    {
+      "name": "libedit2",
+      "version": "3.1-20230828-1build1",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libe/libedit/libedit2_3.1-20230828-1build1_amd64.deb",
+      "sha256": "3afbc8ddf835049dd4d88275b9d13680e4c4cdd59e191cbd63424152cc08e00e"
+    },
+    {
+      "name": "zlib1g",
+      "version": "1:1.3.dfsg-3.1ubuntu2.3",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/z/zlib/zlib1g_1.3.dfsg-3.1ubuntu2.3_amd64.deb",
+      "sha256": "376249c8de139568221dbb242318cc8cb8f02299e3a62b7432948e1754fbddf9"
+    }
+  ],
+  "llvm": {
+    "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/llvm-project-18.1.8.src.tar.xz",
+    "sha256": "0b58557a6d32ceee97c8d533a59b9212d87e0fc4d2833924eb6c611247db2f2a"
+  },
+  "sources": {
+    "user": {
+      "url": "https://github.com/mochiOS/syscalls.git",
+      "commit": "1fd10582de1d866939ee3e60a921ba71d186d1d3"
+    },
+    "mnu": {
+      "url": "https://github.com/mochiOS/mnu.git",
+      "commit": "57b32ac89aad5f359d4e22d695830f05467e57b8"
+    },
+    "libc": {
+      "url": "https://github.com/mochiOS/libc.git",
+      "commit": "a3c482e222b53700a09d21377633836e2fee07be"
+    },
+    "mboot": {
+      "url": "https://github.com/mochiOS/services.git",
+      "commit": "2c756be6014dace6cdba0f8be86efadef255370c"
+    },
+    "newlib": {
+      "url": "https://github.com/mirror/newlib-cygwin.git",
+      "commit": "935d5dae0f0309f420ba85f284b226db67c25740"
+    }
+  },
+  "patches": {
+    "libcxxabi-18-pthread-thread-atexit.patch": "71d011c68280251466765344b1a0729ef37b538fcc2c23c40ae2f3449a6c2590",
+    "libcxx-18-newlib-regex-masks.patch": "6e1ac79fd0407ac1746920ad73dc9c38fab51819ecf99d5288306714c09b0a54",
+    "newlib-mochios.patch": "5fcd63b7a02511ec74a4de4bce9098fd554e09344b6b091daae8e5faea7dcd15",
+    "syscalls-clang-sdk.patch": "c36f2fcd1a68a9f4e6adc9025e3e6b7e01034ab7b938ad9430a13e1b8d07a5ad"
+  },
+  "runtime_cargo_lock_sha256": "e7aa772cf03ee321068925ed8e6b70a75e947bdfc99c2330c0048e1efd9ae555"
+}

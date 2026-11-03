@@ -1,0 +1,1054 @@
+diff --git a/newlib/libc/include/pthread.h b/newlib/libc/include/pthread.h
+index 05ff31579..8d17fca69 100644
+--- a/newlib/libc/include/pthread.h
++++ b/newlib/libc/include/pthread.h
+@@ -80,12 +80,12 @@ int	pthread_mutex_lock (pthread_mutex_t *__mutex);
+ int	pthread_mutex_trylock (pthread_mutex_t *__mutex);
+ int	pthread_mutex_unlock (pthread_mutex_t *__mutex);
+ 
+-#if defined(_POSIX_TIMEOUTS)
++#if defined(_POSIX_TIMEOUTS) || defined(__mochios__)
+ 
+ int	pthread_mutex_timedlock (pthread_mutex_t *__mutex,
+ 				 const struct timespec *__timeout);
+ 
+-#endif /* _POSIX_TIMEOUTS */
++#endif /* _POSIX_TIMEOUTS || __mochios__ */
+ 
+ #if (__GNU_VISIBLE || __POSIX_VISIBLE >= 202405)
+ /* The Issue 8 standard adds pthread_mutex_clocklock() */
+@@ -140,9 +140,10 @@ int pthread_cond_clockwait(pthread_cond_t *__restrict,
+ 				   const struct timespec *__restrict);
+ #endif /* __GNU_VISIBLE || __POSIX_VISIBLE >= 202405 */
+  
+-#if defined(_POSIX_THREAD_PRIORITY_SCHEDULING)
++#if defined(_POSIX_THREAD_PRIORITY_SCHEDULING) || defined(__mochios__)
+ 
+ /* Thread Creation Scheduling Attributes, P1003.1c/Draft 10, p. 120 */
++/* mochiOS exposes normal-class attributes without advertising FIFO/RR support. */
+ 
+ int	pthread_attr_setscope (pthread_attr_t *__attr, int __contentionscope);
+ int	pthread_attr_getscope (const pthread_attr_t *__attr,
+@@ -155,7 +156,7 @@ int	pthread_attr_setschedpolicy (pthread_attr_t *__attr, int __policy);
+ int	pthread_attr_getschedpolicy (const pthread_attr_t *__attr,
+ 				     int *__policy);
+ 
+-#endif /* defined(_POSIX_THREAD_PRIORITY_SCHEDULING) */
++#endif /* _POSIX_THREAD_PRIORITY_SCHEDULING || __mochios__ */
+ 
+ int	pthread_attr_setschedparam (pthread_attr_t *__attr,
+ 				    const struct sched_param *__param);
+diff --git a/newlib/libc/include/pty.h b/newlib/libc/include/pty.h
+new file mode 100644
+index 000000000..7ec9b9cfe
+--- /dev/null
++++ b/newlib/libc/include/pty.h
+@@ -0,0 +1,14 @@
++#ifndef _PTY_H_
++#define _PTY_H_
++
++#include <sys/cdefs.h>
++struct termios;
++struct winsize;
++
++__BEGIN_DECLS
++
++int openpty(int *, int *, char *, const struct termios *, const struct winsize *);
++
++__END_DECLS
++
++#endif /* _PTY_H_ */
+diff --git a/newlib/libc/include/stdio.h b/newlib/libc/include/stdio.h
+index 77966578d..a55579483 100644
+--- a/newlib/libc/include/stdio.h
++++ b/newlib/libc/include/stdio.h
+@@ -381,8 +381,8 @@ int	dprintf (int, const char *__restrict, ...)
+                _ATTRIBUTE ((__format__ (__printf__, 2, 3)));
+ #  endif
+ FILE *	fmemopen (void *__restrict, size_t, const char *__restrict);
+-/* getdelim - see __getdelim for now */
+-/* getline - see __getline for now */
++ssize_t getdelim (char **__restrict, size_t *__restrict, int, FILE *__restrict);
++ssize_t getline (char **__restrict, size_t *__restrict, FILE *__restrict);
+ FILE *	open_memstream (char **, size_t *);
+ int	vdprintf (int, const char *__restrict, __VALIST)
+                _ATTRIBUTE ((__format__ (__printf__, 2, 0)));
+diff --git a/newlib/libc/include/sys/_default_fcntl.h b/newlib/libc/include/sys/_default_fcntl.h
+index b3222d452..8eb021281 100644
+--- a/newlib/libc/include/sys/_default_fcntl.h
++++ b/newlib/libc/include/sys/_default_fcntl.h
+@@ -195,7 +195,11 @@ struct flock {
+ 	short	l_whence;	/* flag to choose starting offset */
+ 	long	l_start;	/* relative offset, in bytes */
+ 	long	l_len;		/* length, in bytes; 0 means lock to EOF */
++#ifdef __mochios__
++	int	l_pid;		/* mochiOS pid_t; returned with F_GETLK */
++#else
+ 	short	l_pid;		/* returned with F_GETLK */
++#endif
+ 	short	l_xxx;		/* reserved for future use */
+ };
+ #endif /* __CYGWIN__ */
+diff --git a/newlib/libc/include/sys/_pthreadtypes.h b/newlib/libc/include/sys/_pthreadtypes.h
+index 75e9e1cbf..f22309475 100644
+--- a/newlib/libc/include/sys/_pthreadtypes.h
++++ b/newlib/libc/include/sys/_pthreadtypes.h
+@@ -76,7 +76,7 @@ typedef struct {
+ 
+ #endif /* !defined(__XMK__) */
+ 
+-#if defined(_POSIX_THREAD_PROCESS_SHARED)
++#if defined(_POSIX_THREAD_PROCESS_SHARED) || defined(__mochios__)
+ /* NOTE: P1003.1c/D10, p. 81 defines following values for process_shared.  */
+ 
+ #define PTHREAD_PROCESS_PRIVATE 0 /* visible within only the creating process */
+@@ -143,7 +143,23 @@ typedef struct {
+ 
+ #endif /* !defined(_UNIX98_THREAD_MUTEX_ATTRIBUTES) */
+ 
+-#if defined(__XMK__)
++#if defined(__mochios__)
++/* State belongs to the mutex, not a process-local resource table. */
++typedef struct {
++  __uint32_t state;
++  int type;
++  __uint64_t owner;
++  __uint32_t depth;
++  __uint32_t initialized;
++  __uint32_t waiters;
++  __uint32_t reserved;
++} pthread_mutex_t;
++typedef struct {
++  int is_initialized;
++  int type;
++  int process_shared;
++} pthread_mutexattr_t;
++#elif defined(__XMK__)
+ typedef unsigned int pthread_mutex_t;    /* identify a mutex */
+ 
+ typedef struct {
+@@ -169,12 +185,30 @@ typedef struct {
+ } pthread_mutexattr_t;
+ #endif /* !defined(__XMK__) */
+ 
++#ifdef __mochios__
++#define _PTHREAD_MUTEX_INITIALIZER { 0, 0, 0, 0, 1, 0, 0 }
++#else
+ #define _PTHREAD_MUTEX_INITIALIZER ((pthread_mutex_t) 0xFFFFFFFF)
++#endif
+ 
+ /* Condition Variables */
+ 
++#ifdef __mochios__
++typedef struct {
++  __uint64_t generation;
++  __uint32_t gate;
++  __uint32_t waiters;
++  __uint32_t initialized;
++  int clock;
++} pthread_cond_t;
++#define _PTHREAD_COND_INITIALIZER { 0, 0, 0, 1, 1 }
++typedef struct {
++  int is_initialized;
++  int clock;
++  int process_shared;
++} pthread_condattr_t;
++#else
+ typedef __uint32_t pthread_cond_t;       /* identify a condition variable */
+-
+ #define _PTHREAD_COND_INITIALIZER ((pthread_cond_t) 0xFFFFFFFF)
+ 
+ typedef struct {
+@@ -184,6 +218,7 @@ typedef struct {
+   int      process_shared;    /* allow this to be shared amongst processes */
+ #endif
+ } pthread_condattr_t;         /* a condition attribute object */
++#endif
+ 
+ /* Keys */
+ 
+@@ -200,10 +235,20 @@ typedef struct {
+ /* POSIX Barrier Types */
+ 
+ #if defined(_POSIX_BARRIERS)
++#ifdef __mochios__
++typedef struct {
++  __uint32_t __count;
++  __uint32_t __initialized;
++  __uint64_t __entered;
++  __uint64_t __completed;
++  __uint64_t __departed;
++} pthread_barrier_t;
++#else
+ typedef __uint32_t pthread_barrier_t;        /* POSIX Barrier Object */
++#endif
+ typedef struct {
+   int   is_initialized;  /* is this structure initialized? */
+-#if defined(_POSIX_THREAD_PROCESS_SHARED)
++#if defined(_POSIX_THREAD_PROCESS_SHARED) || defined(__mochios__)
+   int   process_shared;       /* allow this to be shared amongst processes */
+ #endif
+ } pthread_barrierattr_t;
+@@ -224,7 +269,7 @@ typedef __uint32_t pthread_rwlock_t;         /* POSIX RWLock Object */
+ 
+ typedef struct {
+   int   is_initialized;       /* is this structure initialized? */
+-#if defined(_POSIX_THREAD_PROCESS_SHARED)
++#if defined(_POSIX_THREAD_PROCESS_SHARED) || defined(__mochios__)
+   int   process_shared;       /* allow this to be shared amongst processes */
+ #endif
+ } pthread_rwlockattr_t;
+diff --git a/newlib/libc/include/sys/config.h b/newlib/libc/include/sys/config.h
+index e9e8c0b96..3f5edb0af 100644
+--- a/newlib/libc/include/sys/config.h
++++ b/newlib/libc/include/sys/config.h
+@@ -12,6 +12,10 @@
+ #define __DYNAMIC_REENT__
+ #endif
+ 
++#ifdef __mochios__
++#define __DYNAMIC_REENT__
++#endif
++
+ #ifdef __nvptx__
+ #define _READ_WRITE_RETURN_TYPE _ssize_t
+ #define _READ_WRITE_BUFSIZE_TYPE __size_t
+diff --git a/newlib/libc/include/sys/features.h b/newlib/libc/include/sys/features.h
+index fc6874f9b..25f372425 100644
+--- a/newlib/libc/include/sys/features.h
++++ b/newlib/libc/include/sys/features.h
+@@ -439,6 +439,20 @@ extern "C" {
+ #define _POSIX_THREAD_PRIORITY_SCHEDULING	1
+ #endif
+ 
++/* mochiOS implements POSIX threads in its user-space runtime. */
++#ifdef __mochios__
++#define _POSIX_THREADS                         200809L
++#define _POSIX_THREAD_ATTR_STACKADDR           200809L
++#define _POSIX_READER_WRITER_LOCKS              200809L
++#define _POSIX_BARRIERS                         200809L
++#define _POSIX_SPIN_LOCKS                       200809L
++#define _POSIX_THREAD_ATTR_STACKSIZE           200809L
++#define _POSIX_THREAD_SAFE_FUNCTIONS           200809L
++#define _POSIX_MONOTONIC_CLOCK                 200809L
++#define _POSIX_TIMERS                           200809L
++#define _UNIX98_THREAD_MUTEX_ATTRIBUTES        1
++#endif
++
+ 
+ #ifdef __svr4__
+ # define _POSIX_JOB_CONTROL     1
+diff --git a/newlib/libc/include/sys/resource.h b/newlib/libc/include/sys/resource.h
+index e653d08ee..b93589cca 100644
+--- a/newlib/libc/include/sys/resource.h
++++ b/newlib/libc/include/sys/resource.h
+@@ -6,6 +6,31 @@ extern "C" {
+ #endif
+ 
+ #include <sys/time.h>
++#include <sys/types.h>
++#include <stdint.h>
++
++#ifndef _RLIM_T_DECLARED
++typedef uint64_t rlim_t;
++#define _RLIM_T_DECLARED
++#endif
++
++#define RLIM_INFINITY UINT64_MAX
++
++#define RLIMIT_CPU 0
++#define RLIMIT_FSIZE 1
++#define RLIMIT_DATA 2
++#define RLIMIT_STACK 3
++#define RLIMIT_CORE 4
++#define RLIMIT_RSS 5
++#define RLIMIT_NPROC 6
++#define RLIMIT_NOFILE 7
++#define RLIMIT_MEMLOCK 8
++#define RLIMIT_AS 9
++
++struct rlimit {
++	rlim_t rlim_cur;
++	rlim_t rlim_max;
++};
+ 
+ #define	RUSAGE_SELF	0		/* calling process */
+ #define	RUSAGE_CHILDREN	-1		/* terminated child processes */
+@@ -19,9 +44,13 @@ struct rusage {
+ };
+ 
+ int	getrusage (int, struct rusage*);
++int	getrlimit (int, struct rlimit *);
++int	setrlimit (int, const struct rlimit *);
++#if __GNU_VISIBLE
++int	prlimit (pid_t, int, const struct rlimit *, struct rlimit *);
++#endif
+ 
+ #ifdef __cplusplus
+ }
+ #endif
+ #endif /* !_SYS_RESOURCE_H_ */
+-
+diff --git a/newlib/libc/include/sys/stat.h b/newlib/libc/include/sys/stat.h
+index 740997965..ea9919c40 100644
+--- a/newlib/libc/include/sys/stat.h
++++ b/newlib/libc/include/sys/stat.h
+@@ -139,7 +139,7 @@ struct	stat
+ #define	S_ISLNK(m)	(((m)&_IFMT) == _IFLNK)
+ #define	S_ISSOCK(m)	(((m)&_IFMT) == _IFSOCK)
+ 
+-#if defined(__CYGWIN__) || defined(__rtems__)
++#if defined(__CYGWIN__) || defined(__rtems__) || defined(__mochios__)
+ /* Special tv_nsec values for futimens(2) and utimensat(2). */
+ #define UTIME_NOW	-2L
+ #define UTIME_OMIT	-1L
+@@ -157,8 +157,10 @@ int	mkfifo (const char *__path, mode_t __mode );
+ int	stat (const char *__restrict __path, struct stat *__restrict __sbuf );
+ mode_t	umask (mode_t __mask );
+ 
+-#if defined (__SPU__) || defined(__rtems__) || defined(__CYGWIN__)
++#if defined (__SPU__) || defined(__rtems__) || defined(__CYGWIN__) || defined(__mochios__)
+ int	lstat (const char *__restrict __path, struct stat *__restrict __buf );
++#endif
++#if defined (__SPU__) || defined(__rtems__) || defined(__CYGWIN__)
+ int	mknod (const char *__path, mode_t __mode, dev_t __dev );
+ #endif
+ 
+diff --git a/newlib/libc/include/sys/unistd.h b/newlib/libc/include/sys/unistd.h
+index d1c9126e5..4f13b5e9a 100644
+--- a/newlib/libc/include/sys/unistd.h
++++ b/newlib/libc/include/sys/unistd.h
+@@ -551,7 +551,13 @@ int	unlinkat (int, const char *, int);
+  *  confstr values per IEEE Std 1003.1, 2004 Edition
+  */
+ 
+-/* Only defined on Cygwin and RTEMS for now. */
++/* mochiOS supplies the default executable path without claiming the optional
++   programming-environment configurations below. */
++#if defined (__mochios__)
++#define _CS_PATH                               0
++#endif
++
++/* Additional programming-environment selectors on Cygwin and RTEMS. */
+ #if defined (__CYGWIN__) || defined(__rtems__)
+ #define _CS_PATH                               0
+ #define _CS_POSIX_V7_ILP32_OFF32_CFLAGS        1
+diff --git a/newlib/libc/include/sys/wait.h b/newlib/libc/include/sys/wait.h
+index d15eec9cb..f1a43326c 100644
+--- a/newlib/libc/include/sys/wait.h
++++ b/newlib/libc/include/sys/wait.h
+@@ -9,6 +9,7 @@ extern "C" {
+ 
+ #define WNOHANG 1
+ #define WUNTRACED 2
++#define WCONTINUED 8
+ 
+ /* A status looks like:
+       <1 byte info> <1 byte code>
+@@ -22,6 +23,7 @@ extern "C" {
+ #define WIFEXITED(w)	(((w) & 0xff) == 0)
+ #define WIFSIGNALED(w)	(((w) & 0x7f) > 0 && (((w) & 0x7f) < 0x7f))
+ #define WIFSTOPPED(w)	(((w) & 0xff) == 0x7f)
++#define WIFCONTINUED(w)	((w) == 0xffff)
+ #define WEXITSTATUS(w)	(((w) >> 8) & 0xff)
+ #define WTERMSIG(w)	((w) & 0x7f)
+ #define WSTOPSIG	WEXITSTATUS
+diff --git a/newlib/libc/include/time.h b/newlib/libc/include/time.h
+index 58c5066ed..cc014acdc 100644
+--- a/newlib/libc/include/time.h
++++ b/newlib/libc/include/time.h
+@@ -199,7 +199,7 @@ int nanosleep (const struct timespec  *rqtp, struct timespec *rmtp);
+ #endif
+ #endif /* _POSIX_TIMERS */
+ 
+-#if defined(_POSIX_CLOCK_SELECTION)
++#if defined(_POSIX_CLOCK_SELECTION) || defined(__mochios__)
+ 
+ #ifdef __cplusplus
+ extern "C" {
+@@ -212,7 +212,7 @@ int clock_nanosleep (clockid_t clock_id, int flags,
+ }
+ #endif
+ 
+-#endif /* _POSIX_CLOCK_SELECTION */
++#endif /* _POSIX_CLOCK_SELECTION || __mochios__ */
+ 
+ #ifdef __cplusplus
+ extern "C" {
+@@ -249,7 +249,7 @@ extern "C" {
+ 
+ /* Manifest Constants, P1003.4b/D8, p. 55 */
+ 
+-#if defined(_POSIX_CPUTIME)
++#if defined(_POSIX_CPUTIME) || defined(__mochios__)
+ 
+ /* When used in a clock or timer function call, this is interpreted as
+    the identifier of the CPU_time clock associated with the PROCESS
+@@ -259,7 +259,7 @@ extern "C" {
+ 
+ #endif
+ 
+-#if defined(_POSIX_THREAD_CPUTIME)
++#if defined(_POSIX_THREAD_CPUTIME) || defined(__mochios__)
+ 
+ /*  When used in a clock or timer function call, this is interpreted as
+     the identifier of the CPU_time clock associated with the THREAD
+@@ -299,13 +299,13 @@ extern "C" {
+ 
+ #endif
+ 
+-#if defined(_POSIX_CPUTIME)
++#if defined(_POSIX_CPUTIME) || defined(__mochios__)
+ 
+ /* Accessing a Process CPU-time CLock, P1003.4b/D8, p. 55 */
+ 
+ int clock_getcpuclockid (pid_t pid, clockid_t *clock_id);
+ 
+-#endif /* _POSIX_CPUTIME */
++#endif /* _POSIX_CPUTIME || __mochios__ */
+ 
+ #if defined(_POSIX_CPUTIME) || defined(_POSIX_THREAD_CPUTIME)
+ 
+diff --git a/newlib/libc/misc/lock.c b/newlib/libc/misc/lock.c
+index c03c36a1e..3ee7d45f1 100644
+--- a/newlib/libc/misc/lock.c
++++ b/newlib/libc/misc/lock.c
+@@ -79,75 +79,8 @@ These locking routines and static lock are newlib-specific.  Supporting OS
+ subroutines are required for linking multi-threaded applications.
+ */
+ 
+-/* dummy lock routines and static locks for single-threaded apps */
+-
+-#ifndef __SINGLE_THREAD__
+-
+-#include <sys/lock.h>
+-
+-struct __lock {
+-  char unused;
+-};
+-
+-struct __lock __lock___sfp_recursive_mutex;
+-struct __lock __lock___atexit_recursive_mutex;
+-struct __lock __lock___at_quick_exit_mutex;
+-struct __lock __lock___malloc_recursive_mutex;
+-struct __lock __lock___env_recursive_mutex;
+-struct __lock __lock___tz_mutex;
+-struct __lock __lock___dd_hash_mutex;
+-struct __lock __lock___arc4random_mutex;
+-
+-void
+-__retarget_lock_init (_LOCK_T *lock)
+-{
+-}
+-
+-void
+-__retarget_lock_init_recursive(_LOCK_T *lock)
+-{
+-}
+-
+-void
+-__retarget_lock_close(_LOCK_T lock)
+-{
+-}
+-
+-void
+-__retarget_lock_close_recursive(_LOCK_T lock)
+-{
+-}
+-
+-void
+-__retarget_lock_acquire (_LOCK_T lock)
+-{
+-}
+-
+-void
+-__retarget_lock_acquire_recursive (_LOCK_T lock)
+-{
+-}
+-
+-int
+-__retarget_lock_try_acquire(_LOCK_T lock)
+-{
+-  return 1;
+-}
+-
+-int
+-__retarget_lock_try_acquire_recursive(_LOCK_T lock)
+-{
+-  return 1;
+-}
+-
+-void
+-__retarget_lock_release (_LOCK_T lock)
+-{
+-}
+-
+-void
+-__retarget_lock_release_recursive (_LOCK_T lock)
+-{
+-}
+-
+-#endif /* !defined(__SINGLE_THREAD__) */
++/*
++ * Retargetable lock storage and operations are supplied by the target
++ * runtime.  Defining dummy fallbacks here would silently disable locking or
++ * conflict with a real implementation when libc.a is linked as a group.
++ */
+diff --git a/newlib/libc/stdio/getdelim.c b/newlib/libc/stdio/getdelim.c
+index 90cd5d47f..d38f12464 100644
+--- a/newlib/libc/stdio/getdelim.c
++++ b/newlib/libc/stdio/getdelim.c
+@@ -46,88 +46,81 @@ __getdelim (char **bufptr,
+        FILE *fp)
+ {
+   char *buf;
+-  char *ptr;
+-  size_t newsize, numbytes;
+-  int pos;
++  char *replacement;
++  size_t used = 0, newsize;
++  /* newlib ssize_t is the signed counterpart of size_t. Reserve one byte
++     beyond the largest representable result for the terminating NUL. */
++  const size_t max_line_size = (size_t)-1 >> 1;
++  ssize_t result = -1;
+   int ch;
+-  int cont;
+ 
+-  if (fp == NULL || bufptr == NULL || n == NULL)
++  if (fp == NULL)
+     {
+       errno = EINVAL;
+       return -1;
+     }
+ 
++  CHECK_INIT (_REENT, fp);
++  _newlib_flockfile_start (fp);
++
++  if (bufptr == NULL || n == NULL)
++    {
++      errno = EINVAL;
++      fp->_flags |= __SERR;
++      goto done;
++    }
++  if (__sfeof (fp) || __sferror (fp))
++    goto done;
+   buf = *bufptr;
+-  if (buf == NULL || *n < MIN_LINE_SIZE) 
++  if (buf == NULL || *n < MIN_LINE_SIZE)
+     {
+-      buf = (char *)realloc (*bufptr, DEFAULT_LINE_SIZE);
+-      if (buf == NULL)
++      replacement = (char *)realloc (buf, DEFAULT_LINE_SIZE);
++      if (replacement == NULL)
+         {
+-	  return -1;
++          errno = ENOMEM;
++          fp->_flags |= __SERR;
++          goto done;
+         }
++      buf = replacement;
+       *bufptr = buf;
+       *n = DEFAULT_LINE_SIZE;
+     }
++  buf[0] = '\0';
+ 
+-  CHECK_INIT (_REENT, fp);
+-
+-  _newlib_flockfile_start (fp);
+-
+-  numbytes = *n;
+-  ptr = buf;
+-
+-  cont = 1;
+-
+-  while (cont)
++  while ((ch = getc_unlocked (fp)) != EOF)
+     {
+-      /* fill buffer - leaving room for nul-terminator */
+-      while (--numbytes > 0)
++      if (used == max_line_size)
+         {
+-          if ((ch = getc_unlocked (fp)) == EOF)
+-            {
+-	      cont = 0;
+-              break;
+-            }
+-	  else 
+-            {
+-              *ptr++ = ch;
+-              if (ch == delim)
+-                {
+-                  cont = 0;
+-                  break;
+-                }
+-            }
++          errno = EOVERFLOW;
++          fp->_flags |= __SERR;
++          goto done;
+         }
+-
+-      if (cont)
++      if (used + 1 >= *n)
+         {
+-          /* Buffer is too small so reallocate a larger buffer.  */
+-          pos = ptr - buf;
+-          newsize = (*n << 1);
+-          buf = realloc (buf, newsize);
+-          if (buf == NULL)
++          newsize = *n > (max_line_size + 1) / 2
++              ? max_line_size + 1 : *n * 2;
++          if (newsize < used + 2)
++            newsize = used + 2;
++          replacement = (char *)realloc (buf, newsize);
++          if (replacement == NULL)
+             {
+-              cont = 0;
+-              break;
++              errno = ENOMEM;
++              fp->_flags |= __SERR;
++              goto done;
+             }
+-
+-          /* After reallocating, continue in new buffer */          
++          buf = replacement;
+           *bufptr = buf;
+           *n = newsize;
+-          ptr = buf + pos;
+-          numbytes = newsize - pos;
+         }
++      buf[used++] = (char)ch;
++      buf[used] = '\0';
++      if (ch == delim)
++        break;
+     }
+-
++  if (used != 0 && !__sferror (fp))
++    result = (ssize_t)used;
++done:
+   _newlib_flockfile_end (fp);
+-
+-  /* if no input data, return failure */
+-  if (ptr == buf)
+-    return -1;
+-
+-  /* otherwise, nul-terminate and return number of bytes read */
+-  *ptr = '\0';
+-  return (ssize_t)(ptr - buf);
++  return result;
+ }
+ 
+diff --git a/newlib/libc/stdio/local.h b/newlib/libc/stdio/local.h
+index 63c0618f1..7d404efd7 100644
+--- a/newlib/libc/stdio/local.h
++++ b/newlib/libc/stdio/local.h
+@@ -72,11 +72,24 @@
+ #elif defined(_STDIO_WITH_THREAD_CANCELLATION_SUPPORT)
+ #include <pthread.h>
+ 
++/* mochiOS interrupts blocking I/O while deferring thread exit until libc has
++   released every nested stream/list critical section and its temporary state. */
++#ifdef __mochios__
++extern void __mochios_stdio_cancel_enter (int);
++extern void __mochios_stdio_cancel_leave (void);
++# define _newlib_stdio_cancel_enter(state) __mochios_stdio_cancel_enter (state)
++# define _newlib_stdio_cancel_leave() __mochios_stdio_cancel_leave ()
++#else
++# define _newlib_stdio_cancel_enter(state) ((void) 0)
++# define _newlib_stdio_cancel_leave() ((void) 0)
++#endif
++
+ /* Start a stream oriented critical section: */
+ # define _newlib_flockfile_start(_fp) \
+ 	{ \
+ 	  int __oldfpcancel; \
+ 	  pthread_setcancelstate (PTHREAD_CANCEL_DISABLE, &__oldfpcancel); \
++	  _newlib_stdio_cancel_enter (__oldfpcancel); \
+ 	  if (!(_fp->_flags2 & __SNLK)) \
+ 	    _flockfile (_fp)
+ 
+@@ -84,13 +97,15 @@
+ # define _newlib_flockfile_exit(_fp) \
+ 	  if (!(_fp->_flags2 & __SNLK)) \
+ 	    _funlockfile (_fp); \
+-	  pthread_setcancelstate (__oldfpcancel, &__oldfpcancel);
++	  pthread_setcancelstate (__oldfpcancel, &__oldfpcancel); \
++	  _newlib_stdio_cancel_leave ();
+ 
+ /* End a stream oriented critical section: */
+ # define _newlib_flockfile_end(_fp) \
+ 	  if (!(_fp->_flags2 & __SNLK)) \
+ 	    _funlockfile (_fp); \
+ 	  pthread_setcancelstate (__oldfpcancel, &__oldfpcancel); \
++	  _newlib_stdio_cancel_leave (); \
+ 	}
+ 
+ /* Start a stream list oriented critical section: */
+@@ -98,17 +113,20 @@
+ 	{ \
+ 	  int __oldsfpcancel; \
+ 	  pthread_setcancelstate (PTHREAD_CANCEL_DISABLE, &__oldsfpcancel); \
++	  _newlib_stdio_cancel_enter (__oldsfpcancel); \
+ 	  __sfp_lock_acquire ()
+ 
+ /* Exit from a stream list oriented critical section prematurely: */
+ # define _newlib_sfp_lock_exit() \
+ 	  __sfp_lock_release (); \
+-	  pthread_setcancelstate (__oldsfpcancel, &__oldsfpcancel);
++	  pthread_setcancelstate (__oldsfpcancel, &__oldsfpcancel); \
++	  _newlib_stdio_cancel_leave ();
+ 
+ /* End a stream list oriented critical section: */
+ # define _newlib_sfp_lock_end() \
+ 	  __sfp_lock_release (); \
+ 	  pthread_setcancelstate (__oldsfpcancel, &__oldsfpcancel); \
++	  _newlib_stdio_cancel_leave (); \
+ 	}
+ 
+ #else /* !__SINGLE_THREAD__ && !__IMPL_UNLOCKED__ && !_STDIO_WITH_THREAD_CANCELLATION_SUPPORT */
+diff --git a/newlib/libc/stdio/mktemp.c b/newlib/libc/stdio/mktemp.c
+index 265968198..2af89ef77 100644
+--- a/newlib/libc/stdio/mktemp.c
++++ b/newlib/libc/stdio/mktemp.c
+@@ -157,15 +157,16 @@ _gettemp (struct _reent *ptr,
+   pid = _getpid_r (ptr);
+   for (trv = path; *trv; ++trv)		/* extra X's get set to 0's */
+     continue;
+-  if (trv - path < suffixlen)
++  if ((size_t) (trv - path) < suffixlen)
+     {
+       _REENT_ERRNO(ptr) = EINVAL;
+       return 0;
+     }
+   trv -= suffixlen;
+   end = trv;
+-  while (path < trv && *--trv == 'X')
++  while (path < trv && trv[-1] == 'X')
+     {
++      --trv;
+       *trv = (pid % 10) + '0';
+       pid /= 10;
+     }
+@@ -180,7 +181,7 @@ _gettemp (struct _reent *ptr,
+    * doesn't exist this runs for a *very* long time.
+    */
+ 
+-  for (start = trv + 1;; --trv)
++  for (start = trv;; --trv)
+     {
+       if (trv <= path)
+ 	break;
+@@ -208,7 +209,9 @@ _gettemp (struct _reent *ptr,
+ #if !defined _ELIX_LEVEL || _ELIX_LEVEL >= 4
+       if (domkdir)
+ 	{
+-#ifdef HAVE_MKDIR
++/* The mochiOS runtime supplies _mkdir even when a cross configure probe
++ * cannot link it before the runtime archive has been built. */
++#if defined(HAVE_MKDIR) || defined(__mochios__)
+ 	  if (_mkdir_r (ptr, path, 0700) == 0)
+ 	    return 1;
+ 	  if (_REENT_ERRNO(ptr) != EEXIST)
+diff --git a/newlib/libc/stdio/vfprintf.c b/newlib/libc/stdio/vfprintf.c
+index feb1fab56..3d38c2054 100644
+--- a/newlib/libc/stdio/vfprintf.c
++++ b/newlib/libc/stdio/vfprintf.c
+@@ -404,8 +404,9 @@ int
+ _VFPRINTF_R (struct _reent *data,
+        FILE * fp,
+        const char *fmt0,
+-       va_list ap)
++       va_list incoming_ap)
+ {
++	va_list ap;
+ 	register char *fmt;	/* format string */
+ 	register int ch;	/* character from fmt */
+ 	register int n, m;	/* handy integers (short term usage) */
+@@ -594,6 +595,9 @@ _VFPRINTF_R (struct _reent *data,
+ 	    (u_long)GET_ARG (N, ap, u_int))
+ #endif
+ 
++	/* Keep an actual va_list object: on array-based ABIs an incoming
++	   parameter decays to a pointer and &incoming_ap is not va_list *. */
++	va_copy (ap, incoming_ap);
+ #ifndef STRING_ONLY
+ 	/* Initialize std streams if not dealing with sprintf family.  */
+ 	CHECK_INIT (data, fp);
+@@ -601,12 +605,14 @@ _VFPRINTF_R (struct _reent *data,
+ 
+ 	if (ORIENT(fp, -1) != -1) {
+ 		_newlib_flockfile_exit (fp);
++		va_end (ap);
+ 		return (EOF);
+ 	}
+ 
+ 	/* sorry, fprintf(read_only_file, "") returns EOF, not 0 */
+ 	if (cantwrite (data, fp)) {
+ 		_newlib_flockfile_exit (fp);
++		va_end (ap);
+ 		return (EOF);
+ 	}
+ 
+@@ -615,7 +621,9 @@ _VFPRINTF_R (struct _reent *data,
+ 	if ((fp->_flags & (__SNBF|__SWR|__SRW)) == (__SNBF|__SWR) &&
+ 	    fp->_file >= 0) {
+ 		_newlib_flockfile_exit (fp);
+-		return (__sbprintf (data, fp, fmt0, ap));
++		ret = __sbprintf (data, fp, fmt0, ap);
++		va_end (ap);
++		return ret;
+ 	}
+ #endif
+ #else /* STRING_ONLY */
+@@ -626,6 +634,7 @@ _VFPRINTF_R (struct _reent *data,
+ 		if (!fp->_p)
+ 		{
+ 			_REENT_ERRNO(data) = ENOMEM;
++			va_end (ap);
+ 			return EOF;
+ 		}
+ 		fp->_bf._size = 64;
+@@ -1535,6 +1544,7 @@ error:
+ #ifndef STRING_ONLY
+ 	_newlib_flockfile_end (fp);
+ #endif
++	va_end (ap);
+ 	return (__sferror (fp) ? EOF : ret);
+ 	/* NOTREACHED */
+ }
+diff --git a/newlib/libc/stdio/vfscanf.c b/newlib/libc/stdio/vfscanf.c
+index 71e2c3e22..410a1e738 100644
+--- a/newlib/libc/stdio/vfscanf.c
++++ b/newlib/libc/stdio/vfscanf.c
+@@ -400,8 +400,9 @@ int
+ __SVFSCANF_R (struct _reent *rptr,
+        register FILE *fp,
+        char const *fmt0,
+-       va_list ap)
++       va_list incoming_ap)
+ {
++  va_list ap;
+   register u_char *fmt = (u_char *) fmt0;
+   register int c;		/* character from format, or conversion */
+   register size_t width;	/* field width, or 0 */
+@@ -587,6 +588,9 @@ __SVFSCANF_R (struct _reent *rptr,
+ # define GET_ARG(n, ap, type) (va_arg (ap, type))
+ #endif
+ 
++  /* Positional argument helpers need a va_list object, not the decayed
++     parameter pointer used by array-based va_list ABIs. */
++  va_copy (ap, incoming_ap);
+   _newlib_flockfile_start (fp);
+ 
+   if (ORIENT (fp, -1) != -1)
+@@ -1976,6 +1980,7 @@ all_done:
+ #ifdef _WANT_IO_POSIX_EXTENSIONS
+   free_m_ptr ();
+ #endif
++  va_end (ap);
+   return nassigned;
+ }
+ 
+diff --git a/newlib/libc/stdio/vfwprintf.c b/newlib/libc/stdio/vfwprintf.c
+index 5a5c36829..12bbff314 100644
+--- a/newlib/libc/stdio/vfwprintf.c
++++ b/newlib/libc/stdio/vfwprintf.c
+@@ -376,8 +376,9 @@ int
+ _VFWPRINTF_R (struct _reent *data,
+        FILE * fp,
+        const wchar_t *fmt0,
+-       va_list ap)
++       va_list incoming_ap)
+ {
++	va_list ap;
+ 	register wchar_t *fmt;	/* format string */
+ 	register wint_t ch;	/* character from fmt */
+ 	register int n, m;	/* handy integers (short term usage) */
+@@ -583,6 +584,8 @@ _VFWPRINTF_R (struct _reent *data,
+ 	    (u_long)GET_ARG (N, ap, u_int))
+ #endif
+ 
++	/* Keep a va_list object for positional argument helpers on array ABIs. */
++	va_copy (ap, incoming_ap);
+ #ifndef STRING_ONLY
+ 	/* Initialize std streams if not dealing with sprintf family.  */
+ 	CHECK_INIT (data, fp);
+@@ -590,12 +593,14 @@ _VFWPRINTF_R (struct _reent *data,
+ 
+ 	if (ORIENT(fp, 1) != 1) {
+ 		_newlib_flockfile_exit (fp);
++		va_end (ap);
+ 		return (EOF);
+ 	}
+ 
+ 	/* sorry, fwprintf(read_only_file, "") returns EOF, not 0 */
+ 	if (cantwrite (data, fp)) {
+ 		_newlib_flockfile_exit (fp);
++		va_end (ap);
+ 		return (EOF);
+ 	}
+ 
+@@ -604,7 +609,9 @@ _VFWPRINTF_R (struct _reent *data,
+ 	if ((fp->_flags & (__SNBF|__SWR|__SRW)) == (__SNBF|__SWR) &&
+ 	    fp->_file >= 0) {
+ 		_newlib_flockfile_exit (fp);
+-		return (__sbwprintf (data, fp, fmt0, ap));
++		ret = __sbwprintf (data, fp, fmt0, ap);
++		va_end (ap);
++		return ret;
+ 	}
+ #endif
+ #else /* STRING_ONLY */
+@@ -615,6 +622,7 @@ _VFWPRINTF_R (struct _reent *data,
+ 		if (!fp->_p)
+ 		{
+ 			_REENT_ERRNO(data) = ENOMEM;
++			va_end (ap);
+ 			return EOF;
+ 		}
+ 		fp->_bf._size = 64;
+@@ -1533,6 +1541,7 @@ error:
+ #ifndef STRING_ONLY
+ 	_newlib_flockfile_end (fp);
+ #endif
++	va_end (ap);
+ 	return (__sferror (fp) ? EOF : ret);
+ 	/* NOTREACHED */
+ }
+@@ -1765,6 +1774,7 @@ get_arg (struct _reent *data,
+ 
+       if (*fmt == L'\0')
+ 				break;
++      fmt++; /* Skip '%' before classifying the conversion itself. */
+       state = START;
+       flags = 0;
+       pos = -1;
+diff --git a/newlib/libc/stdio/vfwscanf.c b/newlib/libc/stdio/vfwscanf.c
+index d2f91dde2..1f0e51044 100644
+--- a/newlib/libc/stdio/vfwscanf.c
++++ b/newlib/libc/stdio/vfwscanf.c
+@@ -305,8 +305,9 @@ int
+ __SVFWSCANF_R (struct _reent *rptr,
+        register FILE *fp,
+        wchar_t const *fmt0,
+-       va_list ap)
++       va_list incoming_ap)
+ {
++  va_list ap;
+   register wchar_t *fmt = (wchar_t *) fmt0;
+   register wint_t c;            /* character from format, or conversion */
+   register size_t width;	/* field width, or 0 */
+@@ -514,6 +515,8 @@ __SVFWSCANF_R (struct _reent *rptr,
+ #endif /* !_MB_CAPABLE */
+ #endif /* FLOATING_POINT */
+ 
++  /* Keep a va_list object for positional argument helpers on array ABIs. */
++  va_copy (ap, incoming_ap);
+   _newlib_flockfile_start (fp);
+ 
+   if (ORIENT (fp, 1) != 1)
+@@ -1631,6 +1634,7 @@ all_done:
+ #ifdef _WANT_IO_POSIX_EXTENSIONS
+   free_m_ptr ();
+ #endif
++  va_end (ap);
+   return nassigned;
+ }
+ 
+diff --git a/newlib/libc/stdlib/__atexit.c b/newlib/libc/stdlib/__atexit.c
+index e59f04c2e..23a5e6ca1 100644
+--- a/newlib/libc/stdlib/__atexit.c
++++ b/newlib/libc/stdlib/__atexit.c
+@@ -39,7 +39,7 @@
+ #include "atexit.h"
+ 
+ /* Make this a weak reference to avoid pulling in malloc.  */
+-#ifndef MALLOC_PROVIDED
++#if !defined (MALLOC_PROVIDED) && !defined (__mochios__)
+ void * malloc(size_t) _ATTRIBUTE((__weak__));
+ #endif
+ 
+@@ -84,7 +84,11 @@ __register_exitproc (int type,
+     }
+   if (p->_ind >= _ATEXIT_SIZE)
+     {
+-#if !defined (_ATEXIT_DYNAMIC_ALLOC) || !defined (MALLOC_PROVIDED)
++      /* mochiOS uses newlib's allocator rather than an external
++         MALLOC_PROVIDED implementation.  It is still available for
++         dynamically sized registries. */
++#if !defined (_ATEXIT_DYNAMIC_ALLOC) || \
++    (!defined (MALLOC_PROVIDED) && !defined (__mochios__))
+ #ifndef __SINGLE_THREAD__
+       __lock_release_recursive(__atexit_recursive_mutex);
+ #endif
+@@ -141,10 +145,10 @@ __register_exitproc (int type,
+       args = &p->_on_exit_args;
+ #endif
+       args->_fnargs[p->_ind] = arg;
+-      args->_fntypes |= (1 << p->_ind);
++      args->_fntypes |= ((__ULong) 1 << p->_ind);
+       args->_dso_handle[p->_ind] = d;
+       if (type == __et_cxa)
+-	args->_is_cxa |= (1 << p->_ind);
++	args->_is_cxa |= ((__ULong) 1 << p->_ind);
+     }
+   p->_fns[p->_ind++] = fn;
+ #ifndef __SINGLE_THREAD__
+diff --git a/newlib/libc/stdlib/__call_atexit.c b/newlib/libc/stdlib/__call_atexit.c
+index 15ecda343..8905f1cb5 100644
+--- a/newlib/libc/stdlib/__call_atexit.c
++++ b/newlib/libc/stdlib/__call_atexit.c
+@@ -9,7 +9,7 @@
+ #include "atexit.h"
+ 
+ /* Make this a weak reference to avoid pulling in free.  */
+-#ifndef MALLOC_PROVIDED
++#if !defined (MALLOC_PROVIDED) && !defined (__mochios__)
+ void free(void *) _ATTRIBUTE((__weak__));
+ #endif
+ 
+@@ -71,7 +71,7 @@ __call_exitprocs (int code, void *d)
+   struct _atexit **lastp;
+   register struct _on_exit_args * args;
+   register int n;
+-  int i;
++  __ULong i;
+   void (*fn) (void);
+ 
+ 
+@@ -96,7 +96,7 @@ __call_exitprocs (int code, void *d)
+ 	  __ULong fntypes, is_cxa;
+ 	  void *fnarg;
+ 
+-	  i = 1 << n;
++	  i = (__ULong) 1 << n;
+ 
+ 	  /* Skip functions not from this dso.  */
+ 	  if (d && (!args || args->_dso_handle[n] != d))
+@@ -143,7 +143,8 @@ __call_exitprocs (int code, void *d)
+ 	    goto restart;
+ 	}
+ 
+-#if !defined (_ATEXIT_DYNAMIC_ALLOC) || !defined (MALLOC_PROVIDED)
++#if !defined (_ATEXIT_DYNAMIC_ALLOC) || \
++    (!defined (MALLOC_PROVIDED) && !defined (__mochios__))
+       break;
+ #else
+       /* Move to the next block.  Free empty blocks except the last one,
+diff --git a/newlib/libc/stdlib/_mallocr.c b/newlib/libc/stdlib/_mallocr.c
+index 56968cbd1..217c83d35 100644
+--- a/newlib/libc/stdlib/_mallocr.c
++++ b/newlib/libc/stdlib/_mallocr.c
+@@ -308,7 +308,13 @@ extern "C" {
+ 
+ #define POINTER_UINT unsigned _POINTER_INT
+ #define SEPARATE_OBJECTS
++#ifdef __mochios__
++/* Large allocations use the userspace POSIX mmap frontend. Keep the small
++   sbrk arena bounded instead of making every process reserve a larger heap. */
++#define HAVE_MMAP 1
++#else
+ #define HAVE_MMAP 0
++#endif
+ #define MORECORE(size) _sbrk_r(reent_ptr, (size))
+ #define MORECORE_CLEARS 0
+ #define MALLOC_LOCK __malloc_lock(reent_ptr)

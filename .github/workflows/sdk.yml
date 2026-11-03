@@ -1,0 +1,57 @@
+name: Build and distribute shared C/C++ SDK
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: shared-sdk-release
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Install host build tools and fixed Rust bootstrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake make gcc g++ git perl patch dpkg-dev xz-utils autoconf automake texinfo libtool pkg-config
+          rustup toolchain install nightly-2026-05-14 --profile minimal --component rust-src
+      - run: python3 -m unittest discover -s sdk/tests -v
+      - name: Build and verify source-pinned target SDK
+        run: python3 sdk/build.py build --jobs 4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shared-sdk
+          path: out/shared-sdk/releases
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: shared-sdk-build-logs
+          path: out/shared-sdk/logs
+          retention-days: 14
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: shared-sdk
+          path: out/shared-sdk/releases
+      - name: Verify checksums and publish a distinct SDK prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 sdk/publish.py --repository "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA"

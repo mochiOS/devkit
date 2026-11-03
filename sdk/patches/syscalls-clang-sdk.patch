@@ -1,0 +1,28 @@
+--- a/scripts/build-newlib.sh
++++ b/scripts/build-newlib.sh
+@@ -52,6 +52,7 @@
+ if [[ -n "$ABI_SOURCE" ]]; then
+     ABI_SOURCE="$(cd "$ABI_SOURCE" && pwd)"
+     [[ -f "$ABI_SOURCE/Cargo.toml" ]] || { echo "invalid ABI source" >&2; exit 2; }
++    patch_args+=(--config "patch.crates-io.mnu-abi.path='$ABI_SOURCE'")
+     patch_args+=(--config "patch.\"https://github.com/mochiOS/mnu\".mnu-abi.path='$ABI_SOURCE'")
+ fi
+ if [[ -n "$LIBC_SOURCE" ]]; then
+@@ -113,7 +114,7 @@
+              "${configure_options[@]}")
+         printf '%s\n' "$configure_profile" >"$configure_stamp"
+     fi
+-    target_cflags="-O2 -g0 -D__mochios__ -DGETREENT_PROVIDED -DSIGNAL_PROVIDED -DHAVE_RENAME -I$USER_ROOT/libc-port/include -ffile-prefix-map=$NEWLIB_SOURCE=/src/newlib -ffile-prefix-map=$OUT_ROOT=/build/newlib"
++    target_cflags="-O2 -g0 -nostdlibinc -ffreestanding -mno-red-zone -D__mochios__ -DGETREENT_PROVIDED -DSIGNAL_PROVIDED -DHAVE_RENAME -I$USER_ROOT/libc-port/include -ffile-prefix-map=$NEWLIB_SOURCE=/src/newlib -ffile-prefix-map=$OUT_ROOT=/build/newlib"
+     flags_stamp="$BUILD_DIR/.mochios-target-cflags"
+     if [[ ! -f "$flags_stamp" ]] || [[ "$(<"$flags_stamp")" != "$target_cflags" ]]; then
+         make -C "$BUILD_DIR" clean-target-newlib
+@@ -128,7 +129,7 @@
+ 
+ cd "$USER_ROOT"
+ RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$HOME=/build --remap-path-prefix=$USER_ROOT=/src/user" \
+-cargo "${cargo_args[@]}" build -Z json-target-spec -Z build-std=core,alloc,compiler_builtins \
++cargo "${cargo_args[@]}" build --locked -Z json-target-spec -Z build-std=core,alloc,compiler_builtins \
+     --manifest-path "$USER_ROOT/Cargo.toml" --package mochi-user-newlib-runtime \
+     --release --target "$USER_ROOT/targets/x86_64-unknown-mochios.json" \
+     --target-dir "$TARGET_DIR" "${patch_args[@]}"

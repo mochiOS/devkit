@@ -1,0 +1,33 @@
+# Shared C/C++ SDK
+
+This SDK targets `x86_64-unknown-mochios` (`mochios-1`). Its host is Ubuntu 24.04 x86-64, with Python 3.12, glibc, libstdc++ and libgcc_s supplied by the host. The archive contains Clang/LLD, LLVM archive and inspection tools, target headers, compiler-rt builtins, newlib, the syscall-backed mochiOS runtime, libc++, libc++abi, libunwind, CMake files, original notices and pinned source provenance.
+
+## Build the SDK
+
+Install CMake 3.28+, Make, Git, Python 3.12+, Perl, patch, dpkg-deb, a host C/C++ compiler and Rust `nightly-2026-05-14` with rust-src. Then run:
+
+```sh
+python3 sdk/build.py build --jobs 4
+```
+
+All downloaded inputs and outputs go to `out/shared-sdk`; an OS checkout is neither read nor written. Git commits, LLVM and host package checksums, and local patch checksums are fixed in `sdk/sources.lock.json`. Newlib's corresponding patched source accompanies the binary archive. No credentials are required for public source downloads. Target binaries are inspected and linked, never run on Linux. A failed build does not produce a new successful release.
+
+## Compile applications and shared libraries
+
+After verifying `SHA256SUMS`, extract the archive and use:
+
+```sh
+sdk/bin/mochios-cc -shared library.c -Wl,-soname,libexample.so -o libexample.so
+sdk/bin/mochios-cc main.c -L. -lexample -o Example.app
+sdk/bin/mochios-c++ -std=c++23 main.cpp -L. -lexample -o Example.app
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$PWD/sdk/share/cmake/mochios.cmake"
+cmake --build build
+```
+
+Executables own one process runtime, including FD, errno, allocator and thread state. Shared objects import the executable's measured C/C++ ABI; they never embed another copy of that runtime. Shared links reject unknown strong imports outside that ABI and declared shared dependencies. Use a SONAME rather than embedding an absolute dependency path. CMake root searches cannot fall back to host headers or libraries. Executables are ELF EXEC at/above 0x400000, with no Linux interpreter, W^X, RELRO and a non-executable stack.
+
+Only startup-linked shared objects are supported. TLS uses initial-exec. This SDK does not promise `dlopen`, PIE applications, complete POSIX conformance, or a ready-to-run WebKit port. The runtime API list records known unsupported C functions. C++23, threads and exceptions are compile/link checks; actual execution on mochiOS remains a separate validation gate. `sdk.json` explicitly records `runtime_tested: false` until that gate is met.
+
+## Releases
+
+Shared SDK releases use a distinct prerelease tag, `sdk-<sdk.json version>`, without replacing AppCore releases. The manually dispatched SDK workflow rebuilds from the fixed inputs, runs structural and linker tests, uploads build logs, then publishes from a fresh job with write permission. Existing release assets are never overwritten. The SDK archive, manifest and SHA-256 completion marker form one release. `mochiOS/libs` pins the archive URL, SHA-256 and builder image digest before building target libraries.
