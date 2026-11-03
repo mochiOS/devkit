@@ -122,7 +122,7 @@ let tasks = TaskScope::new()?; // ウィンドウなどの所有者に保持す�
 let handle = tasks.spawn(
     |task| -> TaskResult<String, std::io::Error> {
         task.check_cancelled()?;
-        std::fs::read_to_string("/home/user/note.txt").map_err(TaskError::Operation)
+        std::fs::read_to_string("./note.txt").map_err(TaskError::Operation)
     },
     |result| { /* UIのStateを更新する */ },
 )?;

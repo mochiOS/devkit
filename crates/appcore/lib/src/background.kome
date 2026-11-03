@@ -208,7 +208,7 @@ for BackgroundTasks {
 	/// ## Example
 	/// ```kome
 	/// fn loadNote(tasks: BackgroundTasks, maximumBytes: usize) {
-	///     tasks.readText("/home/user/note.txt", maximumBytes, |result| {
+	///     tasks.readText("./note.txt", maximumBytes, |result| {
 	///         let contents = result.text()
 	///     })
 	/// }
