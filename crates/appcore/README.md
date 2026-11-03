@@ -192,3 +192,12 @@ Run `crates/appcore/scripts/release.pl` from the DevKit repository. It builds
 AppCore in release mode and writes `{arch}-appcore-{version}.tar.zst` together
 with `SHA256SUMS` to `target/release`. The archive can be extracted directly to
 `~/.kome/appcore` and contains the Kome package, native libraries, and C headers.
+
+Release packaging requires Python 3. Source paths in AppCore and its Rust
+dependencies are remapped to stable virtual prefixes. Existing Cargo flags and
+compiler wrappers are preserved. Release compilations use a policy-specific
+cache under `target/appcore-release`; archives still go to `target/release`.
+Before archiving, the complete staged payload is scanned for build-environment
+paths. A remaining path aborts packaging; it is never silently removed from a
+finished binary. This command only creates local artifacts and never publishes
+a GitHub release.

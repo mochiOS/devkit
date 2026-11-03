@@ -1,0 +1,27 @@
+name: Check AppCore release paths
+on:
+  push:
+    paths:
+      - 'crates/appcore/scripts/release*'
+      - 'crates/appcore/scripts/test_release_paths.py'
+      - '.github/workflows/appcore-release-check.yml'
+  pull_request:
+    paths:
+      - 'crates/appcore/scripts/release*'
+      - 'crates/appcore/scripts/test_release_paths.py'
+      - '.github/workflows/appcore-release-check.yml'
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - run: perl -c crates/appcore/scripts/release.pl
+      - name: Test real Rust libraries and local packaging only
+        run: python3 -m unittest discover -s crates/appcore/scripts -p 'test_release_paths.py' -v

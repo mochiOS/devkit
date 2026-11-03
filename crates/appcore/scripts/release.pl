@@ -9,7 +9,8 @@ use File::Basename qw(basename dirname);
 use File::Copy qw(copy);
 use File::Path qw(make_path);
 use File::Spec;
-use File::Temp qw(tempdir);
+use File::Temp qw(tempdir tempfile);
+use JSON::PP qw(decode_json);
 use FindBin qw($Bin);
 use Getopt::Long qw(GetOptions);
 
@@ -41,11 +42,8 @@ if (defined $sdk_version) {
     $sdk_version = $version;
 }
 
-build_appcore($target);
-
-my $binary_directory = defined $target
-    ? File::Spec->catdir($workspace_root, 'target', $target, 'release')
-    : File::Spec->catdir($workspace_root, 'target', 'release');
+my $build = build_appcore($target);
+my $binary_directory = $build->{binary_directory};
 my $shared_library = File::Spec->catfile($binary_directory, 'libappcore.so');
 my $static_library = File::Spec->catfile($binary_directory, 'libappcore.a');
 require_file($shared_library);
@@ -60,6 +58,9 @@ stage_file('README.md', $stage);
 copy_file(File::Spec->catfile($workspace_root, 'LICENSE'), File::Spec->catfile($stage, 'LICENSE'));
 copy_file($shared_library, File::Spec->catfile($stage, basename($shared_library)));
 copy_file($static_library, File::Spec->catfile($stage, basename($static_library)));
+
+run('python3', File::Spec->catfile($Bin, 'release_paths.py'), 'check',
+    '--stage', $stage, '--policy', $build->{policy});
 
 my @entries = qw(Kome.toml LICENSE README.md lib include libappcore.a libappcore.so);
 my $output_directory = File::Spec->catdir($workspace_root, 'target', 'release');
@@ -129,13 +130,17 @@ sub validate_fragment {
 
 sub build_appcore {
     my ($target) = @_;
-    my @command = (
-        'cargo', 'build',
-        '--manifest-path', File::Spec->catfile($workspace_root, 'Cargo.toml'),
-        '--release', '--locked', '-p', 'mochios-appcore',
-    );
+    my ($info_file, $info_path) = tempfile('appcore-build-XXXXXX', TMPDIR => 1, UNLINK => 1);
+    close $info_file or die "failed to close build-info file: $!\n";
+    my @command = ('python3', File::Spec->catfile($Bin, 'release_paths.py'), 'build',
+        '--workspace', $workspace_root, '--output-info', $info_path);
     push @command, '--target', $target if defined $target;
     run(@command);
+    open my $input, '<', $info_path or die "failed to read build metadata: $!\n";
+    local $/;
+    my $metadata = decode_json(<$input>);
+    close $input or die "failed to close build metadata: $!\n";
+    return $metadata;
 }
 
 sub stage_file {
