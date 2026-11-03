@@ -69,7 +69,7 @@ class ReleaseTests(unittest.TestCase):
             log=root/'wrapper-invocations.txt'
             inner.write_text('#!/usr/bin/env python3\nimport os,sys\nfrom pathlib import Path\nwith Path(os.environ["FIXTURE_WRAPPER_LOG"]).open("a") as stream:stream.write(" \".join(sys.argv[1:])+"\\n")\nos.execvpe(sys.argv[1],sys.argv[1:],os.environ)\n')
             inner.chmod(0o755)
-            env=dict(os.environ,RUSTC_WRAPPER=str(inner),FIXTURE_WRAPPER_LOG=str(log))
+            env=dict(os.environ,RUSTC_WRAPPER=str(inner),FIXTURE_WRAPPER_LOG=str(log),SOURCE_DATE_EPOCH='0')
             env.pop('RUSTFLAGS',None);env.pop('CARGO_ENCODED_RUSTFLAGS',None)
             result=subprocess.run(['perl',str(app/'scripts/release.pl'),'--sdk-version','fixture.1','--arch','x86_64'],cwd=root,env=env,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+'\n'+result.stderr)
@@ -94,7 +94,8 @@ class ReleaseTests(unittest.TestCase):
     def test_unremappable_embedded_path_aborts_before_archive_and_checksum(self):
         with tempfile.TemporaryDirectory() as tmp:
             root,app=self.fixture(tmp,leak=True)
-            result=subprocess.run(['perl',str(app/'scripts/release.pl'),'--sdk-version','fixture.1','--arch','x86_64'],cwd=root,capture_output=True,text=True)
+            env=dict(os.environ,SOURCE_DATE_EPOCH='0')
+            result=subprocess.run(['perl',str(app/'scripts/release.pl'),'--sdk-version','fixture.1','--arch','x86_64'],cwd=root,env=env,capture_output=True,text=True)
             self.assertNotEqual(result.returncode,0)
             self.assertIn('Build-environment paths remain',result.stderr)
             self.assertFalse((root/'target/release/x86_64-appcore-fixture.1.tar.zst').exists())
