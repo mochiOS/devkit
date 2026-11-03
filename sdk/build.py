@@ -217,6 +217,15 @@ def build_c_runtime(lock,sources,sdk,out,env,jobs,policy):
     (sdk/'lib/libgcc.a').unlink(missing_ok=True)
     shutil.copy2(out/'builtins/lib/linux/libclang_rt.builtins-x86_64.a',sdk/'lib/libbuiltins.a')
     isolate_math_builtins(sdk,out,env)
+    # Generic newlib omits its POSIX source directory. Compile the existing
+    # filename matcher without enabling syscall wrappers owned by mochiOS.
+    fnmatch_object=out/'newlib-fnmatch.o'
+    command([sdk/'host/bin/clang','--target=x86_64-unknown-none-elf',
+        '-nostdlibinc','-isystem',sdk/'sysroot/include','-D__mochios__=1',
+        '-D_GNU_SOURCE=1','-ffreestanding','-mno-red-zone','-O2',
+        *path_hygiene.compiler_flags(policy),'-include',ROOT/'newlib-fnmatch-collate.h',
+        '-c',sources['newlib']/'newlib/libc/posix/fnmatch.c','-o',fnmatch_object],env)
+    command([sdk/'host/bin/ar','r',sdk/'sysroot/lib/libc.a',fnmatch_object],env)
     return env
 
 
