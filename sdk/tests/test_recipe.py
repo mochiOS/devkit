@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('sdk_driver',ROOT/'driver.py')
 driver=importlib.util.module_from_spec(spec);spec.loader.exec_module(driver)
@@ -40,4 +41,20 @@ class RecipeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/'malformed.rsp';p.write_text('"unfinished')
             with self.assertRaises(ValueError):driver.response_arguments(['@'+str(p)])
+    def test_explicit_sibling_dsos_resolve_exact_declared_sonames(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);a=root/'glib/libglib.so.0';b=root/'gio/libgio.so.0'
+            for path in [a,b]:path.parent.mkdir();path.touch()
+            dynamic={a:'(SONAME) [libglib.so.0]',b:'(SONAME) [libgio.so.0]\n(NEEDED) [libglib.so.0]'}
+            def readelf(arguments,**kwargs):return dynamic[Path(arguments[-1])]
+            with mock.patch.object(driver.subprocess,'check_output',side_effect=readelf), mock.patch.object(driver,'symbols',side_effect=lambda tool,path,defined:{path.parent.name}):
+                self.assertEqual(driver.dependencies(root,[str(a),str(b)]),{'glib','gio'})
+                with self.assertRaisesRegex(ValueError,'Missing dependency'):
+                    driver.dependencies(root,[str(b)])
+    def test_conflicting_explicit_sonames_are_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);a=root/'a.so';b=root/'b.so';a.touch();b.touch()
+            with mock.patch.object(driver.subprocess,'check_output',return_value='(SONAME) [libsame.so.0]'):
+                with self.assertRaisesRegex(ValueError,'Ambiguous'):
+                    driver.dependencies(root,[str(a),str(b)])
 if __name__=='__main__':unittest.main()

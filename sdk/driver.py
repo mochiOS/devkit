@@ -53,16 +53,37 @@ def dependencies(sdk, arguments):
         for directory in paths:
             path = directory / (name[1:] if name.startswith(':') else 'lib' + name + '.so')
             if path.is_file(): files.append(path); break
+    # Explicit DSOs can live in different Meson build subdirectories. Resolve
+    # their SONAMEs to those exact inputs before searching a sibling's directory;
+    # this adds no ambient host path and cannot hide a missing dependency.
+    declared, dynamic_cache = {}, {}
+    for path in files:
+        path = path.resolve()
+        if path in dynamic_cache: continue
+        if len(dynamic_cache) >= 256: raise ValueError('Dependency graph exceeds 256 objects')
+        dynamic = subprocess.check_output([str(sdk / 'host/bin/readelf'), '-d', str(path)], text=True)
+        dynamic_cache[path] = dynamic
+        sonames = re.findall(r'\(SONAME\).*?\[([^]]+)\]', dynamic)
+        if len(sonames) > 1: raise ValueError('Multiple SONAME entries')
+        name = sonames[0] if sonames else path.name
+        if '/' in name: raise ValueError('Absolute SONAME paths are forbidden')
+        if name in declared and declared[name] != path:
+            raise ValueError('Ambiguous explicitly declared SONAME: ' + name)
+        declared[name] = path
     providers, visited = set(), set()
     while files:
         path = files.pop().resolve()
         if path in visited: continue
         if len(visited) >= 256: raise ValueError('Dependency graph exceeds 256 objects')
         visited.add(path); providers.update(symbols(sdk / 'host/bin/nm', path, True))
-        dynamic = subprocess.check_output([str(sdk / 'host/bin/readelf'), '-d', str(path)], text=True)
+        dynamic = dynamic_cache.get(path)
+        if dynamic is None:
+            dynamic = subprocess.check_output([str(sdk / 'host/bin/readelf'), '-d', str(path)], text=True)
         for name in re.findall(r'\(NEEDED\).*?\[([^]]+)\]', dynamic):
             if '/' in name: raise ValueError('Absolute DT_NEEDED paths are forbidden')
-            found = next((directory / name for directory in [path.parent, *paths] if (directory / name).is_file()), None)
+            found = declared.get(name)
+            if found is None:
+                found = next((directory / name for directory in [path.parent, *paths] if (directory / name).is_file()), None)
             if found is None: raise ValueError('Missing dependency for import validation: ' + name)
             files.append(found)
     return providers
