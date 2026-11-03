@@ -1,4 +1,4 @@
-name: Build and distribute shared C/C++ SDK
+name: Build and verify shared C/C++ SDK
 on:
   workflow_dispatch:
 permissions:

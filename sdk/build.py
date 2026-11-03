@@ -13,6 +13,8 @@ import sys
 import tarfile
 import urllib.request
 
+import path_hygiene
+
 ROOT = Path(__file__).resolve().parent
 
 
@@ -124,7 +126,7 @@ def host_tools(host_input, sdk):
     return env
 
 
-def bootstrap(sdk, out):
+def bootstrap(sdk, out, policy):
     """Create private GCC-compatible command names for the canonical userland SDK source builder."""
     (sdk/'libexec').mkdir(exist_ok=True)
     shutil.copy2(ROOT/'link-adapter.py',sdk/'libexec/gcc');(sdk/'libexec/gcc').chmod(0o755)
@@ -133,15 +135,15 @@ def bootstrap(sdk, out):
     script='''#!/usr/bin/env python3
 import os,sys,subprocess
 from pathlib import Path
-sdk=Path(%s); builtins=Path(%s)
+sdk=Path(%s); builtins=Path(%s); mappings=%s
 if sys.argv[1:]==['-print-libgcc-file-name']:
     if not builtins.is_file():raise SystemExit('compiler-rt builtins have not been built')
     print(builtins);raise SystemExit(0)
 env=dict(os.environ,LD_LIBRARY_PATH=str(sdk/'host/lib'))
 args=['--target=x86_64-unknown-none-elf','-nostdlibinc','-ffreestanding','-mno-red-zone','-D__SCHAR_WIDTH__=__CHAR_BIT__','-D__LONG_LONG_WIDTH__=__LLONG_WIDTH__','-B'+str(sdk/'libexec')]
 if '++' in Path(sys.argv[0]).name:args+=['--driver-mode=g++']
-raise SystemExit(subprocess.call([str(sdk/'host/bin/clang'),*args,*sys.argv[1:]],env=env))
-'''%(repr(str(sdk)),repr(str(out/'builtins/lib/linux/libclang_rt.builtins-x86_64.a')))
+raise SystemExit(subprocess.call([str(sdk/'host/bin/clang'),*args,*sys.argv[1:],*mappings],env=env))
+'''%(repr(str(sdk)),repr(str(out/'builtins/lib/linux/libclang_rt.builtins-x86_64.a')),repr(path_hygiene.compiler_flags(policy)))
     for name in ['x86_64-elf-gcc','bootstrap-cc','bootstrap-c++']:
         (directory/name).write_text(script);(directory/name).chmod(0o755)
     for name,tool in [('x86_64-elf-ar','ar'),('x86_64-elf-ranlib','ranlib')]:
@@ -150,9 +152,10 @@ raise SystemExit(subprocess.call([str(sdk/'host/bin/clang'),*args,*sys.argv[1:]]
     return directory
 
 
-def build_builtins(sources, sdk, out, env, jobs):
+def build_builtins(sources, sdk, out, env, jobs, policy):
     """Build target compiler-rt from source instead of copying a Linux/GCC target runtime."""
     build=out/'builtins'
+    mappings=shlex.join(path_hygiene.compiler_flags(policy))
     headers=out/'bootstrap-headers';headers.mkdir(exist_ok=True)
     # Private freestanding assert for compiler-rt CPU detection, never installed as a libc header.
     (headers/'assert.h').write_text('#define static_assert _Static_assert\n#ifdef NDEBUG\n#define assert(x) ((void)0)\n#else\n#define assert(x) ((x)?(void)0:__builtin_trap())\n#endif\n')
@@ -160,7 +163,7 @@ def build_builtins(sources, sdk, out, env, jobs):
         '-DCMAKE_SYSTEM_NAME=Generic','-DCMAKE_SYSTEM_PROCESSOR=x86_64','-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY',
         '-DCMAKE_C_COMPILER='+str(sdk/'host/bin/clang'),'-DCMAKE_ASM_COMPILER='+str(sdk/'host/bin/clang'),
         '-DCMAKE_C_COMPILER_TARGET=x86_64-unknown-none-elf','-DCMAKE_ASM_COMPILER_TARGET=x86_64-unknown-none-elf',
-        '-DCMAKE_C_FLAGS=-ffreestanding -fPIC -nostdlibinc -isystem'+str(headers),'-DCMAKE_BUILD_TYPE=Release',
+        '-DCMAKE_C_FLAGS=-ffreestanding -fPIC -nostdlibinc -isystem'+shlex.quote(str(headers))+' '+mappings, '-DCMAKE_ASM_FLAGS='+mappings,'-DCMAKE_BUILD_TYPE=Release',
         '-DCOMPILER_RT_BAREMETAL_BUILD=ON','-DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON',
         '-DCOMPILER_RT_EXCLUDE_ATOMIC_BUILTIN=ON','-DLLVM_CMAKE_DIR='+str(sources['llvm']/'llvm/cmake/modules')],env,log=out/'logs/builtins.log')
     command(['cmake','--build',build,'--parallel',jobs],env,log=out/'logs/builtins.log')
@@ -179,6 +182,8 @@ def prepared_sources(lock, sources, out):
         if not target.exists():
             shutil.copytree(sources[name],target,ignore=shutil.ignore_patterns('.git','target'))
         prepared[name]=target
+    # This recipe owns the disposable builder script; refresh it when patch versions change.
+    copy_stable(sources['user']/'scripts/build-newlib.sh',prepared['user']/'scripts/build-newlib.sh')
     for name,expected in lock['patches'].items():
         patch=ROOT/'patches'/name
         if digest(patch)!=expected:raise ValueError('Patch digest mismatch: '+name)
@@ -193,10 +198,14 @@ def prepared_sources(lock, sources, out):
     return dict(sources,**prepared)
 
 
-def build_c_runtime(lock,sources,sdk,out,env,jobs):
+def build_c_runtime(lock,sources,sdk,out,env,jobs,policy):
     """Build newlib and the real syscall-backed Rust process runtime from pinned sources."""
-    directory=bootstrap(sdk,out)
+    directory=bootstrap(sdk,out,policy)
     env=dict(env,PATH=str(directory)+':'+env['PATH'],CARGO_HOME=str(out/'cargo-home'))
+    env.update(RUSTC_WRAPPER=str(ROOT/'path_hygiene.py'),
+        MOCHIOS_SDK_PATH_POLICY=str(out/'path-policy.json'),
+        MOCHIOS_SDK_CFLAGS=shlex.join(path_hygiene.compiler_flags(policy)),
+        MOCHIOS_SDK_CARGO_TARGET_DIR=str(out/'rust-targets'/path_hygiene.identity(policy)))
     command(['bash',sources['user']/'scripts/build-newlib.sh','--newlib-source',sources['newlib'],
         '--output',out/'c-runtime','--abi-source',sources['mnu']/'crates/abi',
         '--libc-source',sources['libc'],'--mboot-protocol-source',sources['mboot']/'mboot-protocol',
@@ -220,17 +229,17 @@ def isolate_math_builtins(sdk,out,env):
     command([sdk/'host/bin/objcopy','--redefine-syms='+str(mapping),sdk/'lib/libmochi_user_newlib_runtime.a'],env)
 
 
-def build_cxx_runtime(sources,sdk,out,env,jobs):
+def build_cxx_runtime(sources,sdk,out,env,jobs,policy):
     """Build target libc++, libc++abi and libunwind; bootstrap configure never executes target code."""
     build=out/'cxx-runtime'
-    flags='-nostdlibinc -D__SCHAR_WIDTH__=__CHAR_BIT__ -D__LONG_LONG_WIDTH__=__LLONG_WIDTH__ -D__mochios__=1 -D_GNU_SOURCE=1 -mno-red-zone -fno-pie -isystem'+str(sdk/'sysroot/include')
+    flags='-nostdlibinc -D__SCHAR_WIDTH__=__CHAR_BIT__ -D__LONG_LONG_WIDTH__=__LLONG_WIDTH__ -D__mochios__=1 -D_GNU_SOURCE=1 -mno-red-zone -fno-pie -isystem'+shlex.quote(str(sdk/'sysroot/include'))+' '+shlex.join(path_hygiene.compiler_flags(policy))
     options={
         'CMAKE_SYSTEM_NAME':'Generic','CMAKE_SYSTEM_PROCESSOR':'x86_64','CMAKE_TRY_COMPILE_TARGET_TYPE':'STATIC_LIBRARY',
         'CMAKE_C_COMPILER':sdk/'host/bin/clang','CMAKE_CXX_COMPILER':sdk/'host/bin/clang', 'CMAKE_ASM_COMPILER':sdk/'host/bin/clang',
         'CMAKE_C_COMPILER_TARGET':'x86_64-unknown-none-elf','CMAKE_CXX_COMPILER_TARGET':'x86_64-unknown-none-elf','CMAKE_ASM_COMPILER_TARGET':'x86_64-unknown-none-elf',
         'CMAKE_SYSROOT':sdk/'sysroot','CMAKE_FIND_ROOT_PATH':sdk/'sysroot',
         'CMAKE_FIND_ROOT_PATH_MODE_LIBRARY':'ONLY','CMAKE_FIND_ROOT_PATH_MODE_INCLUDE':'ONLY','CMAKE_FIND_ROOT_PATH_MODE_PACKAGE':'ONLY','CMAKE_FIND_ROOT_PATH_MODE_PROGRAM':'NEVER',
-        'CMAKE_C_FLAGS':flags,'CMAKE_CXX_FLAGS':flags+' --driver-mode=g++','CMAKE_BUILD_TYPE':'Release','CMAKE_INSTALL_PREFIX':build/'install',
+        'CMAKE_C_FLAGS':flags,'CMAKE_ASM_FLAGS':shlex.join(path_hygiene.compiler_flags(policy)),'CMAKE_CXX_FLAGS':flags+' --driver-mode=g++','CMAKE_BUILD_TYPE':'Release','CMAKE_INSTALL_PREFIX':build/'install',
         'LLVM_ENABLE_RUNTIMES':'libcxx;libcxxabi;libunwind','LIBCXX_ENABLE_SHARED':'OFF','LIBCXXABI_ENABLE_SHARED':'OFF','LIBUNWIND_ENABLE_SHARED':'OFF',
         'LIBCXX_HAS_PTHREAD_API':'ON','LIBCXXABI_HAS_PTHREAD_API':'ON','LIBCXX_ENABLE_FILESYSTEM':'ON','LIBCXX_ENABLE_LOCALIZATION':'ON',
         'LIBCXX_INCLUDE_TESTS':'OFF','LIBCXX_INCLUDE_BENCHMARKS':'OFF','LIBCXXABI_INCLUDE_TESTS':'OFF','LIBUNWIND_INCLUDE_TESTS':'OFF','LIBUNWIND_IS_BAREMETAL':'ON',
@@ -246,7 +255,7 @@ def build_cxx_runtime(sources,sdk,out,env,jobs):
 
 UNSUPPORTED_C_API={'rpmatch','cacosl','cacoshl','casinl','casinhl','catanhl'}
 
-def assemble(lock,sources,sdk,out,env):
+def assemble(lock,sources,sdk,out,env,policy):
     """Install relocatable drivers and measure the exported ABI of a real linked process image."""
     (sdk/'bin').mkdir(exist_ok=True)
     shutil.copy2(ROOT/'driver.py',sdk/'bin/driver.py');(sdk/'bin/driver.py').chmod(0o755)
@@ -255,7 +264,7 @@ def assemble(lock,sources,sdk,out,env):
         p=sdk/'bin'/name;p.unlink(missing_ok=True);p.symlink_to('driver.py')
     for name in ['executable.ld','shared-unwind.ld']:shutil.copy2(ROOT/name,sdk/'lib'/name)
     shutil.copytree(ROOT/'cmake',sdk/'share/cmake',dirs_exist_ok=True)
-    command([sdk/'bin/mochios-cc','-c',ROOT/'shared-crt.c','-o',sdk/'lib/shared-crt.o'],env)
+    command([sdk/'bin/mochios-cc',*path_hygiene.compiler_flags(policy),'-c',ROOT/'shared-crt.c','-o',sdk/'lib/shared-crt.o'],env)
     all_symbols=set();c_symbols=set()
     archives=[sdk/'lib'/n for n in ['libmochi_user_newlib_runtime.a','libc++.a','libc++abi.a','libunwind.a','libbuiltins.a']]+[sdk/'sysroot/lib/libc.a',sdk/'sysroot/lib/libm.a']
     for path in archives:
@@ -307,8 +316,7 @@ def licenses(sources,sdk,out):
             if notice.is_file() and notice.name.upper().startswith(('LICENSE','COPYING','NOTICE')):
                 shutil.copy2(notice,directory/(source.name+'-'+notice.name))
     # Newlib's patched corresponding source is included to satisfy LGPL components' source requirements.
-    with tarfile.open(sdk/'licenses/newlib-corresponding-source.tar.gz','w:gz') as tar:
-        tar.add(sources['newlib'],arcname='newlib',filter=lambda info:None if '/.git' in info.name else info)
+    path_hygiene.write_archive(sources['newlib'],sdk/'licenses/newlib-corresponding-source.tar.gz','newlib',exclude_git=True)
     shutil.copytree(ROOT/'patches',sdk/'licenses/patches',dirs_exist_ok=True)
 
 
@@ -319,15 +327,22 @@ def verify(sdk,out,env,jobs):
     command([sys.executable,ROOT/'verify.py',sdk,out/'verification'],env)
 
 
-def package(lock,sdk,out):
+def package(lock,sdk,out,policy):
     """Publish local archives only after verification, with inventory and a SHA-256 completion marker."""
+    audit=path_hygiene.audit_tree(sdk,policy)
+    (out/'logs').mkdir(parents=True,exist_ok=True)
+    (out/'logs/path-audit.json').write_text(json.dumps(audit,indent=2)+'\n')
     release=out/'releases';release.mkdir(exist_ok=True)
     name='x86_64-mochios-sdk-'+lock['version']+'.tar.gz';archive=release/name
     temporary=archive.with_suffix('.tmp')
-    with tarfile.open(temporary,'w:gz') as tar:tar.add(sdk,arcname='sdk')
-    temporary.replace(archive)
+    try:
+        path_hygiene.write_archive(sdk,temporary,'sdk')
+        with tarfile.open(temporary) as tar:path_hygiene.audit_tar(tar,policy,name)
+        temporary.replace(archive)
+    finally:
+        temporary.unlink(missing_ok=True)
     inventory={str(p.relative_to(sdk)):({'symlink':os.readlink(p)} if p.is_symlink() else {'sha256':digest(p),'size':p.stat().st_size}) for p in sorted(sdk.rglob('*')) if p.is_file() or p.is_symlink()}
-    manifest=dict(format=1,sdk=json.loads((sdk/'sdk.json').read_text()),sources=lock,files=inventory,archive=name,sha256=digest(archive))
+    manifest=dict(format=1,path_audit=audit,sdk=json.loads((sdk/'sdk.json').read_text()),sources=lock,files=inventory,archive=name,sha256=digest(archive))
     (release/(name+'.json')).write_text(json.dumps(manifest,indent=2)+'\n')
     (release/'SHA256SUMS').write_text(digest(archive)+'  '+name+'\n')
     print('Verified SDK archive: '+str(archive),flush=True)
@@ -345,16 +360,19 @@ def main():
     if args.command=='fetch':return
     sdk=out/'sdk';sdk.mkdir(exist_ok=True)
     host_tools(host,sdk)
+    rust_sysroot=Path(subprocess.check_output(['rustc','+'+lock['rust_toolchain'],'--print','sysroot'],text=True).strip())
+    policy=path_hygiene.make_policy(ROOT.parent,out,sources,rust_sysroot)
+    (out/'path-policy.json').write_text(json.dumps(policy,indent=2)+'\n')
     env=dict(os.environ,LD_LIBRARY_PATH=str(sdk/'host/lib'))
-    build_builtins(sources,sdk,out,env,str(args.jobs))
+    build_builtins(sources,sdk,out,env,str(args.jobs),policy)
     if args.command=='builtins':return
     sources=prepared_sources(lock,sources,out)
-    env=build_c_runtime(lock,sources,sdk,out,env,str(args.jobs))
-    build_cxx_runtime(sources,sdk,out,env,str(args.jobs))
-    assemble(lock,sources,sdk,out,env)
+    env=build_c_runtime(lock,sources,sdk,out,env,str(args.jobs),policy)
+    build_cxx_runtime(sources,sdk,out,env,str(args.jobs),policy)
+    assemble(lock,sources,sdk,out,env,policy)
     licenses(sources,sdk,out)
     verify(sdk,out,env,str(args.jobs))
-    package(lock,sdk,out)
+    package(lock,sdk,out,policy)
 
 
 if __name__=='__main__':

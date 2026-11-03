@@ -31,3 +31,25 @@ Only startup-linked shared objects are supported. TLS uses initial-exec. This SD
 ## Releases
 
 Shared SDK releases use a distinct prerelease tag, `sdk-<sdk.json version>`, without replacing AppCore releases. The manually dispatched SDK workflow rebuilds from the fixed inputs, runs structural and linker tests, uploads the SDK artifacts and build logs. It never creates or publishes a GitHub release; release creation and asset upload are performed manually by the maintainer. Existing release assets are never overwritten. The SDK archive, manifest and SHA-256 completion marker form one release. `mochiOS/libs` pins the archive URL, SHA-256 and builder image digest before building target libraries.
+
+## Build path hygiene
+
+C, C++, preprocessed assembly and Rust runtime builds remap source, checkout,
+cache and toolchain paths to stable virtual prefixes. `__FILE__` and debug
+records retain useful source locations without exposing the build machine.
+Rust compiler wrappers and existing compiler flags are preserved. A changed
+path policy gets a separate Cargo cache so old unsanitized objects are not
+reused. Newlib records its effective mapping flags in its rebuild stamp.
+
+Before producing an upload candidate, the builder scans every distributed
+file, symlink and bundled source archive for real build roots. The final tar
+is checked again. Archive ownership and timestamps are normalized, and gzip
+does not record a build-machine filename. Original source and license text is
+not rewritten. A failed audit stops archive and checksum publication; an old
+artifact is never silently replaced. The JSON manifest contains a path-audit
+summary, while the policy containing real local paths stays outside the SDK.
+
+Standard target paths and virtual `/src`, `/build`, `/sdk` and `/toolchain`
+locations are intentional. This is not a promise to remove every absolute
+path used by the target operating system. CI only produces downloadable
+artifacts; creating a GitHub release remains a manual maintainer action.

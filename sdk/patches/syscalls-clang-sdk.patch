@@ -8,12 +8,21 @@
      patch_args+=(--config "patch.\"https://github.com/mochiOS/mnu\".mnu-abi.path='$ABI_SOURCE'")
  fi
  if [[ -n "$LIBC_SOURCE" ]]; then
+@@ -77,7 +78,7 @@
+ BUILD_DIR="$OUT_ROOT/build-newlib-dynamic-reent"
+ INSTALL_ROOT="$OUT_ROOT/toolchain"
+ SYSROOT="${NEWLIB_SYSROOT:-$INSTALL_ROOT/x86_64-elf}"
+-TARGET_DIR="$OUT_ROOT/cargo-target"
++TARGET_DIR="${MOCHIOS_SDK_CARGO_TARGET_DIR:-$OUT_ROOT/cargo-target}"
+ SDK="$OUT_ROOT/sdk"
+ mkdir -p "$BUILD_DIR" "$INSTALL_ROOT" "$TARGET_DIR" "$SDK/bin" "$SDK/lib" "$SDK/share" "$OUT_ROOT/hello"
+ # Source builds use make's dependency tracking; a supplied sysroot is immutable input.
 @@ -113,7 +114,7 @@
               "${configure_options[@]}")
          printf '%s\n' "$configure_profile" >"$configure_stamp"
      fi
 -    target_cflags="-O2 -g0 -D__mochios__ -DGETREENT_PROVIDED -DSIGNAL_PROVIDED -DHAVE_RENAME -I$USER_ROOT/libc-port/include -ffile-prefix-map=$NEWLIB_SOURCE=/src/newlib -ffile-prefix-map=$OUT_ROOT=/build/newlib"
-+    target_cflags="-O2 -g0 -nostdlibinc -ffreestanding -mno-red-zone -D__mochios__ -DGETREENT_PROVIDED -DSIGNAL_PROVIDED -DHAVE_RENAME -I$USER_ROOT/libc-port/include -ffile-prefix-map=$NEWLIB_SOURCE=/src/newlib -ffile-prefix-map=$OUT_ROOT=/build/newlib"
++    target_cflags="-O2 -g0 -nostdlibinc -ffreestanding -mno-red-zone -D__mochios__ -DGETREENT_PROVIDED -DSIGNAL_PROVIDED -DHAVE_RENAME -I$USER_ROOT/libc-port/include -ffile-prefix-map=$NEWLIB_SOURCE=/src/newlib -ffile-prefix-map=$OUT_ROOT=/build/newlib ${MOCHIOS_SDK_CFLAGS:-}"
      flags_stamp="$BUILD_DIR/.mochios-target-cflags"
      if [[ ! -f "$flags_stamp" ]] || [[ "$(<"$flags_stamp")" != "$target_cflags" ]]; then
          make -C "$BUILD_DIR" clean-target-newlib

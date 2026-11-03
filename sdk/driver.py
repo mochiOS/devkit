@@ -93,7 +93,7 @@ def main():
     os.environ['LD_LIBRARY_PATH'] = env['LD_LIBRARY_PATH']
     compiler = sdk / 'host/bin/clang'
     flags = ['--target=x86_64-unknown-none-elf', '--sysroot=' + str(sdk / 'sysroot'),
-             '-nostdlibinc', '-isystem', str(sdk / 'sysroot/include'), '-D__SCHAR_WIDTH__=__CHAR_BIT__', '-D__LONG_LONG_WIDTH__=__LLONG_WIDTH__', '-D__mochios__=1', '-D__unix__=1', '-D_GNU_SOURCE=1', '-mno-red-zone', '-ftls-model=initial-exec', '-fPIC', '-funwind-tables']
+             '-nostdlibinc', '-isystem', str(sdk / 'sysroot/include'), '-D__SCHAR_WIDTH__=__CHAR_BIT__', '-D__LONG_LONG_WIDTH__=__LLONG_WIDTH__', '-D__mochios__=1', '-D__unix__=1', '-D_GNU_SOURCE=1', '-ffile-prefix-map=' + str(sdk) + '=/sdk', '-mno-red-zone', '-ftls-model=initial-exec', '-fPIC', '-funwind-tables']
     if cxx: flags[2:2] = ['--driver-mode=g++', '-nostdinc++', '-isystem', str(sdk / 'sysroot/include/c++/v1')]
     query = not args or args in [['-v'], ['--version'], ['--help'], ['-dumpmachine']] or any(arg.startswith('-print-') for arg in args)
     compile_only = query or any(arg in args for arg in ['-c', '-S', '-E', '-M', '-MM', '-fsyntax-only'])
