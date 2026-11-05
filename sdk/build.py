@@ -182,18 +182,31 @@ def prepared_sources(lock, sources, out):
     # A cached working copy must never retain source from a previous lock.
     # Patch changes also require pristine input, rather than patching an old
     # already-patched tree whose final contents are not the requested recipe.
-    for name in ['user','newlib','llvm']:
+    for name in ['user','newlib','llvm', *(['tls'] if 'tls' in sources else [])]:
         target=work/name
         stamp=work/('.'+name+'-inputs.json')
         component_patches={key:value for key,value in lock['patches'].items()
             if ('user' if key.startswith('syscalls') else 'newlib' if key.startswith('newlib') else 'llvm')==name}
         identity=dict(format=1,source=lock['llvm'] if name=='llvm' else lock['sources'][name],patches=component_patches)
+        if name=='tls':identity['platform_source']=lock['sources']['user']
         if target.is_symlink() or stamp.is_symlink():raise ValueError('Invalid prepared source path: '+name)
         previous=json.loads(stamp.read_text()) if stamp.is_file() else None
         if not target.is_dir() or previous!=identity:
             if target.exists():shutil.rmtree(target)
             stamp.unlink(missing_ok=True)
-            shutil.copytree(sources[name],target,ignore=shutil.ignore_patterns('.git','target'))
+            shutil.copytree(sources['user'] if name=='tls' else sources[name],target,ignore=shutil.ignore_patterns('.git','target'))
+            if name=='tls':
+                # Use the pinned process platform workspace, replacing only the
+                # two TLS crates. Unrelated new userland APIs never enter SDK builds.
+                for crate in ['tls-client','tls-stream-ffi']:
+                    destination=target/'crates'/crate
+                    if destination.exists():shutil.rmtree(destination)
+                    shutil.copytree(sources['tls']/'crates'/crate,destination)
+                headers=target/'libc-port/include/mochios'
+                headers.mkdir(parents=True,exist_ok=True)
+                copy_stable(sources['tls']/'libc-port/include/mochios/tls.h',headers/'tls.h')
+                manifest=target/'Cargo.toml'
+                manifest.write_text(manifest.read_text().replace('    "crates/tls-client",','    "crates/tls-client",\n    "crates/tls-stream-ffi",'))
             stamp.write_text(json.dumps(identity,sort_keys=True)+'\n')
         prepared[name]=target
     # This recipe owns the disposable builder script; refresh it when patch versions change.
@@ -209,6 +222,10 @@ def prepared_sources(lock, sources, out):
             raise ValueError('Prepared source does not match locked patch: '+name)
     if digest(ROOT/'runtime.Cargo.lock')!=lock['runtime_cargo_lock_sha256']:raise ValueError('Runtime Cargo lock mismatch')
     shutil.copy2(ROOT/'runtime.Cargo.lock',prepared['user']/'Cargo.lock')
+    if 'tls' in prepared:
+        if digest(ROOT/'tls.Cargo.lock') != lock['tls_cargo_lock_sha256']:
+            raise ValueError('TLS Cargo lock mismatch')
+        copy_stable(ROOT/'tls.Cargo.lock', prepared['tls']/'Cargo.lock')
     return dict(sources,**prepared)
 
 
@@ -241,6 +258,60 @@ def build_c_runtime(lock,sources,sdk,out,env,jobs,policy):
         '-c',sources['newlib']/'newlib/libc/posix/fnmatch.c','-o',fnmatch_object],env)
     command([sdk/'host/bin/ar','r',sdk/'sysroot/lib/libc.a',fnmatch_object],env)
     return env
+
+
+def build_tls_archive(lock, sources, sdk, out, env, jobs, policy):
+    """Build the pinned verified record engine without embedding a second process runtime.
+
+    TLS sources are separately pinned so adding a GIO adapter does not change
+    the SDK's syscall/runtime ABI. Only the SDK's pinned platform is used.
+    """
+    if 'tls' not in sources:
+        return
+    source = sources['tls']
+    target = out/'tls-targets'/path_hygiene.identity(policy)
+    overrides = [('crates-io', 'mnu-abi', sources['mnu']/'crates/abi'),
+                 ('https://github.com/mochiOS/mnu', 'mnu-abi', sources['mnu']/'crates/abi'),
+                 ('crates-io', 'libc', sources['libc']),
+                 ('https://github.com/mochiOS/libc', 'libc', sources['libc']),
+                 ('https://github.com/mochiOS/mBoot', 'mboot-protocol', sources['mboot']/'mboot-protocol')]
+    for package, directory in [('mochi-user-platform','platform'), ('mochi-user-runtime','runtime'),
+                               ('mochi-user-syscall','syscall'), ('mochios-capability-protocol','capability-protocol')]:
+        overrides.append(('https://github.com/mochiOS/syscalls',package,source/'crates'/directory))
+    args = ['cargo','+'+lock['rust_toolchain'],'build','--locked','--release',
+            '-Zjson-target-spec','-Zbuild-std=core,alloc,compiler_builtins',
+            '--target',source/'targets/x86_64-unknown-mochios.json',
+            '--target-dir',target,'--jobs',jobs,'-p','mochios-tls-stream-ffi']
+    for origin, package, directory in overrides:
+        args += ['--config', 'patch.'+json.dumps(origin)+'.'+package+'.path='+json.dumps(str(directory))]
+    tls_env = dict(env, RUSTFLAGS='-Crelocation-model=pic -Cdebuginfo=0',
+                   RUSTC_WRAPPER=str(ROOT/'path_hygiene.py'),
+                   MOCHIOS_SDK_PATH_POLICY=str(out/'path-policy.json'))
+    command(args, tls_env, cwd=source, log=out/'logs/tls.log')
+    destination = sdk/'lib/libmochios_tls_pic.a'
+    copy_stable(target/'x86_64-unknown-mochios/release/libmochios_tls_stream_ffi.a', destination)
+    headers = sdk/'sysroot/include/mochios'
+    headers.mkdir(parents=True,exist_ok=True)
+    copy_stable(source/'libc-port/include/mochios/tls.h', headers/'tls.h')
+    shim = out/'tls-native.o'
+    command([sdk/'bin/mochios-cc','-O2','-g0','-fPIC',*path_hygiene.compiler_flags(policy),
+             '-c',source/'crates/tls-stream-ffi/native/tls.c','-o',shim],env)
+    command([sdk/'host/bin/ar','rcsD',destination,shim],env)
+    with destination.open('rb') as stream:
+        path_hygiene.scan_stream(stream,'libmochios_tls_pic.a',policy)
+    # Linking a DSO must resolve this bridge from the archive while ordinary
+    # allocation, entropy, time and threading stay owned by the process ABI.
+    probe = out/'tls-link-probe.c'
+    probe.write_text('#include <mochios/tls.h>\nint tls_probe(void) { uint64_t h=0; int e=mochi_tls_new_v1("example.com",11,0,0,&h); if(!e) mochi_tls_free_v1(h); return e; }\n')
+    exports = out/'tls-link-probe.map'
+    exports.write_text('{ global: tls_probe; local: *; };\n')
+    command([sdk/'bin/mochios-cc','-shared','-fPIC',*path_hygiene.compiler_flags(policy),
+             probe,'-lmochios_tls_pic','-Wl,-soname,libtls-link-probe.so','-Wl,--version-script='+str(exports),
+             '-o',out/'libtls-link-probe.so'],env)
+    executable = out/'tls-consumer-probe.c'
+    executable.write_text('extern int tls_probe(void); int main(void) { return tls_probe(); }\n')
+    command([sdk/'bin/mochios-cc',*path_hygiene.compiler_flags(policy),executable,
+             out/'libtls-link-probe.so','-o',out/'tls-consumer-probe'],env)
 
 
 def isolate_math_builtins(sdk,out,env):
@@ -323,7 +394,7 @@ def assemble(lock,sources,sdk,out,env,policy):
 def licenses(sources,sdk,out):
     """Bundle original license notices and exact corresponding source inputs, without inventing legal text."""
     directory=sdk/'licenses/target';directory.mkdir(parents=True,exist_ok=True)
-    for project in ['user','mnu','libc','newlib','llvm','mboot']:
+    for project in ['user','mnu','libc','newlib','llvm','mboot', *(['tls'] if 'tls' in sources else [])]:
         for source in sources[project].iterdir():
             if source.is_file() and (source.name.upper().startswith(('LICENSE','COPYING','NOTICE'))):
                 shutil.copy2(source,directory/(project+'-'+source.name))
@@ -393,6 +464,7 @@ def main():
     env=build_c_runtime(lock,sources,sdk,out,env,str(args.jobs),policy)
     build_cxx_runtime(sources,sdk,out,env,str(args.jobs),policy)
     assemble(lock,sources,sdk,out,env,policy)
+    build_tls_archive(lock,sources,sdk,out,env,str(args.jobs),policy)
     licenses(sources,sdk,out)
     verify(sdk,out,env,str(args.jobs))
     package(lock,sdk,out,policy)

@@ -53,3 +53,26 @@ Standard target paths and virtual `/src`, `/build`, `/sdk` and `/toolchain`
 locations are intentional. This is not a promise to remove every absolute
 path used by the target operating system. CI only produces downloadable
 artifacts; creating a GitHub release remains a manual maintainer action.
+
+## Native TLS record adapter (shared.4 build candidate)
+
+The SDK builds `lib/libmochios_tls_pic.a` and `sysroot/include/mochios/tls.h`
+from the separately pinned `tls` source. The existing shared.3 process runtime
+and syscall ABI source pins are retained. Only `tls-client` and `tls-stream-ffi`
+are overlaid onto that platform workspace; unrelated userland changes are not
+part of this SDK build.
+
+This is a **private PIC archive for a shared-library adapter**, such as
+`libgiomochios.so`. Link it with `-lmochios_tls_pic` and a version script that
+hides all Rust internals. Do not link the archive directly into a C executable:
+the executable already owns its Rust process runtime and compiler builtins.
+The SDK checks both an adapter DSO and a final executable consuming that DSO.
+
+The adapter uses the existing TLS 1.3 verifier, production roots, OS entropy and
+clock. It performs no socket I/O and provides no certificate-verification
+bypass. The host-only test CA feature is rejected when targeting mochiOS.
+Native runtime interoperability remains a separate OS validation step; a cross
+link is not proof of a successful HTTPS request on mochiOS.
+
+The normal build only creates local upload candidates. Release publication
+remains manual.

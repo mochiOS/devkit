@@ -61,3 +61,31 @@ class PreparedSourceTests(unittest.TestCase):
             (out/'prepared/user').symlink_to(sources['user'],target_is_directory=True)
             with mock.patch.object(builder,'ROOT',recipe),self.assertRaisesRegex(ValueError,'Invalid prepared source'):
                 builder.prepared_sources(lock,sources,out)
+    def test_tls_overlay_keeps_the_pinned_platform_and_unrelated_sources(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            recipe,sources,lock,out=self.fixture(Path(tmp))
+            user=sources['user']
+            (user/'Cargo.toml').write_text('[workspace]\nmembers = [\n    "crates/tls-client",\n]\n')
+            (user/'crates/tls-client').mkdir(parents=True)
+            (user/'crates/tls-client/value').write_text('old TLS')
+            tls=Path(tmp)/'source-tls';tls.mkdir();sources['tls']=tls
+            (tls/'value').write_text('unrelated newer platform')
+            for crate in ['tls-client','tls-stream-ffi']:
+                path=tls/'crates'/crate;path.mkdir(parents=True)
+                (path/'value').write_text('new '+crate)
+            headers=tls/'libc-port/include/mochios';headers.mkdir(parents=True)
+            (headers/'tls.h').write_text('native API')
+            lock['sources']['tls']={'url':'https://example.invalid/tls','commit':'d'*40}
+            (recipe/'tls.Cargo.lock').write_text('version = 4\n')
+            lock['tls_cargo_lock_sha256']=hashlib.sha256((recipe/'tls.Cargo.lock').read_bytes()).hexdigest()
+            with mock.patch.object(builder,'ROOT',recipe):
+                prepared=builder.prepared_sources(lock,sources,out)
+                self.assertEqual((prepared['tls']/'value').read_text(),'original\n')
+                self.assertEqual((prepared['tls']/'crates/tls-client/value').read_text(),'new tls-client')
+                self.assertIn('crates/tls-stream-ffi',(prepared['tls']/'Cargo.toml').read_text())
+                self.assertNotIn('crates/tls-stream-ffi',(prepared['user']/'Cargo.toml').read_text())
+                self.assertEqual((prepared['user']/'crates/tls-client/value').read_text(),'old TLS')
+                (user/'value').write_text('pinned platform update')
+                lock['sources']['user']['commit']='e'*40
+                prepared=builder.prepared_sources(lock,sources,out)
+                self.assertEqual((prepared['tls']/'value').read_text(),'pinned platform update')

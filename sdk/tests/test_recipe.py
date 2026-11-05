@@ -20,6 +20,12 @@ class RecipeTests(unittest.TestCase):
         lock=json.loads((ROOT/'sources.lock.json').read_text())
         self.assertEqual(hashlib.sha256((ROOT/'runtime.Cargo.lock').read_bytes()).hexdigest(),lock['runtime_cargo_lock_sha256'])
         self.assertNotIn('source = \"git+', (ROOT/'runtime.Cargo.lock').read_text())
+    def test_tls_dependency_graph_is_locked_without_git_fallbacks(self):
+        lock=json.loads((ROOT/'sources.lock.json').read_text())
+        data=(ROOT/'tls.Cargo.lock').read_bytes()
+        self.assertEqual(hashlib.sha256(data).hexdigest(),lock['tls_cargo_lock_sha256'])
+        self.assertNotIn(b'source = "git+',data)
+        self.assertIn(b'name = "mochios-tls-stream-ffi"',data)
     def test_shared_runtime_not_embedded(self):
         with tempfile.TemporaryDirectory() as tmp:
             sdk=Path(tmp)

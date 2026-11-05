@@ -34,10 +34,10 @@ def make_policy(project, out, sources, rust_sysroot, environment=None):
     add(out, '/build')
     add(out / 'cargo-home', '/cargo')
     add(rust_sysroot, '/toolchain')
-    for name in ['user', 'mnu', 'libc', 'mboot', 'newlib', 'llvm']:
+    for name in ['user', 'tls', 'mnu', 'libc', 'mboot', 'newlib', 'llvm']:
         if name in sources:
             add(sources[name], '/src/' + name)
-        if name in ['user', 'newlib', 'llvm']:
+        if name in ['user', 'tls', 'newlib', 'llvm']:
             add(out / 'prepared' / name, '/src/' + name)
     inner = environment.get('RUSTC_WRAPPER') or None
     if inner and Path(inner).resolve() == Path(__file__).resolve():
