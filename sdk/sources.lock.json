@@ -139,6 +139,6 @@
     "newlib-mochios.patch": "5fcd63b7a02511ec74a4de4bce9098fd554e09344b6b091daae8e5faea7dcd15",
     "syscalls-clang-sdk.patch": "ecd287a9a89afd0e2ad66218a5dc021e10c7328d67a0238c814f779c164846dc"
   },
-  "runtime_cargo_lock_sha256": "e7aa772cf03ee321068925ed8e6b70a75e947bdfc99c2330c0048e1efd9ae555",
-  "tls_cargo_lock_sha256": "be22ab069c39ddc5480d9c31be13495698cbeb5c3a246573877b9beb47dc81cb"
+  "runtime_cargo_lock_sha256": "9ea220bf4f3733f94e22c2862690aa87f092d2df67472e0847e3673259ffd642",
+  "tls_cargo_lock_sha256": "9ea220bf4f3733f94e22c2862690aa87f092d2df67472e0847e3673259ffd642"
 }
