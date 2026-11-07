@@ -389,6 +389,10 @@ def assemble(lock,sources,sdk,out,env,policy):
             all_symbols.add(symbol)
             if path.name in ['libc.a','libm.a'] and re.fullmatch('[A-Za-z][A-Za-z0-9_]*',symbol):c_symbols.add(symbol)
     private_loader=require_private_loader_api(sdk,all_symbols,c_symbols)
+    required=set(lock.get('required_runtime_exports',[]))
+    missing=required-all_symbols
+    if missing:raise ValueError('Pinned runtime APIs are missing: '+', '.join(sorted(missing)))
+    c_symbols.update(required)
     (sdk/'share/runtime.exports').write_text('{\nglobal:\n'+''.join(s+';\n' for s in sorted(all_symbols-UNSUPPORTED_C_API))+'local: *;\n};\n')
     (sdk/'share/runtime-roots.json').write_text(json.dumps(['-Wl,--undefined='+s for s in sorted(c_symbols-UNSUPPORTED_C_API)]))
     (out/'anchor.c').write_text('int main(void) { return 0; }\n')
@@ -400,7 +404,7 @@ def assemble(lock,sources,sdk,out,env,policy):
     if len(exports)<1000:raise ValueError('Executable runtime ABI export table is incomplete')
     (sdk/'share/runtime-symbols.json').write_text(json.dumps(exports)+'\n')
     metadata=dict(format=1,version=lock['version'],target=lock['target'],abi=lock['abi'],host=lock['host'],
-        features=['pic','shared','cxx23','threads','exceptions']+(['private-dlopen'] if private_loader else []),sysroot='sysroot',cmake_toolchain='share/cmake/mochios.cmake',
+        features=['pic','shared','cxx23','threads','exceptions']+(['private-dlopen'] if private_loader else [])+(['secure-getenv'] if 'secure_getenv' in exports else []),sysroot='sysroot',cmake_toolchain='share/cmake/mochios.cmake',
         runtime_model='executable-owned-newlib-v1',tls_model='initial-exec',shared_loading='startup-and-private-dynamic-groups' if private_loader else 'startup-linked-only',runtime_tested=False,
         verification='compile-and-link-only',unsupported_c_api=sorted(UNSUPPORTED_C_API))
     if private_loader:

@@ -76,3 +76,9 @@ link is not proof of a successful HTTPS request on mochiOS.
 
 The normal build only creates local upload candidates. Release publication
 remains manual.
+
+The shared.5 candidate also provides `secure_getenv`. It uses the secure state
+captured at authenticated image start plus the current POSIX broker credentials;
+missing state, failed queries and unrepresentable IDs deny access. It does not
+re-read user-writable auxv to authorize an environment lookup. This does not
+replace ELF/package authentication or Capability checks.
