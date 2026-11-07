@@ -206,7 +206,10 @@ def prepared_sources(lock, sources, out):
                 headers.mkdir(parents=True,exist_ok=True)
                 copy_stable(sources['tls']/'libc-port/include/mochios/tls.h',headers/'tls.h')
                 manifest=target/'Cargo.toml'
-                manifest.write_text(manifest.read_text().replace('    "crates/tls-client",','    "crates/tls-client",\n    "crates/tls-stream-ffi",'))
+                text=manifest.read_text()
+                if '"crates/tls-stream-ffi"' not in text:
+                    text=text.replace('    "crates/tls-client",','    "crates/tls-client",\n    "crates/tls-stream-ffi",')
+                manifest.write_text(text)
             stamp.write_text(json.dumps(identity,sort_keys=True)+'\n')
         prepared[name]=target
     # This recipe owns the disposable builder script; refresh it when patch versions change.
@@ -349,6 +352,20 @@ def build_cxx_runtime(sources,sdk,out,env,jobs,policy):
 
 UNSUPPORTED_C_API={'rpmatch','cacosl','cacoshl','casinl','casinhl','catanhl'}
 
+PRIVATE_LOADER_C_API={'dlopen','dlsym','dlclose','dlerror'}
+
+def require_private_loader_api(sdk, all_symbols, c_symbols):
+    """Root real loader functions only when the target supplies its public header.
+
+    Legacy SDKs without this header keep their startup-only contract. A header
+    without implementations is a build error, never a declaration-only feature.
+    """
+    if not (sdk/'sysroot/include/dlfcn.h').is_file():return False
+    missing=PRIVATE_LOADER_C_API-all_symbols
+    if missing:raise ValueError('Target dlfcn.h has no runtime implementation: '+', '.join(sorted(missing)))
+    c_symbols.update(PRIVATE_LOADER_C_API)
+    return True
+
 def assemble(lock,sources,sdk,out,env,policy):
     """Install relocatable drivers and measure the exported ABI of a real linked process image."""
     (sdk/'bin').mkdir(exist_ok=True)
@@ -371,6 +388,7 @@ def assemble(lock,sources,sdk,out,env,policy):
             if symbol.startswith(('_R','DW.','__mochios_builtin_')) or re.search(r'17h[0-9a-f]{16}E$',symbol):continue
             all_symbols.add(symbol)
             if path.name in ['libc.a','libm.a'] and re.fullmatch('[A-Za-z][A-Za-z0-9_]*',symbol):c_symbols.add(symbol)
+    private_loader=require_private_loader_api(sdk,all_symbols,c_symbols)
     (sdk/'share/runtime.exports').write_text('{\nglobal:\n'+''.join(s+';\n' for s in sorted(all_symbols-UNSUPPORTED_C_API))+'local: *;\n};\n')
     (sdk/'share/runtime-roots.json').write_text(json.dumps(['-Wl,--undefined='+s for s in sorted(c_symbols-UNSUPPORTED_C_API)]))
     (out/'anchor.c').write_text('int main(void) { return 0; }\n')
@@ -382,9 +400,11 @@ def assemble(lock,sources,sdk,out,env,policy):
     if len(exports)<1000:raise ValueError('Executable runtime ABI export table is incomplete')
     (sdk/'share/runtime-symbols.json').write_text(json.dumps(exports)+'\n')
     metadata=dict(format=1,version=lock['version'],target=lock['target'],abi=lock['abi'],host=lock['host'],
-        features=['pic','shared','cxx23','threads','exceptions'],sysroot='sysroot',cmake_toolchain='share/cmake/mochios.cmake',
-        runtime_model='executable-owned-newlib-v1',tls_model='initial-exec',shared_loading='startup-linked-only',runtime_tested=False,
+        features=['pic','shared','cxx23','threads','exceptions']+(['private-dlopen'] if private_loader else []),sysroot='sysroot',cmake_toolchain='share/cmake/mochios.cmake',
+        runtime_model='executable-owned-newlib-v1',tls_model='initial-exec',shared_loading='startup-and-private-dynamic-groups' if private_loader else 'startup-linked-only',runtime_tested=False,
         verification='compile-and-link-only',unsupported_c_api=sorted(UNSUPPORTED_C_API))
+    if private_loader:
+        metadata['unsupported_dynamic_loading']=['dlopen(NULL)','RTLD_NOLOAD','RTLD_GLOBAL','RTLD_DEEPBIND','RTLD_NODELETE','RTLD_DEFAULT','RTLD_NEXT']
     (sdk/'sdk.json').write_text(json.dumps(metadata,indent=2)+'\n')
     shutil.copy2(ROOT/'sources.lock.json',sdk/'share/sources.lock.json')
     shutil.copy2(sources['user']/'Cargo.lock',sdk/'share/runtime.Cargo.lock')

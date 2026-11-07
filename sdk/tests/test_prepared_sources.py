@@ -86,6 +86,8 @@ class PreparedSourceTests(unittest.TestCase):
                 self.assertNotIn('crates/tls-stream-ffi',(prepared['user']/'Cargo.toml').read_text())
                 self.assertEqual((prepared['user']/'crates/tls-client/value').read_text(),'old TLS')
                 (user/'value').write_text('pinned platform update')
+                (user/'Cargo.toml').write_text((user/'Cargo.toml').read_text().replace('    "crates/tls-client",','    "crates/tls-client",\n    "crates/tls-stream-ffi",'))
                 lock['sources']['user']['commit']='e'*40
                 prepared=builder.prepared_sources(lock,sources,out)
                 self.assertEqual((prepared['tls']/'value').read_text(),'pinned platform update')
+                self.assertEqual((prepared['tls']/'Cargo.toml').read_text().count('\"crates/tls-stream-ffi\"'),1)

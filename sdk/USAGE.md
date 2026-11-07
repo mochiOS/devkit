@@ -26,7 +26,7 @@ cmake --build build
 
 Executables own one process runtime, including FD, errno, allocator and thread state. Shared objects import the executable's measured C/C++ ABI; they never embed another copy of that runtime. Shared links reject unknown strong imports outside that ABI and declared shared dependencies. Use a SONAME rather than embedding an absolute dependency path. CMake root searches cannot fall back to host headers or libraries. Executables are ELF EXEC at/above 0x400000, with no Linux interpreter, W^X, RELRO and a non-executable stack.
 
-Only startup-linked shared objects are supported. TLS uses initial-exec. This SDK does not promise `dlopen`, PIE applications, complete POSIX conformance, or a ready-to-run WebKit port. The runtime API list records known unsupported C functions. C++23, threads and exceptions are compile/link checks; actual execution on mochiOS remains a separate validation gate. `sdk.json` explicitly records `runtime_tested: false` until that gate is met.
+The unreleased shared.5 recipe targets startup-linked shared objects and authenticated private `dlopen` groups. TLS uses initial-exec. Private loading accepts `RTLD_LAZY` or `RTLD_NOW`, with `RTLD_LOCAL`; it requires matching OS loader and capability-broker support. `dlopen(NULL)`, `RTLD_NOLOAD`, global/default namespace lookup, `RTLD_DEEPBIND` and `RTLD_NODELETE` remain unsupported. This SDK does not promise PIE applications, complete POSIX conformance, or a ready-to-run WebKit port. The runtime API list records known unsupported C functions. C++23, threads and exceptions are compile/link checks; actual execution on mochiOS remains a separate validation gate. `sdk.json` explicitly records `runtime_tested: false` until that gate is met.
 
 ## Releases
 

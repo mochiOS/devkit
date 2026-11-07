@@ -37,3 +37,13 @@ if(EXISTS "${CMAKE_SYSROOT}/include/resolv.h")
     add_executable(sdk_resolver_probe resolver-main.c)
     target_link_libraries(sdk_resolver_probe PRIVATE sdk_resolver_probe_shared)
 endif()
+
+# An advertised target loader must be callable from both a process and a DSO.
+# These are compile/link probes; native execution additionally needs signed
+# package declarations and the matching OS broker/loader implementation.
+if(EXISTS "${CMAKE_SYSROOT}/include/dlfcn.h")
+    add_library(sdk_loader_probe_shared SHARED loader.c)
+    add_library(sdk_loader_probe_private SHARED loader-private.c)
+    add_executable(sdk_loader_probe loader-main.c)
+    target_link_libraries(sdk_loader_probe PRIVATE sdk_loader_probe_shared)
+endif()
