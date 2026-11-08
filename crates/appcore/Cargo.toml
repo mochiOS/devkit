@@ -15,12 +15,12 @@ default = ["ui"]
 ui = ["dep:viewkit"]
 
 [dependencies]
-mochios-fonts = { path = "../../../../libraries/fonts" }
+mochios-fonts = { git = "https://github.com/mochiOS/fonts", rev = "233cb947ed6b10e175b0c6570611eb5605f112e1" }
 mochios-filesystem-protocol = { path = "../../../../user/crates/filesystem-protocol" }
 mochios-keychain-protocol = { path = "../../../../user/crates/keychain-protocol" }
 zeroize = { version = "1.8", features = ["alloc"] }
 toml = "1.1.2"
-viewkit = { version = "2.0.0", path = "../../../../libraries/viewkit", optional = true }
+viewkit = { version = "2.0.0", git = "https://github.com/mochiOS/viewkit", rev = "768d9f903f9ae4bb7b6c861cd2d1cd3e8fbc4d95", optional = true }
 mochios-workspace-protocol = { path = "../../../../user/crates/workspace-protocol" }
 
 [target.'cfg(target_os = "mochios")'.dependencies]
