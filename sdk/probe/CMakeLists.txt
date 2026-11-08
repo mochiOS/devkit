@@ -47,3 +47,10 @@ if(EXISTS "${CMAKE_SYSROOT}/include/dlfcn.h")
     add_executable(sdk_loader_probe loader-main.c)
     target_link_libraries(sdk_loader_probe PRIVATE sdk_loader_probe_shared)
 endif()
+
+# Real stack observations are required by JavaScriptCore. Both the DSO import
+# and executable export must resolve; native tests additionally need kernel 706.
+add_library(sdk_stack_probe_shared SHARED pthread-stack.c)
+target_link_libraries(sdk_stack_probe_shared PRIVATE Threads::Threads)
+add_executable(sdk_stack_probe pthread-stack-main.c)
+target_link_libraries(sdk_stack_probe PRIVATE sdk_stack_probe_shared Threads::Threads)

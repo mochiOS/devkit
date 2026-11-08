@@ -38,6 +38,18 @@ index 05ff31579..8d17fca69 100644
  
  int	pthread_attr_setschedparam (pthread_attr_t *__attr,
  				    const struct sched_param *__param);
+@@ -248,6 +249,11 @@
+ 
+ int	pthread_getattr_np (pthread_t __id, pthread_attr_t *__attr);
+ #endif /* defined(__rtems__) */
++#if defined(__mochios__)
++/* Observed usable stack bounds; main-thread query requires the matching kernel.
++   The returned attribute must be released with pthread_attr_destroy(). */
++int	pthread_getattr_np (pthread_t __id, pthread_attr_t *__attr);
++#endif /* defined(__mochios__) */
+ #endif /* __GNU_VISIBLE */
+ 
+ /* Thread Creation, P1003.1c/Draft 10, p. 144 */
 diff --git a/newlib/libc/include/pty.h b/newlib/libc/include/pty.h
 new file mode 100644
 index 000000000..7ec9b9cfe

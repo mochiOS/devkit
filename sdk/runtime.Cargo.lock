@@ -658,6 +658,10 @@ name = "mochios-signature-protocol"
 version = "0.1.0"
 
 [[package]]
+name = "mochios-test-support"
+version = "0.1.0"
+
+[[package]]
 name = "mochios-tls-client"
 version = "0.1.0"
 dependencies = [

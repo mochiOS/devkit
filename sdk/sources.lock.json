@@ -110,11 +110,11 @@
   "sources": {
     "user": {
       "url": "https://github.com/mochiOS/syscalls.git",
-      "commit": "f63dae1ade2b4f53c7e533001e5dee3f520c8e9e"
+      "commit": "6e6f7d98d6f230139f3d51e4f997aca7719ed500"
     },
     "mnu": {
       "url": "https://github.com/mochiOS/mnu.git",
-      "commit": "2bc6db753901b8b9fcc2d42cf7cf8e234dde211b"
+      "commit": "d6bd2e1961724b5021dca1dd72784966b3950048"
     },
     "libc": {
       "url": "https://github.com/mochiOS/libc.git",
@@ -136,16 +136,17 @@
   "patches": {
     "libcxxabi-18-pthread-thread-atexit.patch": "71d011c68280251466765344b1a0729ef37b538fcc2c23c40ae2f3449a6c2590",
     "libcxx-18-newlib-regex-masks.patch": "6e1ac79fd0407ac1746920ad73dc9c38fab51819ecf99d5288306714c09b0a54",
-    "newlib-mochios.patch": "5fcd63b7a02511ec74a4de4bce9098fd554e09344b6b091daae8e5faea7dcd15",
+    "newlib-mochios.patch": "215ca20e79a60eedfebfc77bb518f253d7a37f2f429f36e8a989f85d6cb115e3",
     "syscalls-clang-sdk.patch": "ecd287a9a89afd0e2ad66218a5dc021e10c7328d67a0238c814f779c164846dc"
   },
-  "runtime_cargo_lock_sha256": "9ea220bf4f3733f94e22c2862690aa87f092d2df67472e0847e3673259ffd642",
-  "tls_cargo_lock_sha256": "9ea220bf4f3733f94e22c2862690aa87f092d2df67472e0847e3673259ffd642",
+  "runtime_cargo_lock_sha256": "5fd2ccaa64ef67b6d949e91db4560c84b963d8cb834e8da3c141a5d48ff6e589",
+  "tls_cargo_lock_sha256": "5fd2ccaa64ef67b6d949e91db4560c84b963d8cb834e8da3c141a5d48ff6e589",
   "required_runtime_exports": [
     "dlopen",
     "dlsym",
     "dlclose",
     "dlerror",
-    "secure_getenv"
+    "secure_getenv",
+    "pthread_getattr_np"
   ]
 }

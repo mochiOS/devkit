@@ -82,3 +82,9 @@ captured at authenticated image start plus the current POSIX broker credentials;
 missing state, failed queries and unrepresentable IDs deny access. It does not
 re-read user-writable auxv to authorize an environment lookup. This does not
 replace ELF/package authentication or Capability checks.
+
+### Observing pthread stacks
+
+With `_GNU_SOURCE` enabled, `pthread_getattr_np(thread, &attributes)` observes a live process-local thread. Use `pthread_attr_getstack`, `pthread_attr_getguardsize` and `pthread_attr_destroy` on the returned attribute. The usable range excludes runtime-owned guard pages. A caller-supplied stack reports its supplied range and no runtime-owned guard.
+
+For the initial thread, shared.5 requires a kernel exposing `ProcessInitialStackRead` (syscall 706). The kernel reports the committed stack and the downward extent currently admitted by its existing growth rules. This is an observation, not a reservation: later mappings can restrict growth. Unknown foreign stacks and unsupported kernels return errors; the runtime never invents a default range. Ordinary pthread stacks use runtime-owned metadata and do not require the initial-stack query. The SDK includes DSO and executable compile/link probes; native execution is a separate gate.
