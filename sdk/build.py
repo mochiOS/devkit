@@ -353,6 +353,20 @@ def build_cxx_runtime(sources,sdk,out,env,jobs,policy):
 UNSUPPORTED_C_API={'rpmatch','cacosl','cacoshl','casinl','casinhl','catanhl'}
 
 PRIVATE_LOADER_C_API={'dlopen','dlsym','dlclose','dlerror'}
+UNIX_EXTENSION_C_API={'flock','mincore','madvise','dladdr','dl_iterate_phdr',
+                      'pthread_getschedparam','pthread_setschedparam'}
+
+def require_unix_extension_api(sdk, all_symbols, c_symbols):
+    """New native inspection headers require real implementations and roots.
+
+    Older pinned SDK sources remain buildable without claiming these APIs.
+    A declaration-only transition fails before exposing an executable ABI.
+    """
+    if not (sdk/'sysroot/include/link.h').is_file():return False
+    missing=UNIX_EXTENSION_C_API-all_symbols
+    if missing:raise ValueError('Unix extension headers lack runtime implementations: '+', '.join(sorted(missing)))
+    c_symbols.update(UNIX_EXTENSION_C_API)
+    return True
 
 def require_private_loader_api(sdk, all_symbols, c_symbols):
     """Root real loader functions only when the target supplies its public header.
@@ -389,6 +403,7 @@ def assemble(lock,sources,sdk,out,env,policy):
             all_symbols.add(symbol)
             if path.name in ['libc.a','libm.a'] and re.fullmatch('[A-Za-z][A-Za-z0-9_]*',symbol):c_symbols.add(symbol)
     private_loader=require_private_loader_api(sdk,all_symbols,c_symbols)
+    require_unix_extension_api(sdk,all_symbols,c_symbols)
     required=set(lock.get('required_runtime_exports',[]))
     missing=required-all_symbols
     if missing:raise ValueError('Pinned runtime APIs are missing: '+', '.join(sorted(missing)))

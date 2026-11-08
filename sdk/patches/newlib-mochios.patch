@@ -38,6 +38,13 @@ index 05ff31579..8d17fca69 100644
  
  int	pthread_attr_setschedparam (pthread_attr_t *__attr,
  				    const struct sched_param *__param);
+@@ -165,1 +166,1 @@
+-#if defined(_POSIX_THREAD_PRIORITY_SCHEDULING)
++#if defined(_POSIX_THREAD_PRIORITY_SCHEDULING) || defined(__mochios__)
+@@ -173,0 +175,3 @@
++#endif /* _POSIX_THREAD_PRIORITY_SCHEDULING || __mochios__ */
++#if defined(_POSIX_THREAD_PRIORITY_SCHEDULING)
++
 @@ -248,6 +249,11 @@
  
  int	pthread_getattr_np (pthread_t __id, pthread_attr_t *__attr);
@@ -214,12 +221,14 @@ diff --git a/newlib/libc/include/sys/config.h b/newlib/libc/include/sys/config.h
 index e9e8c0b96..3f5edb0af 100644
 --- a/newlib/libc/include/sys/config.h
 +++ b/newlib/libc/include/sys/config.h
-@@ -12,6 +12,10 @@
+@@ -12,6 +12,12 @@
  #define __DYNAMIC_REENT__
  #endif
  
 +#ifdef __mochios__
 +#define __DYNAMIC_REENT__
++#define _READ_WRITE_RETURN_TYPE _ssize_t
++#define _READ_WRITE_BUFSIZE_TYPE __size_t
 +#endif
 +
  #ifdef __nvptx__

@@ -59,3 +59,16 @@ target_link_libraries(sdk_stack_probe PRIVATE sdk_stack_probe_shared Threads::Th
 add_library(sdk_memory_probe_shared SHARED process-memory.c)
 add_executable(sdk_memory_probe process-memory-main.c)
 target_link_libraries(sdk_memory_probe PRIVATE sdk_memory_probe_shared)
+
+# Match the native runtime signatures before accepting a target SDK.
+add_library(sdk_io_abi_probe_shared SHARED io-abi.c)
+add_executable(sdk_io_abi_probe io-abi-main.c)
+target_link_libraries(sdk_io_abi_probe PRIVATE sdk_io_abi_probe_shared)
+
+# Unix extensions must resolve in both the DSO and executable process ABI.
+if(EXISTS "${CMAKE_SYSROOT}/include/link.h")
+add_library(sdk_unix_extensions_probe_shared SHARED unix-extensions.c)
+target_link_libraries(sdk_unix_extensions_probe_shared PRIVATE Threads::Threads)
+add_executable(sdk_unix_extensions_probe unix-extensions-main.c)
+target_link_libraries(sdk_unix_extensions_probe PRIVATE sdk_unix_extensions_probe_shared Threads::Threads)
+endif()

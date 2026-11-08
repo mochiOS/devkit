@@ -28,7 +28,7 @@ def main():
     """Validate real outputs, a failed transactional link, dependency imports and a relocated SDK path."""
     sdk=Path(sys.argv[1]).resolve();build=Path(sys.argv[2]).resolve()
     os.environ['LD_LIBRARY_PATH']=str(sdk/'host/lib')
-    objects=[p for p in build.rglob('*') if p.is_file() and not p.is_symlink() and (p.name in {'sdk_probe', 'sdk_resolver_probe', 'sdk_loader_probe', 'sdk_stack_probe', 'sdk_memory_probe'} or p.name.startswith(('libsdk_probe_shared.so', 'libsdk_resolver_probe_shared.so', 'libsdk_loader_probe', 'libsdk_stack_probe_shared.so', 'libsdk_memory_probe_shared.so')))]
+    objects=[p for p in build.rglob('*') if p.is_file() and not p.is_symlink() and (p.name in {'sdk_probe', 'sdk_resolver_probe', 'sdk_loader_probe', 'sdk_stack_probe', 'sdk_memory_probe', 'sdk_io_abi_probe', 'sdk_unix_extensions_probe'} or p.name.startswith(('libsdk_probe_shared.so', 'libsdk_resolver_probe_shared.so', 'libsdk_loader_probe', 'libsdk_stack_probe_shared.so', 'libsdk_memory_probe_shared.so', 'libsdk_io_abi_probe_shared.so', 'libsdk_unix_extensions_probe_shared.so')))]
     if len(objects)<2:raise ValueError('Missing C++ executable/shared probe outputs')
     resolver_available=(sdk/'sysroot/include/resolv.h').is_file()
     if resolver_available:
@@ -46,12 +46,22 @@ def main():
     if not {'sdk_stack_probe','libsdk_stack_probe_shared.so'} <= names:
         raise ValueError('Missing actual pthread stack executable/shared ABI probes')
     exports=set(json.loads((sdk/'share/runtime-symbols.json').read_text()))
+    unix_available=(sdk/'sysroot/include/link.h').is_file()
+    if unix_available:
+        unix_api={'flock','mincore','madvise','dladdr','dl_iterate_phdr','pthread_getschedparam','pthread_setschedparam'}
+        if not unix_api<=exports:raise ValueError('Missing Unix extension runtime exports: '+', '.join(sorted(unix_api-exports)))
+        if not any(p.name=='sdk_unix_extensions_probe' for p in objects) or not any(p.name.startswith('libsdk_unix_extensions_probe_shared.so') for p in objects):
+            raise ValueError('Missing Unix extension executable/shared probes')
     if 'pthread_getattr_np' not in exports:
         raise ValueError('Observed pthread stack API missing from executable ABI')
     if not {'sdk_memory_probe', 'libsdk_memory_probe_shared.so'} <= names:
         raise ValueError('Missing current resident memory executable/shared ABI probes')
     if 'mochios_process_memory_read' not in exports:
         raise ValueError('Current resident memory API missing from executable ABI')
+    if not {'sdk_io_abi_probe', 'libsdk_io_abi_probe_shared.so'} <= names:
+        raise ValueError('Missing POSIX I/O declaration/runtime ABI probes')
+    if not {'read', 'write', 'open', 'openat', 'chown', 'mkdir'} <= exports:
+        raise ValueError('POSIX I/O ABI probe functions missing from executable ABI')
     for path in objects:inspect(sdk,path)
     with tempfile.TemporaryDirectory(prefix='sdk checks ',dir=build) as tmp:
         tmp=Path(tmp);source=tmp/'source.c';output=tmp/'libcheck.so'
@@ -72,7 +82,8 @@ def main():
         subprocess.run([alias/'bin/mochios-cc','-c',source,'-o',tmp/'space name.o'],env=relocated_env,check=True)
         subprocess.run(['cmake','-S',Path(__file__).resolve().parent/'probe','-B',tmp/'relocated build','-DCMAKE_TOOLCHAIN_FILE='+str(alias/'share/cmake/mochios.cmake')],env=relocated_env,check=True)
         subprocess.run(['cmake','--build',tmp/'relocated build','--parallel','2'],env=relocated_env,check=True)
-    report={'format':1,'compile_link_passed':True,'runtime_tested':False,'checks':['cxx23','thread-and-exception-symbols','elf-wx-relro','no-host-runtime','unknown-import-rejection','atomic-link-output','runtime-imports','declared-dso-imports','paths-with-spaces','pthread-stack-c-abi-compile-link','current-resident-memory-c-abi-compile-link']}
+    report={'format':1,'compile_link_passed':True,'runtime_tested':False,'checks':['cxx23','thread-and-exception-symbols','elf-wx-relro','no-host-runtime','unknown-import-rejection','atomic-link-output','runtime-imports','declared-dso-imports','paths-with-spaces','pthread-stack-c-abi-compile-link','current-resident-memory-c-abi-compile-link','posix-io-header-runtime-abi-compile-link']}
+    if unix_available:report['checks'].append('unix-extensions-c-abi-compile-link')
     if resolver_available:report['checks'].append('native-resolver-c-abi')
     if loader_available:report['checks'].append('private-loader-c-abi-compile-link')
     (build/'verification.json').write_text(json.dumps(report,indent=2)+'\n')

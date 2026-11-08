@@ -10,6 +10,24 @@ spec=importlib.util.spec_from_file_location('sdk_loader_builder',ROOT/'build.py'
 builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
 
 class PrivateLoaderTests(unittest.TestCase):
+    def test_legacy_sdk_does_not_claim_new_unix_extensions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            roots={'puts'}
+            self.assertFalse(builder.require_unix_extension_api(Path(tmp),set(),roots))
+            self.assertEqual(roots,{'puts'})
+    def test_unix_headers_without_real_runtime_are_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sdk=Path(tmp);header=sdk/'sysroot/include/link.h';header.parent.mkdir(parents=True);header.touch()
+            roots={'puts'}
+            with self.assertRaisesRegex(ValueError,'flock'):
+                builder.require_unix_extension_api(sdk,{'dladdr'},roots)
+            self.assertEqual(roots,{'puts'})
+    def test_unix_implementations_are_required_executable_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sdk=Path(tmp);header=sdk/'sysroot/include/link.h';header.parent.mkdir(parents=True);header.touch()
+            roots={'puts'}
+            self.assertTrue(builder.require_unix_extension_api(sdk,builder.UNIX_EXTENSION_C_API,roots))
+            self.assertEqual(roots,{'puts'}|builder.UNIX_EXTENSION_C_API)
     def test_legacy_sysroot_does_not_claim_private_loading(self):
         with tempfile.TemporaryDirectory() as tmp:
             symbols={'puts'}
