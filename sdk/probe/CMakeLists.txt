@@ -54,3 +54,8 @@ add_library(sdk_stack_probe_shared SHARED pthread-stack.c)
 target_link_libraries(sdk_stack_probe_shared PRIVATE Threads::Threads)
 add_executable(sdk_stack_probe pthread-stack-main.c)
 target_link_libraries(sdk_stack_probe PRIVATE sdk_stack_probe_shared Threads::Threads)
+
+# Current resident usage must be observed, not inferred from peak RSS.
+add_library(sdk_memory_probe_shared SHARED process-memory.c)
+add_executable(sdk_memory_probe process-memory-main.c)
+target_link_libraries(sdk_memory_probe PRIVATE sdk_memory_probe_shared)

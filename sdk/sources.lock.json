@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "version": "27.0-dp.1-shared.5",
+  "version": "27.0-dp.1-shared.6",
   "target": "x86_64-unknown-mochios",
   "abi": "mochios-1",
   "host": "x86_64-linux-gnu-ubuntu24.04",
@@ -110,7 +110,7 @@
   "sources": {
     "user": {
       "url": "https://github.com/mochiOS/syscalls.git",
-      "commit": "6e6f7d98d6f230139f3d51e4f997aca7719ed500"
+      "commit": "169aaa04483d16e8ce650e24aca81211c7a3cfcf"
     },
     "mnu": {
       "url": "https://github.com/mochiOS/mnu.git",
@@ -147,6 +147,7 @@
     "dlclose",
     "dlerror",
     "secure_getenv",
-    "pthread_getattr_np"
+    "pthread_getattr_np",
+    "mochios_process_memory_read"
   ]
 }
