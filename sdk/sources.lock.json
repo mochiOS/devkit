@@ -110,7 +110,7 @@
   "sources": {
     "user": {
       "url": "https://github.com/mochiOS/syscalls.git",
-      "commit": "169aaa04483d16e8ce650e24aca81211c7a3cfcf"
+      "commit": "18ea82e22564d9cba8b9c55f854591d194944df4"
     },
     "mnu": {
       "url": "https://github.com/mochiOS/mnu.git",
