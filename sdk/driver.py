@@ -142,7 +142,12 @@ def main():
         link += json.loads((sdk / 'share/runtime-roots.json').read_text())
     if shared: filtered = shared_runtime_arguments(sdk, filtered)
     link += filtered
-    if not shared: link += ['-Wl,--start-group', '-lc', '-lm', str(sdk / 'lib/libbuiltins.a'), '-Wl,--end-group']
+    if shared:
+        # Compiler-generated arithmetic calls are implementation details, not
+        # process runtime state. Extract only needed target compiler-rt objects
+        # and keep their definitions private to this DSO.
+        link += ['-x', 'none', '-Wl,--exclude-libs=libbuiltins.a', str(sdk / 'lib/libbuiltins.a')]
+    else: link += ['-Wl,--start-group', '-lc', '-lm', str(sdk / 'lib/libbuiltins.a'), '-Wl,--end-group']
     # Runtime imports are intentionally bound by the executable's exported ABI.
     # The post-link check below rejects imports outside that ABI/dependency graph.
     if shared: link += ['-Wl,-z,undefs']

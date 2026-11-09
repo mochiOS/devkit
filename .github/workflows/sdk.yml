@@ -26,6 +26,10 @@ jobs:
       - run: python3 -m unittest discover -s sdk/tests -v
       - name: Build and verify source-pinned target SDK
         run: python3 sdk/build.py build --jobs 4
+      - name: Verify private compiler helpers and strict shared imports
+        env:
+          MOCHIOS_TEST_SDK: ${{ github.workspace }}/out/shared-sdk/sdk
+        run: python3 -m unittest discover -s sdk/tests -p test_compiler_helpers.py -v
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: shared-sdk
