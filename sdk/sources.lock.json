@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "version": "27.0-dp.1-shared.6",
+  "version": "27.0-dp.1-shared.7",
   "target": "x86_64-unknown-mochios",
   "abi": "mochios-1",
   "host": "x86_64-linux-gnu-ubuntu24.04",
@@ -110,11 +110,11 @@
   "sources": {
     "user": {
       "url": "https://github.com/mochiOS/syscalls.git",
-      "commit": "18ea82e22564d9cba8b9c55f854591d194944df4"
+      "commit": "f585ece9c9b331040707da5bae9a2796eadf1a93"
     },
     "mnu": {
       "url": "https://github.com/mochiOS/mnu.git",
-      "commit": "d6bd2e1961724b5021dca1dd72784966b3950048"
+      "commit": "1cd3f9f694162b07140f9d51ca038ec412c1ad0f"
     },
     "libc": {
       "url": "https://github.com/mochiOS/libc.git",
@@ -137,10 +137,11 @@
     "libcxxabi-18-pthread-thread-atexit.patch": "71d011c68280251466765344b1a0729ef37b538fcc2c23c40ae2f3449a6c2590",
     "libcxx-18-newlib-regex-masks.patch": "6e1ac79fd0407ac1746920ad73dc9c38fab51819ecf99d5288306714c09b0a54",
     "newlib-mochios.patch": "0c9e69b32356bc14623059cec5f421d7f8843770f8d48b96f2c010596883716f",
-    "syscalls-clang-sdk.patch": "ecd287a9a89afd0e2ad66218a5dc021e10c7328d67a0238c814f779c164846dc"
+    "syscalls-clang-sdk.patch": "ecd287a9a89afd0e2ad66218a5dc021e10c7328d67a0238c814f779c164846dc",
+    "syscalls-unix-extension-runtime.patch": "8aad9a8ba78390a66781c53d37c51f95ba5a5735b505d6acd4e3692ae10a7b2f"
   },
-  "runtime_cargo_lock_sha256": "5fd2ccaa64ef67b6d949e91db4560c84b963d8cb834e8da3c141a5d48ff6e589",
-  "tls_cargo_lock_sha256": "5fd2ccaa64ef67b6d949e91db4560c84b963d8cb834e8da3c141a5d48ff6e589",
+  "runtime_cargo_lock_sha256": "25c9f8c67c5c0da733106ab28cf20488096ccddd1d5ec736092b6d9d71621b19",
+  "tls_cargo_lock_sha256": "25c9f8c67c5c0da733106ab28cf20488096ccddd1d5ec736092b6d9d71621b19",
   "required_runtime_exports": [
     "dlopen",
     "dlsym",
@@ -148,6 +149,13 @@
     "dlerror",
     "secure_getenv",
     "pthread_getattr_np",
-    "mochios_process_memory_read"
+    "mochios_process_memory_read",
+    "flock",
+    "mincore",
+    "madvise",
+    "dladdr",
+    "dl_iterate_phdr",
+    "pthread_getschedparam",
+    "pthread_setschedparam"
   ]
 }

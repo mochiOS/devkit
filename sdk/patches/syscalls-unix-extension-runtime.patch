@@ -1,0 +1,430 @@
+diff --git a/crates/newlib-runtime/src/dlfcn.rs b/crates/newlib-runtime/src/dlfcn.rs
+index 21988cc..f6afc82 100644
+--- a/crates/newlib-runtime/src/dlfcn.rs
++++ b/crates/newlib-runtime/src/dlfcn.rs
+@@ -345,6 +345,7 @@ pub extern "C" fn dlopen(filename: *const c_char, flags: c_int) -> *mut c_void {
+             Ok(())
+         })?;
+         let library = unsafe { &mut *(operation.pointer as *mut Library) };
++        library.set_external_lookup(loader_inspection::initial_symbol)?;
+         let address = NEXT_ADDRESS.fetch_add(0x1_0000_0000, Ordering::Relaxed);
+         if address >= 0x4000_0000_0000 {
+             return Err(ENOMEM);
+diff --git a/crates/newlib-runtime/src/loader_inspection.rs b/crates/newlib-runtime/src/loader_inspection.rs
+index 14c1ce2..3fe677f 100644
+--- a/crates/newlib-runtime/src/loader_inspection.rs
++++ b/crates/newlib-runtime/src/loader_inspection.rs
+@@ -5,6 +5,12 @@ use mochios_posix_client::loaded_objects::{self as wire, Image};
+ static INITIAL: AtomicUsize = AtomicUsize::new(0);
+ static INITIAL_LENGTH: AtomicUsize = AtomicUsize::new(0);
+ 
++// The initial executable's captured default exports remain mapped until
++// process teardown. Local dlopen groups do not become a global namespace.
++pub(super) fn initial_symbol(name: &[u8]) -> Option<(u64, u64)> {
++    Image::parse(initial()).ok()?.entry(0).ok()?.lookup(name)
++}
++
+ pub(super) fn initialize() -> Result<(), c_int> {
+     let Some(vector) = auxiliary::vector() else {
+         return Ok(());
+diff --git a/crates/posix-client/src/image_preparation/dependencies.rs b/crates/posix-client/src/image_preparation/dependencies.rs
+index 66ecb9b..a14642c 100644
+--- a/crates/posix-client/src/image_preparation/dependencies.rs
++++ b/crates/posix-client/src/image_preparation/dependencies.rs
+@@ -1,7 +1,7 @@
+ //! Retain all acquisition/capture/work buffers in the callback resource owner.
+ //! Raw typed workspaces contain only borrowed ELF views, never resource owners.
+ use super::*;
+-use mochios_posix_client::pie::{
++use crate::pie::{
+     Pie,
+     link_scope::{Object, Scope, Step},
+ };
+@@ -594,7 +594,7 @@ impl<B: Backend> Dependencies<B> {
+             return Err(ENOEXEC);
+         }
+         if tls_runtime && templates.iter().any(Option::is_some) {
+-            use mochios_posix_client::static_tls::image;
++            use crate::static_tls::image;
+             let length = image::encoded_length(count).ok_or(E2BIG)?;
+             metadata_size(&images[0], length)?;
+             tls.reserve(length)?;
+diff --git a/crates/posix-client/src/image_preparation/resident.rs b/crates/posix-client/src/image_preparation/resident.rs
+index be6b68a..48b8aff 100644
+--- a/crates/posix-client/src/image_preparation/resident.rs
++++ b/crates/posix-client/src/image_preparation/resident.rs
+@@ -30,6 +30,7 @@ pub struct Library<B: Backend, M: elf_mapping::Backend, const N: usize> {
+     file: u32,
+     address: u64,
+     captured: bool,
++    external_lookup: Option<pie::link_scope::ExternalLookup>,
+ }
+ impl<B: Backend, M: elf_mapping::Backend, const N: usize> Default for Library<B, M, N> {
+     fn default() -> Self {
+@@ -43,6 +44,7 @@ impl<B: Backend, M: elf_mapping::Backend, const N: usize> Default for Library<B,
+             file: 0,
+             address: 0,
+             captured: false,
++            external_lookup: None,
+         }
+     }
+ }
+@@ -54,6 +56,14 @@ impl<B: Backend, M: elf_mapping::Backend, const N: usize> Drop for Library<B, M,
+     }
+ }
+ impl<B: Backend, M: elf_mapping::Backend, const N: usize> Library<B, M, N> {
++    /// Set a permanently mapped provider before opening this group. It serves
++    /// only undefined unversioned ordinary imports, never namespace authority.
++    /// Changing the provider after capture/acquisition is rejected.
++    pub fn set_external_lookup(&mut self, lookup: pie::link_scope::ExternalLookup) -> Result<(), c_int> {
++        if self.file != 0 || self.captured { return Err(EINVAL); }
++        self.external_lookup = Some(lookup);
++        Ok(())
++    }
+     /// Immutable metadata, valid until this library owner is destroyed.
+     pub fn inspection(&self) -> &[u8] { self.inspection.bytes() }
+     pub fn phase(&self) -> Phase {
+@@ -167,7 +177,8 @@ impl<B: Backend, M: elf_mapping::Backend, const N: usize> Library<B, M, N> {
+         self.dependencies
+             .discover(self.source.bytes(), backend, variables, identity, true)?;
+         self.address = address;
+-        let scope = self.dependencies.scope(self.source.bytes(), address)?;
++        let scope = self.dependencies.scope(self.source.bytes(), address)?
++            .with_optional_external_lookup(self.external_lookup);
+         self.state.bind(&scope).map_err(|_| ENOEXEC)?;
+         let size = crate::loaded_objects::encoded_length(scope.objects(), path)?;
+         self.inspection.reserve(size)?;
+@@ -195,7 +206,8 @@ impl<B: Backend, M: elf_mapping::Backend, const N: usize> Library<B, M, N> {
+         let scope = self
+             .dependencies
+             .scope(self.source.bytes(), self.address)
+-            .map_err(Error::Source)?;
++            .map_err(Error::Source)?
++            .with_optional_external_lookup(self.external_lookup);
+         let output =
+             unsafe { core::slice::from_raw_parts_mut(self.output.pointer, self.output.length) };
+         self.state
+@@ -217,7 +229,8 @@ impl<B: Backend, M: elf_mapping::Backend, const N: usize> Library<B, M, N> {
+         let scope = self
+             .dependencies
+             .scope(self.source.bytes(), self.address)
+-            .map_err(Error::Source)?;
++            .map_err(Error::Source)?
++            .with_optional_external_lookup(self.external_lookup);
+         let scratch = unsafe {
+             core::slice::from_raw_parts_mut(
+                 self.callbacks.pointer.cast::<usize>(),
+@@ -239,7 +252,8 @@ impl<B: Backend, M: elf_mapping::Backend, const N: usize> Library<B, M, N> {
+         let scope = self
+             .dependencies
+             .scope(self.source.bytes(), self.address)
+-            .map_err(Error::Source)?;
++            .map_err(Error::Source)?
++            .with_optional_external_lookup(self.external_lookup);
+         let loader = self.state.bind(&scope).map_err(Error::Elf)?;
+         loader
+             .symbol(name, Version::Default)
+@@ -256,7 +270,8 @@ impl<B: Backend, M: elf_mapping::Backend, const N: usize> Library<B, M, N> {
+         let scope = self
+             .dependencies
+             .scope(self.source.bytes(), self.address)
+-            .map_err(Error::Source)?;
++            .map_err(Error::Source)?
++            .with_optional_external_lookup(self.external_lookup);
+         let scratch = unsafe {
+             core::slice::from_raw_parts_mut(
+                 self.callbacks.pointer.cast::<usize>(),
+diff --git a/crates/posix-client/src/loaded_objects.rs b/crates/posix-client/src/loaded_objects.rs
+index 03e49d8..aa02a6c 100644
+--- a/crates/posix-client/src/loaded_objects.rs
++++ b/crates/posix-client/src/loaded_objects.rs
+@@ -83,6 +83,16 @@ pub fn encode(objects: &[Object<'_, '_>], root_name: &[u8], output: &mut [u8]) -
+                 put(output, at + count_offset, count as u64);
+             }
+             output[cursor..cursor + bytes.len()].copy_from_slice(bytes);
++            if offset == 40 {
++                // The snapshot exposes default exports, not a GNU version
++                // namespace. Never turn a hidden/nondefault version into an
++                // unversioned provider after discarding its version tables.
++                for (index, symbol) in output[cursor..cursor + bytes.len()].chunks_exact_mut(24).enumerate() {
++                    if !object.image.inspection_symbol_is_default(index as u32).map_err(|_| ENOEXEC)? {
++                        symbol[4] &= 15;
++                    }
++                }
++            }
+             cursor += bytes.len();
+         }
+         cursor += 1; // object name terminator
+@@ -189,6 +199,35 @@ impl<'a> Image<'a> {
+     }
+ }
+ impl<'a> Entry<'a> {
++    /// Find a default ordinary export by name in this immutable snapshot.
++    /// TLS, IFUNC, hidden/nondefault versions and ambiguous names are excluded.
++    /// This is informational lookup; the caller must retain the mapped owner.
++    pub fn lookup(&self, name: &[u8]) -> Option<(u64, u64)> {
++        let mut found = None;
++        for symbol in self.symbols.chunks_exact(24) {
++            let info = symbol[4];
++            let section = u16::from_le_bytes(symbol[6..8].try_into().ok()?);
++            if !matches!(info >> 4, 1 | 2) || !matches!(info & 15, 0 | 1 | 2)
++                || !matches!(symbol[5] & 3, 0 | 3) || section == 0 { continue; }
++            let tail = self.strings.get(u32::from_le_bytes(symbol[..4].try_into().ok()?) as usize..)?;
++            let length = tail.iter().position(|byte| *byte == 0)?;
++            if tail.get(..length)? != name { continue; }
++            let value = word(symbol, 8);
++            let address = if section == 0xfff1 { value } else { self.bias.checked_add(value)? };
++            let size = word(symbol, 16);
++            if section != 0xfff1 && !self.headers.chunks_exact(56).any(|header| {
++                u32::from_le_bytes(header[..4].try_into().unwrap()) == 1
++                    && self.bias.checked_add(word(header, 16)).is_some_and(|start| {
++                        address >= start && address.checked_add(size.max(1))
++                            .zip(start.checked_add(word(header, 40)))
++                            .is_some_and(|(end, limit)| end <= limit)
++                    })
++            }) { return None; }
++            if found.is_some() { return None; }
++            found = Some((address, size));
++        }
++        found
++    }
+     /// Lowest mapped LOAD address, which differs from relocation bias for
+     /// fixed-address ET_EXEC objects and libraries with a nonzero first LOAD.
+     pub fn base(&self) -> u64 {
+diff --git a/crates/posix-client/src/pie.rs b/crates/posix-client/src/pie.rs
+index 9e556fc..d9a590e 100644
+--- a/crates/posix-client/src/pie.rs
++++ b/crates/posix-client/src/pie.rs
+@@ -214,6 +214,13 @@ impl<'a> Pie<'a> {
+             .map(|table| table.inspection()).unwrap_or((&[], &[]));
+         (&self.bytes[start..end], symbols, strings)
+     }
++
++    pub(crate) fn inspection_symbol_is_default(&self, index: u32) -> Result<bool, Error> {
++        let entry = self.symbols.as_ref().ok_or(Error::Invalid)?.entry(index)?;
++        Ok(matches!(entry.version,
++            symbols::Version::Unversioned | symbols::Version::Global
++            | symbols::Version::Named { hidden: false, imported: false, .. }))
++    }
+     pub fn parse(bytes: &'a [u8]) -> Result<Self, Error> {
+         Self::parse_mode(bytes, false)
+     }
+diff --git a/crates/posix-client/src/pie/link_scope.rs b/crates/posix-client/src/pie/link_scope.rs
+index 39fd2f9..8334892 100644
+--- a/crates/posix-client/src/pie/link_scope.rs
++++ b/crates/posix-client/src/pie/link_scope.rs
+@@ -18,9 +18,16 @@ pub struct Object<'scope, 'image> {
+     pub bias: u64,
+ }
+ 
++/// Lookup an unversioned, ordinary symbol in an already mapped external owner.
++/// Return its absolute address and size. The provider and returned storage must
++/// remain mapped for the entire resident group's lifetime; TLS/IFUNC and named
++/// symbol versions require separate protocols and are not handled here.
++pub type ExternalLookup = fn(&[u8]) -> Option<(u64, u64)>;
++
+ pub struct Scope<'scope, 'image> {
+     objects: &'scope [Object<'scope, 'image>],
+     order: &'scope [usize],
++    external_lookup: Option<ExternalLookup>,
+ }
+ impl<'scope, 'image> Scope<'scope, 'image> {
+     /// Object zero is the root. Derive breadth-first search order from its
+@@ -109,6 +116,7 @@ impl<'scope, 'image> Scope<'scope, 'image> {
+         let scope = Self {
+             objects,
+             order: &scratch[..length],
++            external_lookup: None,
+         };
+         objects[0].image.relocations(|_, value| {
+             if let super::Value::Copy { index, .. } = value {
+@@ -119,6 +127,19 @@ impl<'scope, 'image> Scope<'scope, 'image> {
+         Ok(scope)
+     }
+ 
++    /// Add a pinned provider for undefined unversioned symbols only. Local,
++    /// hidden, versioned, TLS and group-defined symbols retain existing rules.
++    /// This never maps the provider or runs its constructors/destructors.
++    pub fn with_external_lookup(mut self, lookup: ExternalLookup) -> Self {
++        self.external_lookup = Some(lookup);
++        self
++    }
++
++    pub(crate) fn with_optional_external_lookup(mut self, lookup: Option<ExternalLookup>) -> Self {
++        self.external_lookup = lookup;
++        self
++    }
++
+     pub fn order(&self) -> &[usize] {
+         self.order
+     }
+@@ -163,6 +184,17 @@ impl<'scope, 'image> Scope<'scope, 'image> {
+                 }
+             }
+         }
++        if reference.definition.is_none()
++            && matches!(reference.kind, 0 | 1 | 2)
++            && matches!(reference.version, super::symbols::Version::Unversioned | super::symbols::Version::Global)
++        {
++            if let Some((address, size)) = self.external_lookup.and_then(|lookup| lookup(reference.name)) {
++                if address < USER_MIN || address.checked_add(size.max(1)).is_none_or(|end| end > USER_END) {
++                    return Err(Error::Invalid);
++                }
++                return Ok(Some((origin, super::symbols::Definition::Absolute(address), size)));
++            }
++        }
+         if reference.binding == 2 {
+             Ok(None)
+         } else {
+diff --git a/crates/posix-client/src/pie/link_scope/resident.rs b/crates/posix-client/src/pie/link_scope/resident.rs
+index 6c4abcb..39db30c 100644
+--- a/crates/posix-client/src/pie/link_scope/resident.rs
++++ b/crates/posix-client/src/pie/link_scope/resident.rs
+@@ -97,6 +97,7 @@ impl<B: Backend, const N: usize> State<B, N> {
+             return Err(ElfError::BufferTooSmall);
+         }
+         let mut digest = Sha256::new();
++        digest.update(scope.external_lookup.map(|lookup| lookup as usize).unwrap_or(0).to_le_bytes());
+         digest.update((scope.objects.len() as u64).to_le_bytes());
+         for object in scope.objects {
+             digest.update((object.name.len() as u64).to_le_bytes());
+diff --git a/crates/posix-client/tests/loaded_objects.rs b/crates/posix-client/tests/loaded_objects.rs
+index 60353b3..bfd2739 100644
+--- a/crates/posix-client/tests/loaded_objects.rs
++++ b/crates/posix-client/tests/loaded_objects.rs
+@@ -64,6 +64,8 @@ fn real_shared_elf_dynamic_symbols_resolve_to_their_captured_names_and_addresses
+         let address = 0x20000000 + u64::from_str_radix(fields[0], 16).unwrap();
+         assert!(entry.contains(address));
+         assert_eq!(entry.symbol(address), Some((fields[2].as_bytes(), address)));
++        assert_eq!(entry.lookup(fields[2].as_bytes()).map(|value| value.0), Some(address));
++        assert_eq!(entry.lookup(b"absent_export"), None);
+         found += 1;
+     }
+     assert_eq!(found, 2);
+@@ -169,3 +171,35 @@ fn several_objects_preserve_alignment_and_nul_termination() {
+         assert_eq!(unsafe { *entry.name.as_ptr().add(entry.name.len()) }, 0);
+     }
+ }
++
++#[test]
++fn captured_lookup_never_promotes_hidden_symbol_versions_to_default_exports() {
++    let directory = std::env::temp_dir().join(format!("mochi-default-exports-{}",std::process::id()));
++    std::fs::create_dir_all(&directory).unwrap();
++    let script = directory.join("versions.map");
++    std::fs::write(&script,"OLD { global: versioned; local: *; }; NEW { global: versioned; } OLD;\n").unwrap();
++    for default in [false,true] {
++        let source = directory.join("symbols.c");
++        let library = directory.join("symbols.so");
++        std::fs::write(&source,format!("int old(void) {{ return 1; }}\n__asm__(\".symver old,versioned@OLD\");\n{}",if default {"int current(void) { return 2; }\n__asm__(\".symver current,versioned@@NEW\");\n"} else {""})).unwrap();
++        let result = std::process::Command::new("cc").args(["-shared","-fPIC","-nostdlib","-Wl,--hash-style=both"])
++            .arg(format!("-Wl,--version-script={}",script.display())).arg(&source).arg("-o").arg(&library).output().unwrap();
++        assert!(result.status.success(),"{}",String::from_utf8_lossy(&result.stderr));
++        let bytes=std::fs::read(&library).unwrap();
++        let image=Pie::parse_object(&bytes).unwrap();
++        let objects=[Object{name:b"",image:&image,bias:0x20000000}];
++        let mut encoded=vec![0;loaded_objects::encoded_length(&objects,b"versions.so").unwrap()];
++        loaded_objects::encode(&objects,b"versions.so",&mut encoded).unwrap();
++        let parsed=loaded_objects::Image::parse(&encoded).unwrap();
++        let entry=parsed.entry(0).unwrap();
++        assert_eq!(entry.lookup(b"versioned").is_some(),default);
++        if default {
++            let output=std::process::Command::new("nm").args(["-D","--defined-only"]).arg(&library).output().unwrap();
++            let symbols=String::from_utf8(output.stdout).unwrap();
++            let line=symbols.lines().find(|line|line.ends_with(" versioned@@NEW")).unwrap();
++            let value=u64::from_str_radix(line.split_whitespace().next().unwrap(),16).unwrap();
++            assert_eq!(entry.lookup(b"versioned").unwrap().0,0x20000000+value);
++        }
++    }
++    std::fs::remove_dir_all(directory).unwrap();
++}
+diff --git a/crates/signature-protocol/src/lib.rs b/crates/signature-protocol/src/lib.rs
+index bbfdd16..6559af0 100644
+--- a/crates/signature-protocol/src/lib.rs
++++ b/crates/signature-protocol/src/lib.rs
+@@ -612,7 +612,7 @@ impl<'a> VerifiedView<'a> {
+             remaining: capability_count,
+         };
+         for capability in iterator.by_ref() {
+-            validate_text(capability?)?;
++            validate_capability_text(capability?)?;
+         }
+         if !iterator.bytes.is_empty() {
+             return Err(DecodeError::InvalidCapabilityList);
+@@ -756,6 +756,34 @@ fn take_text<'a>(
+     *cursor = end;
+     core::str::from_utf8(bytes).map_err(|_| DecodeError::InvalidUtf8)
+ }
++// Capability scopes are wire syntax, not grants. The authority owner still
++// validates the kind, alignment, bounds and delegating principal. Identity
++// names continue to use the narrower validator below.
++fn validate_capability_text(value: &str) -> Result<(), DecodeError> {
++    let Some((name, scope)) = value.split_once('@') else {
++        return validate_text(value);
++    };
++    validate_text(name)?;
++    let number = |raw: &str| -> Option<u64> {
++        if let Some(hex) = raw.strip_prefix("0x").or_else(|| raw.strip_prefix("0X")) {
++            if hex.is_empty() || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
++                return None;
++            }
++            u64::from_str_radix(hex, 16).ok()
++        } else {
++            if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
++                return None;
++            }
++            raw.parse().ok()
++        }
++    };
++    let (base, size) = scope.split_once(':').ok_or(DecodeError::InvalidText)?;
++    let base = number(base).ok_or(DecodeError::InvalidText)?;
++    let size = number(size).filter(|size| *size != 0).ok_or(DecodeError::InvalidText)?;
++    base.checked_add(size).ok_or(DecodeError::InvalidText)?;
++    Ok(())
++}
++
+ fn validate_text(value: &str) -> Result<(), DecodeError> {
+     if value.is_empty()
+         || !value.bytes().all(|byte| {
+diff --git a/crates/signature-protocol/tests/wire.rs b/crates/signature-protocol/tests/wire.rs
+index 72394c8..83ec203 100644
+--- a/crates/signature-protocol/tests/wire.rs
++++ b/crates/signature-protocol/tests/wire.rs
+@@ -1,5 +1,38 @@
+ use mochios_signature_protocol::*;
+ 
++#[test]
++fn verified_capabilities_accept_scoped_ranges_without_relaxing_identity_names() {
++    fn response<'a>(capabilities: &'a [&'a str]) -> VerifiedResponse<'a> {
++        VerifiedResponse {
++            request_id: 0,
++            provenance: InstallProvenance::BuiltIn,
++            certificate_serial: 0,
++            subject_key_id: [0; 32],
++            manifest_digest: [1; 32],
++            package_digest: [1; 32],
++            developer_id: "org.mochios.system",
++            verified_package_id: "org.mochios.capability",
++            allowed_capabilities: capabilities,
++        }
++    }
++    let caps = ["ipc.client", "io.port@0xcf8:8", "memory.phys.map@0x1000:4096"];
++    let mut bytes = [0; 1024];
++    let length = response(&caps).encode(&mut bytes).unwrap();
++    let view = VerifiedView::decode(&bytes[..length]).unwrap();
++    assert_eq!(view.allowed_capabilities().collect::<Result<Vec<_>, _>>().unwrap(), caps);
++    for invalid in ["io.port@*:8", "io.port@-1:8", "io.port@0xcf8:0",
++        "io.port@1:2:3", "io.port@@1:2", "io.port@18446744073709551616:8",
++        "io.port@1:8\n", "io.port@+1:8", "io.port@:8", "io.port@0x:8"] {
++        let caps = [invalid];
++        let length = response(&caps).encode(&mut bytes).unwrap();
++        assert!(matches!(VerifiedView::decode(&bytes[..length]), Err(DecodeError::InvalidText)), "{invalid}");
++    }
++    let mut message = response(&caps);
++    message.developer_id = "org.mochios@1:8";
++    let length = message.encode(&mut bytes).unwrap();
++    assert!(matches!(VerifiedView::decode(&bytes[..length]), Err(DecodeError::InvalidText)));
++}
++
+ #[test]
+ fn begin_golden_and_round_trip() {
+     let message = VerifyBegin {

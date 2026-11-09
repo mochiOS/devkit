@@ -57,8 +57,8 @@ artifacts; creating a GitHub release remains a manual maintainer action.
 ## Native TLS record adapter (shared.4 build candidate)
 
 The SDK builds `lib/libmochios_tls_pic.a` and `sysroot/include/mochios/tls.h`
-from the separately pinned `tls` source. The existing shared.3 process runtime
-and syscall ABI source pins are retained. Only `tls-client` and `tls-stream-ffi`
+from the separately pinned `tls` source. The process platform is selected by
+the `user` and `mnu` source pins. Only `tls-client` and `tls-stream-ffi`
 are overlaid onto that platform workspace; unrelated userland changes are not
 part of this SDK build.
 
@@ -88,3 +88,24 @@ replace ELF/package authentication or Capability checks.
 With `_GNU_SOURCE` enabled, `pthread_getattr_np(thread, &attributes)` observes a live process-local thread. Use `pthread_attr_getstack`, `pthread_attr_getguardsize` and `pthread_attr_destroy` on the returned attribute. The usable range excludes runtime-owned guard pages. A caller-supplied stack reports its supplied range and no runtime-owned guard.
 
 For the initial thread, shared.5 requires a kernel exposing `ProcessInitialStackRead` (syscall 706). The kernel reports the committed stack and the downward extent currently admitted by its existing growth rules. This is an observation, not a reservation: later mappings can restrict growth. Unknown foreign stacks and unsupported kernels return errors; the runtime never invents a default range. Ordinary pthread stacks use runtime-owned metadata and do not require the initial-stack query. The SDK includes DSO and executable compile/link probes; native execution is a separate gate.
+
+### Native Unix APIs in shared.7
+
+The shared.7 recipe exposes `flock`, `mincore`, `madvise`, `dladdr`,
+`dl_iterate_phdr`, `pthread_getschedparam` and `pthread_setschedparam` as actual
+process-runtime exports. It also corrects the native `ssize_t` I/O declarations.
+The source-pinned Unix extension patch is part of the recipe and its digest is
+checked before preparation; no uncommitted OS checkout is a build input.
+
+Deployment requires the matching filesystem whole-file lock provider, native
+loader metadata and kernel memory observation/discard mechanisms (707/708).
+Unsupported kernels and mapping kinds fail explicitly. Realtime FIFO/RR
+scheduling, dynamic TLS and RTLD_GLOBAL namespaces are not provided. Local
+DSOs can import the initial executable's pinned default ordinary exports;
+hidden/nondefault symbol versions and TLS/IFUNC imports do not enter that
+fallback. The initial provider is not mapped again or finalized by `dlclose`.
+
+The runtime source has passed the dedicated native Unix VM fixture, including
+constructor inspection and unload during enumeration. A distribution build
+still needs the complete SDK compiler/archive/path audit and artifact checks.
+`sdk.yml` builds upload candidates only; it does not publish a release.
