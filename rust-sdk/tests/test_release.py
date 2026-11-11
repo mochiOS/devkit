@@ -84,6 +84,20 @@ class ApprovedArtifact(unittest.TestCase):
                 self.assertTrue(all(key not in call.kwargs['env'] for key in values))
             self.assertIn('verify', run.call_args_list[-1].args[0])
 
+    def test_atomic_identity_is_decoded_without_passing_it_to_the_signer(self):
+        encoded_file = base64.b64encode(b'synthetic fixture').decode()
+        identity = dict(format=1, developer_id='a'*32, package_id=self.identity['id'],
+                        certificate=encoded_file, private_key=encoded_file, issuer_public_key=encoded_file)
+        encoded = base64.b64encode(json.dumps(identity).encode()).decode()
+        with patch.dict(os.environ, {'MSIGN_IDENTITY_B64':encoded,'SIGNING_SETUP_TOKEN':'fixture'}, clear=True), patch.object(release.subprocess,'run') as run:
+            release.sign(self.package,self.root/'signed.mpkg',Path('/msign'))
+            self.assertEqual(run.call_count,3)
+            self.assertNotIn('MSIGN_IDENTITY_B64',run.call_args.kwargs['env'])
+            self.assertNotIn('SIGNING_SETUP_TOKEN',run.call_args.kwargs['env'])
+        with patch.dict(os.environ, {'MSIGN_IDENTITY_B64':encoded,'MSIGN_PRIVATE_KEY_B64':encoded_file}, clear=True), patch.object(release.subprocess,'run') as run:
+            with self.assertRaises(ValueError):release.sign(self.package,self.root/'signed.mpkg',Path('/msign'))
+            run.assert_not_called()
+
 
 class PublicationPolicy(unittest.TestCase):
     def setUp(self):

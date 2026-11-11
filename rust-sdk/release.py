@@ -69,14 +69,20 @@ def validate(directory, expected_id, expected_commit, expected_sdk_ref):
 def sign(package, output, msign):
     """Use explicit environment credentials, verify the result, and remove temporary keys."""
     required = ('MSIGN_CERTIFICATE_B64', 'MSIGN_PRIVATE_KEY_B64', 'MSIGN_ROOT_PUBLIC_KEY_B64')
-    if any(not os.environ.get(key) for key in required):
+    values = {key: os.environ.get(key) for key in required}
+    if os.environ.get('MSIGN_IDENTITY_B64'):
+        if any(values.values()):
+            raise ValueError('Configure one atomic identity or legacy signing values, not both')
+        identity = decode_identity(os.environ['MSIGN_IDENTITY_B64'])
+        values = dict(zip(required, (identity['certificate'], identity['private_key'], identity['issuer_public_key'])))
+    if any(not values[key] for key in required):
         raise ValueError('Signing certificate, private key, and trusted root public key must be configured before enabling releases')
     with tempfile.TemporaryDirectory(prefix='mpkg-signing-') as temporary:
         root = Path(temporary)
         root.chmod(0o700)
         paths = []
         for key in required:
-            data = base64.b64decode(os.environ[key], validate=True)
+            data = base64.b64decode(values[key], validate=True)
             if not data or len(data) > 1024 * 1024:
                 raise ValueError('Invalid signing credential file')
             path = root / key
@@ -89,11 +95,30 @@ def sign(package, output, msign):
         # Do not propagate the credential values to subprocess environments.
         for key in required:
             env.pop(key, None)
+        env.pop('MSIGN_IDENTITY_B64', None)
+        env.pop('SIGNING_SETUP_TOKEN', None)
+        env.pop('MSIGN_SETUP_KEYPAIR_B64', None)
         for key in ('GH_TOKEN', 'GITHUB_TOKEN'):
             env.pop(key, None)
         subprocess.run([str(msign), 'identity', 'import', 'ci-release', '--certificate', str(certificate), '--key', str(private)], env=env, check=True)
         subprocess.run([str(msign), 'package', 'sign-auto', str(package), '--identity', 'ci-release', '--output', str(output)], env=env, check=True)
         subprocess.run([str(msign), 'package', 'verify', str(output), '--root-public-key', str(issuer), '--unix-time', str(int(time.time()))], env=env, check=True)
+
+
+def decode_identity(encoded):
+    """Decode an atomically stored signing identity without printing its contents."""
+    if len(encoded) > 64 * 1024:
+        raise ValueError('Signing identity exceeds the size limit')
+    value = json.loads(base64.b64decode(encoded, validate=True))
+    expected = {'format', 'developer_id', 'package_id', 'certificate', 'private_key', 'issuer_public_key'}
+    if (not isinstance(value, dict) or set(value) != expected or type(value['format']) is not int
+            or value['format'] != 1 or not re.fullmatch('[0-9a-f]{32}', value['developer_id'])
+            or not re.fullmatch('[a-z0-9]+(?:[.-][a-z0-9]+)+', value['package_id'])):
+        raise ValueError('Invalid signing identity metadata')
+    for key in ('certificate', 'private_key', 'issuer_public_key'):
+        if not isinstance(value[key], str) or not base64.b64decode(value[key], validate=True):
+            raise ValueError('Invalid signing identity file')
+    return value
 
 
 def absent(repository, path):
