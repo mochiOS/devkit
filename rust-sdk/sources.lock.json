@@ -1,0 +1,46 @@
+{
+  "format": 1,
+  "rust_toolchain": "nightly-2026-07-16",
+  "sdk": {
+    "version": "27.0-dp.1-shared.8",
+    "sha256": "3a4b09efd45d1ced90d5e7ce137dc2cb5e206797847c86dedfc93719b95b3755"
+  },
+  "sources": {
+    "user": {
+      "repository": "mochiOS/syscalls",
+      "revision": "f585ece9c9b331040707da5bae9a2796eadf1a93"
+    },
+    "core": {
+      "repository": "mochiOS/mnu",
+      "revision": "1cd3f9f694162b07140f9d51ca038ec412c1ad0f"
+    },
+    "services": {
+      "repository": "mochiOS/services",
+      "revision": "2c756be6014dace6cdba0f8be86efadef255370c"
+    },
+    "libraries/rust": {
+      "repository": "mochiOS/rust",
+      "revision": "a53123d944398a09672dd3633e6bed8d1375792e"
+    },
+    "libraries/viewkit": {
+      "repository": "mochiOS/ViewKit",
+      "revision": "21c7a55254b4f624e9bc2796972d2fe0369ebdd9"
+    },
+    "libraries/fonts": {
+      "repository": "mochiOS/fonts",
+      "revision": "233cb947ed6b10e175b0c6570611eb5605f112e1"
+    },
+    "libraries/libc": {
+      "repository": "mochiOS/libc",
+      "revision": "a3c482e222b53700a09d21377633836e2fee07be"
+    }
+  },
+  "fonts": {
+    "UDEVGothic-Regular.ttf": "5a4349e4a54f18a3b9691cba803c10925f277bc0cd27a5644597836be97a2e86",
+    "IBMPlexSansJP-SemiBold.ttf": "4f6a9cf3957c407f0913cf3eb251c88cd051ff1d976f4474b39f149100443f22",
+    "IBMPlexSansJP-Regular.ttf": "25d96fe620f12fba6cf09158807117ec13d1e7c9debff488117cf21dc8844688",
+    "UDEVGothic-Bold.ttf": "fd8f22c8a70796c7853bc34592a1f7affb7b7f25a471cd863d78ef0bfc377587",
+    "InterVariable.ttf": "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf",
+    "IBMPlexSansJP-Medium.ttf": "ad2ecca35612dd6637ebbe84fd590bdd8e007957bec17f67a6f5519f64958552"
+  }
+}

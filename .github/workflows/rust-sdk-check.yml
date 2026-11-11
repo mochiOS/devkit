@@ -1,0 +1,17 @@
+name: Check standalone Rust application SDK
+on:
+  push:
+    branches: [staging, main, master]
+    paths: ['rust-sdk/**', 'actions/setup-rust-sdk/**', '.github/workflows/rust-sdk-check.yml']
+  pull_request:
+    paths: ['rust-sdk/**', 'actions/setup-rust-sdk/**', '.github/workflows/rust-sdk-check.yml']
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s rust-sdk/tests -v
