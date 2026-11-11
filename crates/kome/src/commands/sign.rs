@@ -26,11 +26,24 @@ use crate::{
 
 pub fn run(args: SignArgs) -> Result<()> {
     let project_dir = absolute_project_path(&args.project)?;
-    let manifest = project::read_manifest(&project_dir)?;
-    let paths = SignPaths::new(&project_dir, &manifest, &args);
-
-    ensure_built(&project_dir, &manifest, &paths, args.release)?;
-    ensure_packed(&project_dir, &manifest, &paths, args.release)?;
+    let (manifest, paths) = if let Some(package) = &args.package {
+        let package = project_path(&project_dir, package);
+        let manifest = artifact_requirements(&package)?;
+        let mut paths = SignPaths::new(&project_dir, &manifest, &args);
+        if args.output.is_none() {
+            paths.signed_package = default_signed_path(&package)?;
+        }
+        (manifest, paths)
+    } else {
+        let manifest = project::read_manifest(&project_dir)?;
+        let paths = SignPaths::new(&project_dir, &manifest, &args);
+        ensure_built(&project_dir, &manifest, &paths, args.release)?;
+        ensure_packed(&project_dir, &manifest, &paths, args.release)?;
+        (manifest, paths)
+    };
+    if paths.unsigned_package == paths.signed_package {
+        bail!("Signed output must differ from the unsigned input");
+    }
     keygen::run_in_project(
         KeygenArgs {
             private_key: paths.private_key.clone(),
@@ -92,6 +105,53 @@ pub fn run(args: SignArgs) -> Result<()> {
     println!("Signed:      {}", paths.signed_package.display());
     println!("Verified:    OK");
     Ok(())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ArtifactRequirements {
+    package_id: String,
+    capabilities: Vec<String>,
+}
+
+fn artifact_requirements(package: &Path) -> Result<KomeManifest> {
+    let result = Command::new("msign")
+        .arg("package")
+        .arg("requirements")
+        .arg(package)
+        .output()
+        .context("failed to inspect MPKG signing requirements; install the matching msign")?;
+    if !result.status.success() {
+        bail!(
+            "MPKG requirement inspection failed: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+    parse_artifact_requirements(&result.stdout)
+}
+
+fn parse_artifact_requirements(bytes: &[u8]) -> Result<KomeManifest> {
+    if bytes.len() > 1024 * 1024 {
+        bail!("MPKG signing requirements exceed the size limit");
+    }
+    let requirements: ArtifactRequirements = serde_json::from_slice(bytes)?;
+    if !mochios_certificate::is_valid_package_id(&requirements.package_id) {
+        bail!("Invalid MPKG package ID");
+    }
+    // This value carries certificate selection inputs only. It is never used to
+    // build, repack, or replace the artifact's actual application metadata.
+    let mut manifest =
+        KomeManifest::new_app("Package".into(), requirements.package_id, String::new());
+    manifest.capabilities.required = requirements.capabilities;
+    Ok(manifest)
+}
+
+fn default_signed_path(package: &Path) -> Result<PathBuf> {
+    let stem = package
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow::anyhow!("MPKG input needs a UTF-8 file name"))?;
+    Ok(package.with_file_name(format!("{stem}-signed.mpkg")))
 }
 
 struct SignPaths {
@@ -353,6 +413,34 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn artifact_requirements_use_actual_identity_and_capabilities() {
+        let manifest = parse_artifact_requirements(
+            br#"{"package_id":"org.mochios.edit","capabilities":["fs.read.user","window.create"]}"#,
+        )
+        .unwrap();
+        assert_eq!(manifest.package.id, "org.mochios.edit");
+        assert_eq!(
+            required_capabilities(&manifest),
+            vec!["fs.read.user", "window.create"]
+        );
+        for invalid in [
+            br#"{"package_id":"../bad","capabilities":[]}"#.as_slice(),
+            br#"{"package_id":"org.mochios.edit","capabilities":[],"developer_id":"override"}"#,
+        ] {
+            assert!(parse_artifact_requirements(invalid).is_err());
+        }
+        assert!(parse_artifact_requirements(&vec![b' '; 1024 * 1024 + 1]).is_err());
+    }
+
+    #[test]
+    fn existing_artifact_default_output_preserves_its_input() {
+        assert_eq!(
+            default_signed_path(Path::new("/tmp/Edit.mpkg")).unwrap(),
+            Path::new("/tmp/Edit-signed.mpkg")
+        );
+    }
 
     #[test]
     fn required_capabilities_are_a_sorted_union() {

@@ -31,9 +31,20 @@ struct MpkgEntry {
     mode: u32,
 }
 
+#[derive(serde::Serialize)]
 pub(crate) struct PackageRequirements {
     pub package_id: String,
     pub capabilities: Vec<String>,
+}
+
+/// Inspect declared signing requirements with the canonical bounded MPKG parser.
+/// This does not verify developer identity, signatures, or payload integrity.
+pub fn requirements(args: crate::cli::PackageRequirementsArgs) -> Result<()> {
+    println!(
+        "{}",
+        serde_json::to_string(&package_requirements(&args.package)?)?
+    );
+    Ok(())
 }
 
 pub(crate) fn package_requirements(package: &Path) -> Result<PackageRequirements> {
@@ -412,8 +423,8 @@ fn write_mpkg(path: &Path, entries: &[MpkgEntry]) -> Result<()> {
         .parent()
         .filter(|path| !path.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    let directory = PrivateDirectory::new_in(parent, "msign")
-        .context("failed to create temporary MPKG")?;
+    let directory =
+        PrivateDirectory::new_in(parent, "msign").context("failed to create temporary MPKG")?;
     let mut temporary = directory.create_file("package.mpkg")?;
     temporary
         .write_all(&header)
@@ -601,9 +612,7 @@ fn validate_application_metadata(
             let value = value
                 .as_str()
                 .ok_or_else(|| anyhow!("application.{key} entries must be strings"))?;
-            if value.is_empty()
-                || (key == "resources" && !is_normalized_relative_path(value))
-            {
+            if value.is_empty() || (key == "resources" && !is_normalized_relative_path(value)) {
                 bail!("application.{key} contains an invalid entry");
             }
         }
@@ -1032,6 +1041,15 @@ mod tests {
             &developer_public,
         )
         .unwrap();
+
+        let inspected = serde_json::to_value(package_requirements(&unsigned).unwrap()).unwrap();
+        assert_eq!(
+            inspected,
+            serde_json::json!({
+                "package_id": "org.example.application",
+                "capabilities": ["process.spawn", "window.create"]
+            })
+        );
 
         assert_eq!(request.developer_id, "019f9e5ac6687902b0e72fe53abfbef1");
         assert_eq!(request.package_id, "org.example.application");

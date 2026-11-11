@@ -81,11 +81,18 @@ pub enum CertificateCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum PackageCommand {
+    /// Print the package ID and requested capabilities as JSON; does not authenticate the package.
+    Requirements(PackageRequirementsArgs),
     Sign(PackageSignArgs),
     SignAuto(PackageSignAutoArgs),
     Verify(PackageVerifyArgs),
     BindBuiltIn(BindBuiltInArgs),
     BuiltInRecord(BuiltInRecordArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct PackageRequirementsArgs {
+    pub package: PathBuf,
 }
 
 #[derive(Debug, Args)]
