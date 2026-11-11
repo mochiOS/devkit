@@ -1,0 +1,68 @@
+name: Check public MPKG Action
+on:
+  push:
+    branches: [staging, main, master]
+    paths:
+      - actions/build-mpkg/**
+      - crates/mpack/**
+      - .github/workflows/mpkg-action-check.yml
+  pull_request:
+    paths:
+      - actions/build-mpkg/**
+      - crates/mpack/**
+      - .github/workflows/mpkg-action-check.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Build bundled mpack without the OS or AppCore workspace
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import importlib.util, os
+          from pathlib import Path
+          action = Path('actions/build-mpkg').resolve()
+          spec = importlib.util.spec_from_file_location('action', action / 'package.py')
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          scratch = Path(os.environ['RUNNER_TEMP']) / 'mpkg-tool-test'
+          scratch.mkdir()
+          tool = module.bundled_tool(action, scratch)
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write('MPKG_TEST_MPACK=' + str(tool) + '\n')
+          PY
+      - name: Test package boundaries and the real container format
+        run: python3 -m unittest discover -s actions/build-mpkg/tests -v
+      - name: Prepare an independent publisher's payload
+        run: |
+          mkdir -p test-input/payload/bundle
+          printf 'format = 1\n[package]\nid = "net.example.independent"\nkind = "resource"\n' > test-input/manifest.toml
+          printf 'Independent publisher\n' > test-input/payload/bundle/example.txt
+      - name: Exercise the composite Action
+        id: mpkg
+        uses: ./actions/build-mpkg
+        with:
+          manifest: test-input/manifest.toml
+          payload: test-input/payload
+          output: test-output/Example.mpkg
+          mpack: ${{ env.MPKG_TEST_MPACK }}
+      - name: Verify the returned checksum
+        env:
+          PACKAGE: ${{ steps.mpkg.outputs.package }}
+          EXPECTED: ${{ steps.mpkg.outputs.sha256 }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          assert hashlib.sha256(Path(os.environ['PACKAGE']).read_bytes()).hexdigest() == os.environ['EXPECTED']
+          PY
