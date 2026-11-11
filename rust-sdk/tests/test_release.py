@@ -85,5 +85,44 @@ class ApprovedArtifact(unittest.TestCase):
             self.assertIn('verify', run.call_args_list[-1].args[0])
 
 
+class PublicationPolicy(unittest.TestCase):
+    def setUp(self):
+        self.policy = dict(can_admins_bypass=False,
+            protection_rules=[dict(type='required_reviewers', reviewers=[dict(type='Team', reviewer=dict(id=123))])],
+            deployment_branch_policy=dict(protected_branches=False, custom_branch_policies=True))
+        self.branches = dict(total_count=1, branch_policies=[dict(type='branch', name='main')])
+
+    def check(self):
+        with patch.object(release.subprocess, 'check_output', side_effect=[json.dumps(self.policy), json.dumps(self.branches)]):
+            release.approval_policy('example/app', 'release', 123, 'main')
+
+    def test_explicit_team_and_single_branch_are_required(self):
+        self.check()
+        self.policy['protection_rules'][0]['reviewers'] = []
+        with self.assertRaises(ValueError):
+            self.check()
+
+    def test_alternative_reviewers_and_admin_bypass_are_rejected(self):
+        self.policy['protection_rules'][0]['reviewers'].append(dict(type='User', reviewer=dict(id=456)))
+        with self.assertRaises(ValueError):
+            self.check()
+        self.policy['protection_rules'][0]['reviewers'].pop()
+        self.policy['can_admins_bypass'] = True
+        with self.assertRaises(ValueError):
+            self.check()
+
+    def test_tags_wildcards_and_additional_branch_rules_are_rejected(self):
+        for entries in ([dict(type='tag', name='main')], [dict(type='branch', name='*')],
+                        [dict(type='branch', name='main'), dict(type='branch', name='staging')]):
+            self.branches = dict(total_count=len(entries), branch_policies=entries)
+            with self.assertRaises(ValueError):
+                self.check()
+
+    def test_api_failure_does_not_skip_policy_checks(self):
+        with patch.object(release.subprocess, 'check_output', side_effect=release.subprocess.CalledProcessError(1, 'gh')):
+            with self.assertRaises(release.subprocess.CalledProcessError):
+                release.approval_policy('example/app', 'release', 123, 'main')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -59,7 +59,11 @@ the same trusted SDK source revision, with developer-CA networking disabled.
 
 The caller must place its publication job behind a protected GitHub Environment.
 Configure the repository's chosen reviewer/team and restrict the environment to
-its default branch. The public packaging/SDK Actions have no organization or
+its default branch. Pass `--environment`, `--reviewer-team` (numeric Team ID),
+and `--branch` to the release helper. It requires exactly that Team as reviewer,
+admin bypass disabled, and exactly that branch allowed; unreadable or changed
+policy aborts publication. This verifies configuration, while GitHub's protected
+job enforces the approval itself. The public packaging/SDK Actions have no organization or
 team requirement of their own.
 
 Official app callers use an `app-release` Environment with

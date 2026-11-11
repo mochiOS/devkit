@@ -12,6 +12,7 @@ import tarfile
 import tempfile
 import time
 import tomllib
+from urllib.parse import quote
 
 HERE = Path(__file__).resolve().parent
 
@@ -102,6 +103,27 @@ def absent(repository, path):
         raise ValueError('Release/tag already exists or could not be checked; refusing to overwrite')
 
 
+def approval_policy(repository, environment, team, branch):
+    """Fail closed if the caller's required Team or branch restriction was removed."""
+    endpoint = 'repos/' + repository + '/environments/' + quote(environment, safe='')
+    def fetch(path):
+        return json.loads(subprocess.check_output(['gh', 'api', path], text=True))
+    policy = fetch(endpoint)
+    reviewers = [reviewer for rule in policy.get('protection_rules', [])
+                 if rule.get('type') == 'required_reviewers' for reviewer in rule.get('reviewers', [])]
+    # GitHub accepts approval from any listed reviewer. Do not allow a different
+    # user/team to substitute for the Team explicitly selected by the publisher.
+    if (policy.get('can_admins_bypass') is not False or len(reviewers) != 1
+            or reviewers[0].get('type') != 'Team' or reviewers[0].get('reviewer', {}).get('id') != team
+            or policy.get('deployment_branch_policy') != dict(protected_branches=False, custom_branch_policies=True)):
+        raise ValueError('Required Team approval or environment restrictions are missing')
+    branches = fetch(endpoint + '/deployment-branch-policies?per_page=100')
+    entries = branches.get('branch_policies', [])
+    if (branches.get('total_count') != 1 or len(entries) != 1
+            or entries[0].get('name') != branch or entries[0].get('type') != 'branch'):
+        raise ValueError('Publication environment must allow only the selected branch')
+
+
 def main():
     """Only an approval-protected caller should execute this publication command."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -111,10 +133,14 @@ def main():
     parser.add_argument('--commit', required=True)
     parser.add_argument('--sdk-ref', required=True)
     parser.add_argument('--repository', required=True)
+    parser.add_argument('--environment', required=True)
+    parser.add_argument('--reviewer-team', type=int, required=True)
+    parser.add_argument('--branch', required=True)
     args = parser.parse_args()
     if not re.fullmatch('[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', args.repository):
         raise ValueError('Invalid release repository')
     package, identity, tag = validate(args.artifacts.resolve(), args.package_id, args.commit, args.sdk_ref)
+    approval_policy(args.repository, args.environment, args.reviewer_team, args.branch)
     absent(args.repository, 'releases/tags/' + tag)
     absent(args.repository, 'git/ref/tags/' + tag)
     with tempfile.TemporaryDirectory(prefix='mpkg-release-') as temporary:
