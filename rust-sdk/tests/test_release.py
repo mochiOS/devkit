@@ -36,7 +36,7 @@ class ApprovedArtifact(unittest.TestCase):
         self.package = self.root / 'Editor.mpkg'
         self.package.write_bytes(header + stream.getvalue())
         (self.root / 'SHA256SUMS').write_text(release.digest(self.package) + '  Editor.mpkg\n')
-        self.record = dict(format=1, source_commit=self.commit, signed=False, package=self.identity,
+        self.record = dict(format=1, source_commit=self.commit, devkit_ref=self.commit, signed=False, package=self.identity,
                            sources=json.loads((HERE / 'sources.lock.json').read_text()))
         self.save()
 
@@ -44,28 +44,28 @@ class ApprovedArtifact(unittest.TestCase):
         (self.root / 'build-info.json').write_text(json.dumps(self.record))
 
     def test_accepts_only_the_bound_artifact_and_source_commit(self):
-        self.assertEqual(release.validate(self.root, self.identity['id'], self.commit)[2], 'v1.0.0-r1')
+        self.assertEqual(release.validate(self.root, self.identity['id'], self.commit, self.commit)[2], 'v1.0.0-r1')
         for identity, commit in [('net.attacker.app', self.commit), (self.identity['id'], 'b' * 40)]:
             with self.assertRaises(ValueError):
-                release.validate(self.root, identity, commit)
+                release.validate(self.root, identity, commit, self.commit)
 
     def test_tampered_bytes_and_sdk_are_rejected(self):
         self.record['sources']['sdk']['sha256'] = 'b' * 64
         self.save()
         with self.assertRaises(ValueError):
-            release.validate(self.root, self.identity['id'], self.commit)
+            release.validate(self.root, self.identity['id'], self.commit, self.commit)
         self.record['sources'] = json.loads((HERE / 'sources.lock.json').read_text())
         self.save()
         with self.package.open('ab') as stream:
             stream.write(b'tampered')
         with self.assertRaises(ValueError):
-            release.validate(self.root, self.identity['id'], self.commit)
+            release.validate(self.root, self.identity['id'], self.commit, self.commit)
 
     def test_metadata_cannot_relabel_the_actual_manifest(self):
         self.record['package']['id'] = 'net.attacker.app'
         self.save()
         with self.assertRaises(ValueError):
-            release.validate(self.root, 'net.attacker.app', self.commit)
+            release.validate(self.root, 'net.attacker.app', self.commit, self.commit)
 
     def test_missing_keys_fail_before_invoking_a_signer(self):
         with patch.dict(os.environ, {}, clear=True), patch.object(release.subprocess, 'run') as run:

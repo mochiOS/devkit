@@ -142,7 +142,7 @@ def build(source, output, sdk, tests):
     package = stage(source, binary, output / 'stage', Path(sdk['font_licenses']))
     revision = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     (output / 'build-info.json').write_text(json.dumps(dict(format=1, source_commit=revision,
-        package=package['package'], sources=sdk['sources'], runtime_tested=False, signed=False), indent=2) + '\n')
+        package=package['package'], sources=sdk['sources'], devkit_ref=sdk['devkit_ref'], runtime_tested=False, signed=False), indent=2) + '\n')
 
 
 if __name__ == '__main__':

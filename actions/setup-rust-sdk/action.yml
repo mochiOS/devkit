@@ -19,4 +19,5 @@ runs:
       env:
         SDK_OUTPUT: ${{ inputs.output }}
         SDK_ACTION: ${{ github.action_path }}
+        SDK_ACTION_REF: ${{ github.action_ref }}
       run: python3 "$SDK_ACTION/../../rust-sdk/setup.py" --output "$SDK_OUTPUT"

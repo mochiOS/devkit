@@ -96,6 +96,8 @@ def prepare(output):
         raise ValueError('Use a fresh SDK output directory')
     root.mkdir(parents=True)
     lock = json.loads((HERE / 'sources.lock.json').read_text())
+    revision = os.environ.get('SDK_ACTION_REF') or subprocess.check_output(
+        ['git', '-C', str(HERE.parent), 'rev-parse', 'HEAD'], text=True).strip()
     for name, spec in lock['sources'].items():
         checkout(root, name, spec)
     devkit = root / 'tools/devkit'
@@ -125,7 +127,7 @@ def prepare(output):
             raise ValueError('Font hash mismatch: ' + name)
     flags = ['--remap-path-prefix=' + str(Path.home()) + '=/build', '--remap-path-prefix=' + str(base) + '=/toolchain',
              '--remap-path-prefix=' + str(root) + '=/build/sdk', '-C', 'debuginfo=0', '-C', 'linker=' + str(sdk / 'bin/mochios-cc')]
-    metadata = dict(format=1, cargo=str(compiler / 'bin/cargo'), rustc=str(compiler / 'bin/rustc'),
+    metadata = dict(format=1, devkit_ref=revision, cargo=str(compiler / 'bin/cargo'), rustc=str(compiler / 'bin/rustc'),
                     rustdoc=str(compiler / 'bin/rustdoc'), target=str(root / 'user/targets/x86_64-unknown-mochios.json'),
                     target_dir=str(root / 'target'), rustflags=flags, cargo_config=configs(root),
                     appcore=str(devkit / 'crates/appcore'), user=str(root / 'user'),

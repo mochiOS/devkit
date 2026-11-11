@@ -25,9 +25,9 @@ def digest(path):
     return result.hexdigest()
 
 
-def validate(directory, expected_id, expected_commit):
+def validate(directory, expected_id, expected_commit, expected_sdk_ref):
     """Bind the approved source revision, SDK, package identity, and actual bytes."""
-    if not re.fullmatch('[0-9a-f]{40}', expected_commit):
+    if not re.fullmatch('[0-9a-f]{40}', expected_commit) or not re.fullmatch('[0-9a-f]{40}', expected_sdk_ref):
         raise ValueError('Release requires an exact source commit')
     metadata = directory / 'build-info.json'
     checksums = directory / 'SHA256SUMS'
@@ -42,7 +42,7 @@ def validate(directory, expected_id, expected_commit):
     record = json.loads(metadata.read_text())
     lock = json.loads((HERE / 'sources.lock.json').read_text())
     if (record.get('format') != 1 or record.get('source_commit') != expected_commit
-            or record.get('signed') is not False or record.get('sources') != lock):
+            or record.get('signed') is not False or record.get('sources') != lock or record.get('devkit_ref') != expected_sdk_ref):
         raise ValueError('Artifact source/SDK does not match the approved release')
     if checksums.read_text() != digest(package) + '  ' + package.name + '\n':
         raise ValueError('Unsigned artifact checksum mismatch')
@@ -109,11 +109,12 @@ def main():
     parser.add_argument('--msign', type=Path, required=True)
     parser.add_argument('--package-id', required=True)
     parser.add_argument('--commit', required=True)
+    parser.add_argument('--sdk-ref', required=True)
     parser.add_argument('--repository', required=True)
     args = parser.parse_args()
     if not re.fullmatch('[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', args.repository):
         raise ValueError('Invalid release repository')
-    package, identity, tag = validate(args.artifacts.resolve(), args.package_id, args.commit)
+    package, identity, tag = validate(args.artifacts.resolve(), args.package_id, args.commit, args.sdk_ref)
     absent(args.repository, 'releases/tags/' + tag)
     absent(args.repository, 'git/ref/tags/' + tag)
     with tempfile.TemporaryDirectory(prefix='mpkg-release-') as temporary:
