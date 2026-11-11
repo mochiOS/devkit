@@ -109,3 +109,26 @@ The runtime source has passed the dedicated native Unix VM fixture, including
 constructor inspection and unload during enumeration. A distribution build
 still needs the complete SDK compiler/archive/path audit and artifact checks.
 `sdk.yml` builds upload candidates only; it does not publish a release.
+
+### Signed resource bundles in shared.9
+
+`<mochi/bundle.h>` exposes the four signed-bundle functions for checking an
+explicit alias, opening a read-only file, and owning/releasing a process-local
+immutable directory view. `<mochi/handle.h>` also exposes the checked native
+file-reference/FD bridge. Resource declarations and runtime authority belong
+to the matching package/capability/filesystem services; the SDK grants no
+ambient filesystem access. Older code-only manifests stay launchable but do
+not grant access to unmeasured data.
+
+The process runtime also supports resource-bearing authorization replies for
+replayed dynamic `exec`. The broker measures the reconstructed image and
+selects that executable's own signed resource declarations. The runtime
+installs the returned references with the existing atomic image-context
+commit, alongside the FD updates; failure closes the received references.
+The previous image's Bundle keys are removed on the legacy static path.
+No kernel syscall or existing legacy reply layout is changed.
+
+Deployment needs the corresponding updated capability/POSIX/filesystem
+services and package manifests. Compile/link probes cover the C and C++
+headers, process exports and shared imports. They do not constitute native
+WebKit rendering or resource IPC verification. Release publication is manual.
