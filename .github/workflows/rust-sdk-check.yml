@@ -2,9 +2,9 @@ name: Check standalone Rust application SDK
 on:
   push:
     branches: [staging, main, master]
-    paths: ['rust-sdk/**', 'actions/setup-rust-sdk/**', '.github/workflows/rust-sdk-check.yml']
+    paths: ['rust-sdk/**', 'actions/setup-rust-sdk/**', 'crates/kome/**', 'crates/msign/**', '.github/workflows/rust-sdk-check.yml']
   pull_request:
-    paths: ['rust-sdk/**', 'actions/setup-rust-sdk/**', '.github/workflows/rust-sdk-check.yml']
+    paths: ['rust-sdk/**', 'actions/setup-rust-sdk/**', 'crates/kome/**', 'crates/msign/**', '.github/workflows/rust-sdk-check.yml']
 permissions:
   contents: read
 jobs:
@@ -33,3 +33,8 @@ jobs:
           SDK: ${{ steps.sdk.outputs.sdk }}
           HELPER: ${{ steps.sdk.outputs.helper }}
         run: python3 "$(dirname "$HELPER")/host-tool.py" --sdk "$SDK" --tool msign --output "$RUNNER_TEMP/host-tools" --test
+      - name: Test and build Kome without production credentials
+        env:
+          SDK: ${{ steps.sdk.outputs.sdk }}
+          HELPER: ${{ steps.sdk.outputs.helper }}
+        run: python3 "$(dirname "$HELPER")/host-tool.py" --sdk "$SDK" --tool kome --output "$RUNNER_TEMP/host-tools" --test

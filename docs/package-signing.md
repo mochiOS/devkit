@@ -49,6 +49,28 @@ IDs, developer identities, or a central registration mechanism.
 
 ## Automatic selection
 
+For an existing unsigned MPKG produced by CI, Kome can obtain a package-scoped
+certificate and sign it without a `Kome.toml`, compilation, or repackaging:
+
+```bash
+kome login
+kome developer use YOUR_DEVELOPER_ID
+kome sign /path/to/Edit.mpkg \
+  --key /private/edit/application.key \
+  --public-key /private/edit/application.pub \
+  --certificate /private/edit/developer.cert \
+  --issuer-public-key /private/edit/developer.issuer.pub \
+  --output /path/to/Edit-signed.mpkg
+```
+
+Use a private directory outside the source repository for credential files.
+Kome uses `msign package requirements` to read the actual package ID and required
+capabilities with the existing MPKG parser; these are declarations, not proof of
+authenticity. Kome then validates the issued certificate and verifies the signed
+package before publishing the output file. Without an explicit output path,
+the input `Edit.mpkg` produces `Edit-signed.mpkg`. With no MPKG argument, the
+existing Kome project build/package/sign workflow is unchanged.
+
 For an unsigned MPKG, automatic selection reads the Package ID and requested
 binary capabilities from the package manifest. A candidate identity is usable
 only when all of the following are true:

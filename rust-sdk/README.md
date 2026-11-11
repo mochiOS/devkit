@@ -71,6 +71,10 @@ Official app callers use an `app-release` Environment with
 variable `APP_RELEASE_ENABLED` is explicitly set to `true` and these Environment
 values have been configured:
 
+New callers should use one atomic Secret, `MSIGN_IDENTITY_B64`, populated by the
+approval-protected initializer described below. The release helper also accepts
+the following legacy inputs, but refuses to mix them with an atomic identity:
+
 * Secret `MSIGN_CERTIFICATE_B64`: base64 of the issued Developer Certificate file.
 * Secret `MSIGN_PRIVATE_KEY_B64`: base64 of its corresponding private-key file.
 * Variable `MSIGN_ROOT_PUBLIC_KEY_B64`: base64 of the trusted issuer public-key file.
@@ -82,3 +86,34 @@ success or failure. The signed package is verified against the trusted root
 before publication. Existing release tags/assets are never replaced. The initial
 release helper publishes prereleases as `v<version>-r<revision>`; update the
 manifest revision before making another release of the same version.
+
+## First-time signing setup on Actions
+
+`signing-setup.py` runs only from an explicitly dispatched default-branch job
+protected by the configured Environment/Team. It accepts only successful
+default-branch artifacts from the chosen package workflow and verifies their
+actual source revision, SDK receipt, package identity and checksum. It builds no
+application code and does not publish or enable releases.
+
+The caller needs the pinned SDK's `msign` and `kome` host tools and a short-lived
+fine-grained PAT, limited to the caller repository with Environments read/write,
+as the Environment Secret `SIGNING_SETUP_TOKEN`. This token is used only by `gh`
+to encrypt/store/delete Environment Secrets; it is never passed to Kome or msign.
+The normal read-only job token reads run and protection metadata.
+
+The initializer creates a new package-specific key on the ephemeral runner and
+first saves an encrypted `MSIGN_SETUP_KEYPAIR_B64` recovery Secret. A retry must
+restore the same package/developer key. It never silently rotates credentials.
+Kome prints its public device-login URL/code to the Actions log; the maintainer
+authorizes in a browser, and Kome validates the selected Developer membership,
+obtains the certificate, signs the selected MPKG, and verifies it locally.
+
+Only after verification does the initializer atomically save the certificate,
+key and issuer public key as `MSIGN_IDENTITY_B64`. No credential or signed test
+package is uploaded as an artifact. The temporary Kome session is logged out,
+local temporary files are removed, and recovery/setup Secrets are deleted on
+success. Deleting the setup Secret does not revoke its PAT: revoke that short-
+lived PAT in GitHub settings after setup. On issuance failure, the recovery
+Secret remains for the next approved attempt; session/files are still cleaned.
+Existing production credentials are refused, and publication must remain
+disabled throughout setup. Credential rotation is deliberately a separate task.
