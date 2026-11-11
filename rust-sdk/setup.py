@@ -46,7 +46,7 @@ def configs(root):
     patches['https://github.com/mochiOS/syscalls'] = {
         tomllib.loads(p.read_text())['package']['name']: p.parent for p in (root / 'user/crates').glob('*/Cargo.toml')}
     for name in ('core', 'alloc', 'std'):
-        patches['crates-io']['rustc-std-workspace-' + name] = root / 'libraries/rust/library' / ('rustc-std-workspace-' + name)
+        patches['crates-io']['rustc-std-workspace-' + name] = root / 'rust-overlay/lib/rustlib/src/rust/library' / ('rustc-std-workspace-' + name)
     return ['patch.' + json.dumps(source) + '.' + json.dumps(name) + '.path=' + json.dumps(str(path))
             for source, crates in patches.items() for name, path in crates.items()]
 
