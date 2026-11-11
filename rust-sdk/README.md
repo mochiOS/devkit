@@ -48,3 +48,33 @@ built-in provenance, and changes the binary destination to the normal
 target programs and do not establish native runtime success. The public MPKG
 Action separately creates the unsigned container. Signing, approval and release
 publication remain caller workflow responsibilities.
+
+## Approval-protected publication
+
+The generic `release.py` helper consumes the unsigned artifact from the same
+successful workflow run. It checks the source commit, package ID, actual MPKG
+manifest, SDK source lock and archive checksum before accessing signing inputs.
+It does not compile or execute application code. `host-tool.py` builds msign from
+the same trusted SDK source revision, with developer-CA networking disabled.
+
+The caller must place its publication job behind a protected GitHub Environment.
+Configure the repository's chosen reviewer/team and restrict the environment to
+its default branch. The public packaging/SDK Actions have no organization or
+team requirement of their own.
+
+Official app callers use an `app-release` Environment with
+`application-maintainers` approval. Releases stay disabled until the repository
+variable `APP_RELEASE_ENABLED` is explicitly set to `true` and these Environment
+values have been configured:
+
+* Secret `MSIGN_CERTIFICATE_B64`: base64 of the issued Developer Certificate file.
+* Secret `MSIGN_PRIVATE_KEY_B64`: base64 of its corresponding private-key file.
+* Variable `MSIGN_ROOT_PUBLIC_KEY_B64`: base64 of the trusted issuer public-key file.
+
+No root private key, fixture key, generated substitute identity or unsigned
+publication is accepted. Credentials are decoded into a private temporary
+directory, not propagated as subprocess environment values, and removed on
+success or failure. The signed package is verified against the trusted root
+before publication. Existing release tags/assets are never replaced. The initial
+release helper publishes prereleases as `v<version>-r<revision>`; update the
+manifest revision before making another release of the same version.
