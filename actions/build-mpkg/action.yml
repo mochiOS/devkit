@@ -1,0 +1,42 @@
+name: Build mochiOS package
+description: Create an unsigned MPKG from a manifest and prebuilt payload, for any publisher or package kind.
+author: mochiOS
+branding:
+  icon: package
+  color: orange
+inputs:
+  manifest:
+    description: Path to the completed MPKG manifest.toml.
+    required: true
+  payload:
+    description: Directory containing the already-built MPKG payload.
+    required: true
+  output:
+    description: Destination MPKG path; must not already exist or be inside the payload.
+    required: false
+    default: dist/package.mpkg
+  mpack:
+    description: Optional path to an existing trusted mpack executable. Otherwise build the version bundled with this Action.
+    required: false
+outputs:
+  package:
+    description: Absolute path of the generated unsigned MPKG.
+    value: ${{ steps.package.outputs.package }}
+  sha256:
+    description: SHA-256 of the complete unsigned MPKG file.
+    value: ${{ steps.package.outputs.sha256 }}
+  checksum-file:
+    description: Absolute path of the generated SHA256SUMS file.
+    value: ${{ steps.package.outputs.checksum-file }}
+runs:
+  using: composite
+  steps:
+    - id: package
+      shell: bash
+      env:
+        MPKG_ACTION_PATH: ${{ github.action_path }}
+        MPKG_MANIFEST: ${{ inputs.manifest }}
+        MPKG_PAYLOAD: ${{ inputs.payload }}
+        MPKG_OUTPUT: ${{ inputs.output }}
+        MPKG_TOOL: ${{ inputs.mpack }}
+      run: python3 "$MPKG_ACTION_PATH/package.py"
