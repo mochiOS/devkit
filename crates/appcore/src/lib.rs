@@ -8,6 +8,8 @@
 #[cfg(feature = "ui")]
 pub mod alert;
 pub mod clipboard;
+pub mod bundle;
+pub use bundle::{Bundle, ResourceDirectory};
 pub mod keychain;
 pub mod content_type;
 #[cfg(feature = "ui")]
@@ -78,6 +80,7 @@ where
 /// Common imports for a Rust mochiOS application.
 pub mod prelude {
     pub use crate::clipboard;
+    pub use crate::bundle::{Bundle, ResourceDirectory};
     pub use crate::content_type::{self, ContentType};
     pub use crate::document::{self, AssociationHandler, AssociationRoles, DocumentIcon, DocumentIconFormat, DocumentIconResolver};
     pub use crate::error::{Error as ApplicationError, Result as ApplicationResult};
