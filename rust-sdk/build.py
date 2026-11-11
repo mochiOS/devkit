@@ -119,8 +119,9 @@ def build(source, output, sdk, tests):
     host_env = dict(os.environ, **sdk['fonts'], CARGO_PROFILE_TEST_DEBUG='0')
     for key in ('RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'RUSTC', 'RUSTDOC'):
         host_env.pop(key, None)
+    host_env.update(RUSTC=sdk['rustc'], RUSTDOC=sdk['rustdoc'])
     if tests:
-        run(['cargo', 'test', '--manifest-path', project / 'Cargo.toml', '--target-dir', output / 'host-target', *options],
+        run([sdk['cargo'], 'test', '--manifest-path', project / 'Cargo.toml', '--target-dir', output / 'host-target', *options],
             env=host_env, cwd=project)
     env = dict(host_env, RUSTC=sdk['rustc'], RUSTDOC=sdk['rustdoc'],
                CARGO_ENCODED_RUSTFLAGS='\x1f'.join(sdk['rustflags'] + ['--remap-path-prefix=' + str(source) + '=/src/app',
