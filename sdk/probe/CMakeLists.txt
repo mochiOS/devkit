@@ -3,6 +3,16 @@ project(MochiOSSDKProbe LANGUAGES C CXX)
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "mochiOS" OR NOT CMAKE_CROSSCOMPILING)
     message(FATAL_ERROR "A real mochiOS cross toolchain is required")
 endif()
+
+# Bundle declarations must agree with both the DSO import surface and the
+# process-owned runtime. These probes do not claim native resource access.
+if(EXISTS "${CMAKE_SYSROOT}/include/mochi/bundle.h")
+    add_library(sdk_bundle_probe_shared SHARED bundle.c)
+    target_compile_features(sdk_bundle_probe_shared PRIVATE c_std_11)
+    add_executable(sdk_bundle_probe bundle-main.cpp)
+    target_compile_features(sdk_bundle_probe PRIVATE cxx_std_23)
+    target_link_libraries(sdk_bundle_probe PRIVATE sdk_bundle_probe_shared)
+endif()
 if(NOT CMAKE_SYSROOT OR NOT IS_DIRECTORY "${CMAKE_SYSROOT}")
     message(FATAL_ERROR "SDK must provide a target sysroot")
 endif()

@@ -24,11 +24,25 @@ def inspect(sdk,path):
     return text
 
 
+BUNDLE_API = {'mochi_bundle_check', 'mochi_bundle_open', 'mochi_bundle_directory_open', 'mochi_bundle_directory_close'}
+
+def verify_bundle_api(sdk, names, exports):
+    """An advertised signed-bundle header requires real executable/DSO links."""
+    if not (sdk/'sysroot/include/mochi/bundle.h').is_file():
+        if BUNDLE_API & exports: raise ValueError('Bundle exports require their public header')
+        return False
+    if not BUNDLE_API <= exports:
+        raise ValueError('Missing signed bundle runtime exports: '+', '.join(sorted(BUNDLE_API-exports)))
+    if not {'sdk_bundle_probe', 'libsdk_bundle_probe_shared.so'} <= names:
+        raise ValueError('Missing signed bundle executable/shared ABI probes')
+    return True
+
+
 def main():
     """Validate real outputs, a failed transactional link, dependency imports and a relocated SDK path."""
     sdk=Path(sys.argv[1]).resolve();build=Path(sys.argv[2]).resolve()
     os.environ['LD_LIBRARY_PATH']=str(sdk/'host/lib')
-    objects=[p for p in build.rglob('*') if p.is_file() and not p.is_symlink() and (p.name in {'sdk_probe', 'sdk_resolver_probe', 'sdk_loader_probe', 'sdk_stack_probe', 'sdk_memory_probe', 'sdk_io_abi_probe', 'sdk_unix_extensions_probe'} or p.name.startswith(('libsdk_probe_shared.so', 'libsdk_resolver_probe_shared.so', 'libsdk_loader_probe', 'libsdk_stack_probe_shared.so', 'libsdk_memory_probe_shared.so', 'libsdk_io_abi_probe_shared.so', 'libsdk_unix_extensions_probe_shared.so')))]
+    objects=[p for p in build.rglob('*') if p.is_file() and not p.is_symlink() and (p.name in {'sdk_probe', 'sdk_resolver_probe', 'sdk_loader_probe', 'sdk_stack_probe', 'sdk_memory_probe', 'sdk_io_abi_probe', 'sdk_unix_extensions_probe', 'sdk_bundle_probe'} or p.name.startswith(('libsdk_probe_shared.so', 'libsdk_resolver_probe_shared.so', 'libsdk_loader_probe', 'libsdk_stack_probe_shared.so', 'libsdk_memory_probe_shared.so', 'libsdk_io_abi_probe_shared.so', 'libsdk_unix_extensions_probe_shared.so', 'libsdk_bundle_probe_shared.so')))]
     if len(objects)<2:raise ValueError('Missing C++ executable/shared probe outputs')
     resolver_available=(sdk/'sysroot/include/resolv.h').is_file()
     if resolver_available:
@@ -46,6 +60,7 @@ def main():
     if not {'sdk_stack_probe','libsdk_stack_probe_shared.so'} <= names:
         raise ValueError('Missing actual pthread stack executable/shared ABI probes')
     exports=set(json.loads((sdk/'share/runtime-symbols.json').read_text()))
+    bundle_available=verify_bundle_api(sdk,names,exports)
     unix_available=(sdk/'sysroot/include/link.h').is_file()
     if unix_available:
         unix_api={'flock','mincore','madvise','dladdr','dl_iterate_phdr','pthread_getschedparam','pthread_setschedparam'}
@@ -83,6 +98,7 @@ def main():
         subprocess.run(['cmake','-S',Path(__file__).resolve().parent/'probe','-B',tmp/'relocated build','-DCMAKE_TOOLCHAIN_FILE='+str(alias/'share/cmake/mochios.cmake')],env=relocated_env,check=True)
         subprocess.run(['cmake','--build',tmp/'relocated build','--parallel','2'],env=relocated_env,check=True)
     report={'format':1,'compile_link_passed':True,'runtime_tested':False,'checks':['cxx23','thread-and-exception-symbols','elf-wx-relro','no-host-runtime','unknown-import-rejection','atomic-link-output','runtime-imports','declared-dso-imports','paths-with-spaces','pthread-stack-c-abi-compile-link','current-resident-memory-c-abi-compile-link','posix-io-header-runtime-abi-compile-link']}
+    if bundle_available:report['checks'].append('signed-bundle-c-cxx-abi-compile-link')
     if unix_available:report['checks'].append('unix-extensions-c-abi-compile-link')
     if resolver_available:report['checks'].append('native-resolver-c-abi')
     if loader_available:report['checks'].append('private-loader-c-abi-compile-link')

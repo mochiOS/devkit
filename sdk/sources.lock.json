@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "version": "27.0-dp.1-shared.8",
+  "version": "27.0-dp.1-shared.9",
   "target": "x86_64-unknown-mochios",
   "abi": "mochios-1",
   "host": "x86_64-linux-gnu-ubuntu24.04",
@@ -110,11 +110,11 @@
   "sources": {
     "user": {
       "url": "https://github.com/mochiOS/syscalls.git",
-      "commit": "f585ece9c9b331040707da5bae9a2796eadf1a93"
+      "commit": "2ff90bdc8c89e9bba85f245dc74464204716b486"
     },
     "mnu": {
       "url": "https://github.com/mochiOS/mnu.git",
-      "commit": "1cd3f9f694162b07140f9d51ca038ec412c1ad0f"
+      "commit": "b2f5636f55f90d0d86ed0eb11c2d9a3ef1b07720"
     },
     "libc": {
       "url": "https://github.com/mochiOS/libc.git",
@@ -156,6 +156,12 @@
     "dladdr",
     "dl_iterate_phdr",
     "pthread_getschedparam",
-    "pthread_setschedparam"
+    "pthread_setschedparam",
+    "mochi_bundle_check",
+    "mochi_bundle_open",
+    "mochi_bundle_directory_open",
+    "mochi_bundle_directory_close",
+    "mochi_fd_from_file_handle",
+    "mochi_fd_export"
   ]
 }
