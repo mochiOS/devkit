@@ -6,6 +6,13 @@ endif()
 
 # Bundle declarations must agree with both the DSO import surface and the
 # process-owned runtime. These probes do not claim native resource access.
+if(EXISTS "${CMAKE_SYSROOT}/include/mochi/executable.h")
+    add_library(sdk_executable_probe_shared SHARED executable.c)
+    target_compile_features(sdk_executable_probe_shared PRIVATE c_std_11)
+    add_executable(sdk_executable_probe executable-main.cpp)
+    target_compile_features(sdk_executable_probe PRIVATE cxx_std_23)
+    target_link_libraries(sdk_executable_probe PRIVATE sdk_executable_probe_shared)
+endif()
 if(EXISTS "${CMAKE_SYSROOT}/include/mochi/bundle.h")
     add_library(sdk_bundle_probe_shared SHARED bundle.c)
     target_compile_features(sdk_bundle_probe_shared PRIVATE c_std_11)

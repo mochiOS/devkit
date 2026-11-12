@@ -132,3 +132,17 @@ Deployment needs the corresponding updated capability/POSIX/filesystem
 services and package manifests. Compile/link probes cover the C and C++
 headers, process exports and shared imports. They do not constitute native
 WebKit rendering or resource IPC verification. Release publication is manual.
+
+### Executable references under development
+
+`<mochi/executable.h>` and `appcore::process` select explicitly exported signed
+helpers without exposing installation directories. C callers can replace an
+image or spawn with ordinary POSIX file actions; AppCore provides `Executable`,
+`Command`, pipe Files and an owned `Child`. New headers require actual rooted
+runtime exports and C/C++ process/shared-library links during SDK verification.
+Selection/capture and spawn are synchronous; run them off a UI event thread.
+
+This API is not in the published shared.9 SDK. Its source pins remain immutable;
+a future SDK must pin the updated runtime before applications can use these C
+symbols. Matching OS brokers and manifests are also required. No release or
+runtime-test success follows from adding these compile/link probes.

@@ -368,6 +368,16 @@ def require_unix_extension_api(sdk, all_symbols, c_symbols):
     c_symbols.update(UNIX_EXTENSION_C_API)
     return True
 
+EXECUTABLE_C_API={'mochi_executable_open','mochi_executable_execve','mochi_executable_spawn','mochi_executable_close'}
+
+def require_executable_api(sdk, all_symbols, c_symbols):
+    """A new executable header must have real, rooted process runtime exports."""
+    if not (sdk/'sysroot/include/mochi/executable.h').is_file():return False
+    missing=EXECUTABLE_C_API-all_symbols
+    if missing:raise ValueError('Executable header lacks runtime implementations: '+', '.join(sorted(missing)))
+    c_symbols.update(EXECUTABLE_C_API)
+    return True
+
 def require_private_loader_api(sdk, all_symbols, c_symbols):
     """Root real loader functions only when the target supplies its public header.
 
@@ -404,6 +414,7 @@ def assemble(lock,sources,sdk,out,env,policy):
             if path.name in ['libc.a','libm.a'] and re.fullmatch('[A-Za-z][A-Za-z0-9_]*',symbol):c_symbols.add(symbol)
     private_loader=require_private_loader_api(sdk,all_symbols,c_symbols)
     require_unix_extension_api(sdk,all_symbols,c_symbols)
+    require_executable_api(sdk,all_symbols,c_symbols)
     required=set(lock.get('required_runtime_exports',[]))
     missing=required-all_symbols
     if missing:raise ValueError('Pinned runtime APIs are missing: '+', '.join(sorted(missing)))

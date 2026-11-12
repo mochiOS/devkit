@@ -9,6 +9,7 @@
 pub mod alert;
 pub mod clipboard;
 pub mod bundle;
+pub mod process;
 pub use bundle::{Bundle, ResourceDirectory};
 pub mod keychain;
 pub mod content_type;
