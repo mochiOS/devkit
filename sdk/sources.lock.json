@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "version": "27.0-dp.1-shared.9",
+  "version": "27.0-dp.1-shared.10",
   "target": "x86_64-unknown-mochios",
   "abi": "mochios-1",
   "host": "x86_64-linux-gnu-ubuntu24.04",
@@ -110,7 +110,7 @@
   "sources": {
     "user": {
       "url": "https://github.com/mochiOS/syscalls.git",
-      "commit": "2ff90bdc8c89e9bba85f245dc74464204716b486"
+      "commit": "8ad5926b47f8b1aa2f8ad69125c556923611d848"
     },
     "mnu": {
       "url": "https://github.com/mochiOS/mnu.git",
@@ -162,6 +162,10 @@
     "mochi_bundle_directory_open",
     "mochi_bundle_directory_close",
     "mochi_fd_from_file_handle",
-    "mochi_fd_export"
+    "mochi_fd_export",
+    "mochi_executable_open",
+    "mochi_executable_execve",
+    "mochi_executable_spawn",
+    "mochi_executable_close"
   ]
 }

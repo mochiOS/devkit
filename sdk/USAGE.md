@@ -133,7 +133,7 @@ services and package manifests. Compile/link probes cover the C and C++
 headers, process exports and shared imports. They do not constitute native
 WebKit rendering or resource IPC verification. Release publication is manual.
 
-### Executable references under development
+### Signed executable references in shared.10
 
 `<mochi/executable.h>` and `appcore::process` select explicitly exported signed
 helpers without exposing installation directories. C callers can replace an
@@ -142,7 +142,14 @@ image or spawn with ordinary POSIX file actions; AppCore provides `Executable`,
 runtime exports and C/C++ process/shared-library links during SDK verification.
 Selection/capture and spawn are synchronous; run them off a UI event thread.
 
-This API is not in the published shared.9 SDK. Its source pins remain immutable;
-a future SDK must pin the updated runtime before applications can use these C
-symbols. Matching OS brokers and manifests are also required. No release or
-runtime-test success follows from adding these compile/link probes.
+shared.10 pins the runtime containing all four C functions. Published shared.9
+remains unchanged. Deployment also requires matching OS brokers and signed
+executable export/dependency declarations. This SDK does not ship the AppCore
+Rust crate; applications select its matching `appcore::process` API separately.
+
+The runtime changes were exercised in a native mochiOS VM: own-package and
+publisher-pinned external helpers, pipe output, FD inheritance, ABI mismatch
+and capability attenuation. The SDK archive's C/C++ compile/link checks remain
+a separate gate and never claim WebKit rendering support. Fork now preserves
+signed Bundle startup keys, and replayed-exec authorization handles packed
+native IPC reply lengths correctly. Release publication remains manual.
