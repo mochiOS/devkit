@@ -1,6 +1,7 @@
 //! Local device-wide legal receipts and independent optional-data permissions.
 //! Missing, malformed, incomplete or outdated permission is always denied.
 //! No network, telemetry collection, account identifiers or upload queue lives here.
+pub mod documents;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, OpenOptions};
