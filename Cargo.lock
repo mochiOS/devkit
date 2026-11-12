@@ -1864,7 +1864,6 @@ version = "0.1.0"
 [[package]]
 name = "mochios-certificate"
 version = "0.1.0"
-source = "git+https://github.com/mochiOS/syscalls?rev=af217f5ca6a585110aabac813eb46dff8ccb7bfc#af217f5ca6a585110aabac813eb46dff8ccb7bfc"
 dependencies = [
  "ed25519-dalek",
  "sha2",
@@ -5179,6 +5178,14 @@ dependencies = [
 ]
 
 [[patch.unused]]
+name = "bootui"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "mnu"
+version = "0.1.0"
+
+[[patch.unused]]
 name = "mochi-user-runtime"
 version = "0.1.0"
 
@@ -5200,14 +5207,6 @@ version = "0.1.0"
 
 [[patch.unused]]
 name = "mochios-virtio-gpu-protocol"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "bootui"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "mnu"
 version = "0.1.0"
 
 [[patch.unused]]
