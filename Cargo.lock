@@ -5202,7 +5202,7 @@ name = "mochios-virtio-gpu-protocol"
 version = "0.1.0"
 
 [[patch.unused]]
-name = "bootui"
+name = "mboot-protocol"
 version = "0.1.0"
 
 [[patch.unused]]
@@ -5210,5 +5210,5 @@ name = "mnu"
 version = "0.1.0"
 
 [[patch.unused]]
-name = "mboot-protocol"
+name = "bootui"
 version = "0.1.0"
