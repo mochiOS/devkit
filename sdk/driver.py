@@ -104,6 +104,29 @@ def shared_runtime_arguments(sdk, arguments):
     return result
 
 
+def isolate_rust_math(sdk, arguments, temporary, env):
+    """Separate Rust's hidden math intrinsics from the executable's public newlib ABI.
+
+    Rust passes its own compiler-builtins rlib in addition to the SDK runtime.
+    Its hidden weak definitions otherwise hide public math exports even when
+    newlib is explicitly rooted. Rewrite a temporary copy only; Cargo's shared
+    cache and all other input archives remain unchanged.
+    """
+    import shutil
+    result = list(arguments)
+    for index, argument in enumerate(arguments):
+        archive = Path(argument)
+        if not re.fullmatch(r'libcompiler_builtins-[0-9a-f]+\.rlib', archive.name) or not archive.is_file():
+            continue
+        isolated = temporary / (str(index) + '-' + archive.name)
+        shutil.copyfile(archive, isolated)
+        subprocess.run([str(sdk / 'host/bin/objcopy'),
+                        '--redefine-syms=' + str(sdk / 'share/runtime-intrinsics.rename'),
+                        str(isolated)], check=True, env=env)
+        result[index] = str(isolated)
+    return result
+
+
 def main():
     """Compile or transactionally link, validating shared imports before publishing output."""
     sdk = Path(__file__).resolve().parents[1]
@@ -153,6 +176,8 @@ def main():
     if shared: link += ['-Wl,-z,undefs']
     with tempfile.TemporaryDirectory(dir=output.parent, prefix='.mochios-link-') as temporary:
         temporary = Path(temporary); target = temporary / 'linked.elf'
+        if not shared:
+            link = isolate_rust_math(sdk, link, temporary, env)
         response = temporary / 'link.rsp'
         response.write_text('\n'.join(json.dumps(arg, ensure_ascii=False) for arg in [*link, '-o', str(target)]))
         subprocess.run([str(compiler), '@' + str(response)], env=env, check=True)

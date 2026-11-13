@@ -43,3 +43,34 @@ class CompilerHelperLinks(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('Unresolved non-runtime imports: unavailable_sdk_function', result.stderr)
             self.assertFalse((root / 'unknown.so').exists())
+
+    def test_rust_hidden_math_does_not_hide_public_newlib_exports(self):
+        import hashlib
+        import importlib.util
+        base = Path(os.environ['MOCHIOS_TEST_SDK']).resolve()
+        spec = importlib.util.spec_from_file_location('math_driver', ROOT / 'driver.py')
+        driver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(driver)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / 'intrinsics.c'
+            source.write_text('__attribute__((weak,visibility("hidden"))) double ceil(double x) { return x; }\n')
+            obj = root / 'intrinsics.o'
+            subprocess.run([str(base / 'bin/mochios-cc'), '-fno-builtin', '-c', str(source), '-o', str(obj)], check=True, capture_output=True)
+            archive = root / 'libcompiler_builtins-ab12.rlib'
+            subprocess.run([str(base / 'host/bin/ar'), 'rcs', str(archive), str(obj)], check=True)
+            digest = hashlib.sha256(archive.read_bytes()).digest()
+            copies = root / 'copies'
+            copies.mkdir()
+            args = driver.isolate_rust_math(base, [str(archive), str(obj)], copies, os.environ.copy())
+            self.assertEqual(args[1], str(obj))
+            self.assertEqual(hashlib.sha256(archive.read_bytes()).digest(), digest)
+            symbols = subprocess.check_output([str(base / 'host/bin/nm'), args[0]], text=True)
+            self.assertIn('__mochios_builtin_ceil', symbols)
+            main = root / 'main.c'
+            main.write_text('int main(void) { return 0; }\n')
+            executable = root / 'consumer'
+            subprocess.run([str(base / 'bin/mochios-cc'), str(main), *args[:1], '-o', str(executable)], check=True, capture_output=True)
+            dynamic = subprocess.check_output([str(base / 'host/bin/nm'), '-D', '--defined-only', str(executable)], text=True)
+            self.assertIn(' T ceil\n', dynamic)
+            self.assertNotIn('__mochios_builtin_ceil', dynamic)

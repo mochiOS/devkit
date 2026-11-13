@@ -49,7 +49,7 @@ class RecipeTests(unittest.TestCase):
             with self.assertRaises(ValueError):driver.response_arguments(['@'+str(p)])
     def test_explicit_sibling_dsos_resolve_exact_declared_sonames(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp);a=root/'glib/libglib.so.0';b=root/'gio/libgio.so.0'
+            root=Path(tmp).resolve();a=root/'glib/libglib.so.0';b=root/'gio/libgio.so.0'
             for path in [a,b]:path.parent.mkdir();path.touch()
             dynamic={a:'(SONAME) [libglib.so.0]',b:'(SONAME) [libgio.so.0]\n(NEEDED) [libglib.so.0]'}
             def readelf(arguments,**kwargs):return dynamic[Path(arguments[-1])]
