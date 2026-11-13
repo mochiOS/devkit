@@ -17,6 +17,9 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Command::Package {
+            command: PackageCommand::Requirements(args),
+        } => commands::mpkg::requirements(args),
         Command::Elf {
             command: ElfCommand::Sign(args),
         } => commands::elf::sign(args),

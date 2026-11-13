@@ -17,7 +17,6 @@ pub mod content_type;
 pub mod control_center;
 pub mod status_item;
 pub mod document;
-pub mod diagnostics;
 #[cfg(any(target_os = "linux", target_os = "mochios"))]
 pub mod worker;
 #[cfg(feature = "ui")]

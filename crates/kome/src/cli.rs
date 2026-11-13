@@ -158,7 +158,8 @@ pub struct PackArgs {
 
 #[derive(Debug, Args)]
 pub struct SignArgs {
-    /// Unsigned MPKG input; defaults to dist/<name>-unsigned.mpkg.
+    /// Sign an existing MPKG without building/repacking or requiring Kome.toml.
+    /// Omit this input to build and sign the current Kome project instead.
     pub package: Option<PathBuf>,
 
     #[arg(long, default_value = ".")]

@@ -1,0 +1,23 @@
+name: Set up mochiOS Rust application SDK
+description: Install a pinned C SDK through komeup and prepare Rust, AppCore and ViewKit without an OS checkout.
+inputs:
+  output:
+    description: Fresh directory for the isolated SDK (prefer runner.temp).
+    required: true
+outputs:
+  sdk:
+    description: Local app-build.json, for this runner only; do not publish it.
+    value: ${{ steps.setup.outputs.sdk }}
+  helper:
+    description: Path to the generic Rust app build/test/staging helper.
+    value: ${{ steps.setup.outputs.helper }}
+runs:
+  using: composite
+  steps:
+    - id: setup
+      shell: bash
+      env:
+        SDK_OUTPUT: ${{ inputs.output }}
+        SDK_ACTION: ${{ github.action_path }}
+        SDK_ACTION_REF: ${{ github.action_ref }}
+      run: python3 "$SDK_ACTION/../../rust-sdk/setup.py" --output "$SDK_OUTPUT"

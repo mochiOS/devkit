@@ -20,7 +20,6 @@ mochios-filesystem-protocol = { path = "../../../../user/crates/filesystem-proto
 mochios-keychain-protocol = { path = "../../../../user/crates/keychain-protocol" }
 zeroize = { version = "1.8", features = ["alloc"] }
 toml = "1.1.2"
-serde_json = "1"
 viewkit = { version = "2.0.0", git = "https://github.com/mochiOS/viewkit", rev = "78830e4eb6536cf498dad9206bc5da8b39123892", optional = true }
 mochios-workspace-protocol = { path = "../../../../user/crates/workspace-protocol" }
 
