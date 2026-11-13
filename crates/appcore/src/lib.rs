@@ -133,3 +133,7 @@ pub fn request_quit() {
 }
 
 pub use status_item::{ApplicationStatusAction,StatusItem,StatusItemAction,StatusItemPlacement,StatusItemRegistry,SystemStatusItem};
+
+/// Window creation, integrated title bars and input-authorized operations.
+#[cfg(feature = "ui")]
+pub mod window;
