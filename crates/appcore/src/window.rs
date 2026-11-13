@@ -8,7 +8,7 @@ pub use viewkit::components::{DragRegion, TitleBar, drag_region};
 /// Decoration settings, errors and input-authorized resize edges.
 pub use viewkit::decoration::{
     DecorationError, DecorationLayout, DecorationMode, ResizeEdge, WindowInteractionToken,
-    WindowState,
+    WindowState, metrics,
 };
 
 /// Opens another application window using `App::window_for` and `App::body_for`.
