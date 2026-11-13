@@ -1851,7 +1851,6 @@ dependencies = [
  "mochios-posix-client",
  "mochios-posix-protocol",
  "mochios-workspace-protocol",
- "serde_json",
  "toml 1.1.6+spec-1.1.0",
  "viewkit",
  "zeroize",
@@ -5178,6 +5177,14 @@ dependencies = [
 ]
 
 [[patch.unused]]
+name = "bootui"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "mboot-protocol"
+version = "0.1.0"
+
+[[patch.unused]]
 name = "mochi-user-runtime"
 version = "0.1.0"
 
@@ -5202,13 +5209,5 @@ name = "mochios-virtio-gpu-protocol"
 version = "0.1.0"
 
 [[patch.unused]]
-name = "mboot-protocol"
-version = "0.1.0"
-
-[[patch.unused]]
 name = "mnu"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "bootui"
 version = "0.1.0"
