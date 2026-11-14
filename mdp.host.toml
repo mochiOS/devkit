@@ -1,0 +1,7 @@
+format = 1
+
+[build]
+command = ["mdp", "pipeline", "--recipe", "mdp.host.recipe.json"]
+requires = ["context"]
+sources = ["runtime"]
+artifact = "out/mdp/devkit-host.tar.mdp"

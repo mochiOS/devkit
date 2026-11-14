@@ -3,3 +3,5 @@
 /test
 /out/
 __pycache__/
+/out/mdp/
+/.mdp/

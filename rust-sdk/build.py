@@ -51,7 +51,7 @@ def resource(source, name):
     raise ValueError('Missing or external resource: ' + name)
 
 
-def stage(source, binary, output, licenses=None):
+def stage(source, binary, output, licenses=None, *, bundle_name=None):
     """Preserve capabilities/associations and bind actual files without claiming built-in trust."""
     with binary.open('rb') as stream:
         header = stream.read(64)
@@ -60,8 +60,8 @@ def stage(source, binary, output, licenses=None):
     manifest = copy.deepcopy(tomllib.loads((source / 'manifest.toml').read_text()))
     package, app = manifest['package'], manifest['application']
     package.pop('provenance', None)
-    name = package['name']
-    if not re.fullmatch('[A-Za-z][A-Za-z0-9_-]*', name) or app['entry'] != 'entry.elf' or len(manifest.get('binary', [])) != 1:
+    name = bundle_name or (package['name'] + '.app')
+    if not re.fullmatch('[A-Za-z][A-Za-z0-9._-]*\\.app', name) or app['entry'] != 'entry.elf' or len(manifest.get('binary', [])) != 1:
         raise ValueError('Expected a single-entry native application')
     if output.exists():
         raise ValueError('Use a fresh package stage')
@@ -69,7 +69,8 @@ def stage(source, binary, output, licenses=None):
     bundle.mkdir(parents=True)
     shutil.copyfile(binary, bundle / 'entry.elf')
     (bundle / 'entry.elf').chmod(0o755)
-    for name in dict.fromkeys([app['icon'], *app.get('resources', [])]):
+    bundle_name = name
+    for name in dict.fromkeys([name for name in [app.get('icon'), *app.get('resources', [])] if name]):
         target = bundle / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(resource(source, name), target)
@@ -85,7 +86,7 @@ def stage(source, binary, output, licenses=None):
                 digest='sha256:' + hashlib.sha256(path.read_bytes()).hexdigest(), size=path.stat().st_size,
                 mode='0755' if relative == 'entry.elf' else '0644'))
     entry = next(f for f in manifest['file'] if f['path'] == '$/entry.elf')
-    manifest['binary'][0].update(path='/applications/' + package['name'] + '.app/entry.elf', file=entry['id'])
+    manifest['binary'][0].update(path='/applications/' + bundle_name + '/entry.elf', file=entry['id'])
     (output / 'manifest.toml').write_text(dumps(manifest))
     return manifest
 

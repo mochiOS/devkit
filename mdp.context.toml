@@ -1,0 +1,8 @@
+format = 1
+
+[build]
+resolution = false
+command = ["python3", "build-support/context.py"]
+requires = []
+sources = []
+outputs = ["out/mdp/context.json"]

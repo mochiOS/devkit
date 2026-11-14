@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "steps": [
+    "python3 $(PROJECT)/build-support/shared-sdk.py"
+  ],
+  "package": {
+    "name": "shared-sdk",
+    "version": "0.1.0",
+    "target": "x86_64-mochios",
+    "abi": "mochios-1"
+  },
+  "artifact": "out/mdp/shared-sdk.tar.mdp",
+  "exports": [
+    {
+      "source": "$(ROOT)/out/mdp/shared-sdk",
+      "area": "sdk-shared",
+      "destination": "sdk",
+      "preserve_links": true,
+      "exclude": [
+        "__pycache__",
+        "*.pyc",
+        "app-build.json"
+      ]
+    }
+  ],
+  "bindings": {
+    "SOURCE_DEVKIT": "$(PROJECT)"
+  }
+}

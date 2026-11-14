@@ -1,0 +1,6 @@
+format=1
+[build]
+resolution = false
+command=["python3","build-support/materialize-sdk.py","native"]
+requires=["runtime","fonts"]
+outputs=["out/mdp/native-bindings.json"]

@@ -1,0 +1,6 @@
+{
+  "format": 1,
+  "steps": [
+    "python3 $(ROOT)/tools/devkit/build-support/context.py"
+  ]
+}

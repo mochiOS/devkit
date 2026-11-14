@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "steps": [
+    "env CARGO_HOME=\"${CARGO_HOME:-${HOME}/.cargo}\" CARGO_BUILD_JOBS=\"${MMAKE_JOBS}\" cargo build --offline $(CARGO_PATCHES) --release --manifest-path $(PROJECT)/Cargo.toml --package msign --target-dir $(HOST_TOOLS_DIR)",
+    "env CARGO_HOME=\"${CARGO_HOME:-${HOME}/.cargo}\" CARGO_BUILD_JOBS=\"${MMAKE_JOBS}\" cargo build --offline $(CARGO_PATCHES) --release --manifest-path $(PROJECT)/Cargo.toml --package mpack --target-dir $(HOST_TOOLS_DIR)"
+  ],
+  "package": {
+    "name": "devkit-host",
+    "version": "0.1.0",
+    "target": "x86_64-mochios",
+    "abi": "mochios-1"
+  },
+  "artifact": "out/mdp/devkit-host.tar.mdp",
+  "exports": [
+    {
+      "source": "$(MSIGN)",
+      "area": "host-tools",
+      "destination": "msign",
+      "mode": 493
+    },
+    {
+      "source": "$(MPACK)",
+      "area": "host-tools",
+      "destination": "mpack",
+      "mode": 493
+    }
+  ],
+  "bindings": {
+    "SOURCE_DEVKIT": "$(PROJECT)"
+  }
+}

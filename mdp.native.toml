@@ -1,0 +1,7 @@
+format = 1
+
+[build]
+command = ["mdp", "pipeline", "--recipe", "mdp.native.recipe.json"]
+requires = ["viewkit", "devkit-host"]
+sources = []
+artifact = "out/mdp/devkit-native.tar.mdp"

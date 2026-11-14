@@ -1,0 +1,6 @@
+format = 1
+[build]
+resolution = false
+command = ["python3", "build-support/sdk-context.py"]
+requires = ["runtime", "fonts", "viewkit", "devkit-host", "shared-sdk", "system-components"]
+outputs = ["out/mdp/developer-context.json"]
