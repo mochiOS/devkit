@@ -5178,12 +5178,16 @@ dependencies = [
 ]
 
 [[patch.unused]]
-name = "bootui"
+name = "mnu"
 version = "0.1.0"
 
 [[patch.unused]]
-name = "ext4plus"
-version = "0.1.0-rc.2"
+name = "plugkit"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "mochios-mdriver-protocol"
+version = "0.1.0"
 
 [[patch.unused]]
 name = "mochi-user-newlib-runtime"
@@ -5250,16 +5254,12 @@ name = "mboot-protocol"
 version = "0.1.0"
 
 [[patch.unused]]
-name = "mnu"
+name = "bootui"
 version = "0.1.0"
 
 [[patch.unused]]
-name = "plugkit"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "mochios-mdriver-protocol"
-version = "0.1.0"
+name = "ext4plus"
+version = "0.1.0-rc.2"
 
 [[patch.unused]]
 name = "mochios-boot-selection"
