@@ -3,4 +3,5 @@ format = 1
 resolution = false
 command = ["python3", "build-support/sdk-context.py"]
 requires = ["runtime", "fonts", "viewkit", "devkit-host", "shared-sdk", "system-components"]
+sources = ["kernel", "boot", "runtime", "services", "newlib-source", "rust-env", "fonts", "libc-source", "bootui-source", "viewkit"]
 outputs = ["out/mdp/developer-context.json"]

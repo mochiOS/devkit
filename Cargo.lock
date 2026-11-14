@@ -5186,7 +5186,11 @@ name = "plugkit"
 version = "0.1.0"
 
 [[patch.unused]]
-name = "mochios-mdriver-protocol"
+name = "ext4plus"
+version = "0.1.0-rc.2"
+
+[[patch.unused]]
+name = "bootui"
 version = "0.1.0"
 
 [[patch.unused]]
@@ -5250,16 +5254,8 @@ name = "mochios-virtio-gpu-protocol"
 version = "0.1.0"
 
 [[patch.unused]]
-name = "mboot-protocol"
+name = "mochios-mdriver-protocol"
 version = "0.1.0"
-
-[[patch.unused]]
-name = "bootui"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "ext4plus"
-version = "0.1.0-rc.2"
 
 [[patch.unused]]
 name = "mochios-boot-selection"
@@ -5271,4 +5267,8 @@ version = "0.1.0"
 
 [[patch.unused]]
 name = "mochios-system-image"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "mboot-protocol"
 version = "0.1.0"
