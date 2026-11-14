@@ -5177,7 +5177,11 @@ dependencies = [
 ]
 
 [[patch.unused]]
-name = "bootui"
+name = "mnu"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "plugkit"
 version = "0.1.0"
 
 [[patch.unused]]
@@ -5185,7 +5189,27 @@ name = "mboot-protocol"
 version = "0.1.0"
 
 [[patch.unused]]
+name = "bootui"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "mochi-user-newlib-runtime"
+version = "0.1.0"
+
+[[patch.unused]]
 name = "mochi-user-runtime"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "mochios-certificate-database"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "mochios-driver-control-protocol"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "mochios-http-client"
 version = "0.1.0"
 
 [[patch.unused]]
@@ -5197,7 +5221,27 @@ name = "mochios-linux-portal-protocol"
 version = "0.1.0"
 
 [[patch.unused]]
+name = "mochios-network-stack"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "mochios-package-client"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "mochios-package-protocol"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "mochios-test-support"
+version = "0.1.0"
+
+[[patch.unused]]
 name = "mochios-tls-client"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "mochios-tls-stream-ffi"
 version = "0.1.0"
 
 [[patch.unused]]
@@ -5209,5 +5253,21 @@ name = "mochios-virtio-gpu-protocol"
 version = "0.1.0"
 
 [[patch.unused]]
-name = "mnu"
+name = "mochios-boot-selection"
 version = "0.1.0"
+
+[[patch.unused]]
+name = "mochios-mdriver-protocol"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "mochios-system-image"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "mochios-mdriver-protocol"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "ext4plus"
+version = "0.1.0-rc.2"
