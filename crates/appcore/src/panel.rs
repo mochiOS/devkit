@@ -22,7 +22,12 @@ mod preview;
 use crate::Alert;
 use crate::content_type::ContentType;
 
+fn uses_system_panel() -> bool {
+    cfg!(target_os = "mochios") && std::env::var_os("MOCHIOS_SYSTEM_FILE_PANEL").is_none()
+}
+
 type SelectionHandler = dyn Fn(&Path) -> Result<(), String>;
+type FileHandler = dyn Fn(crate::DocumentFile) -> Result<(), String>;
 type CancelHandler = dyn Fn();
 
 #[derive(Clone, Debug)]
@@ -95,6 +100,8 @@ struct PanelState {
     pending_replace: RefCell<Option<PathBuf>>,
     allowed_content_types: RefCell<Vec<ContentType>>,
     handler: Rc<SelectionHandler>,
+    file_handler: RefCell<Option<Rc<FileHandler>>>,
+    allows_editing: Cell<bool>,
     cancel_handler: Option<Rc<CancelHandler>>,
 }
 
@@ -212,7 +219,15 @@ impl PanelState {
             }
         };
 
-        match (self.handler)(&destination) {
+        let result = if let Some(handler) = self.file_handler.borrow().clone() {
+            let file = match self.mode {
+                Mode::Open if self.allows_editing.get() => crate::DocumentFile::open(&destination),
+                Mode::Open => fs::File::open(&destination).and_then(|file| crate::DocumentFile::from_file(destination.clone(), file, false)),
+                Mode::Save { .. } => crate::DocumentFile::create(&destination),
+            };
+            file.map_err(|e| e.to_string()).and_then(|file| handler(file))
+        } else { (self.handler)(&destination) };
+        match result {
             Ok(()) => self.dismiss(),
             Err(error) => self
                 .alert
@@ -254,11 +269,16 @@ impl FilePanel {
         handler: impl Fn(&Path) -> Result<(), String> + 'static,
         cancel_handler: Option<Rc<CancelHandler>>,
     ) -> Self {
-        let root = canonical_root(root_directory);
-        let initial = initial_directory
+        let system_panel = uses_system_panel();
+        let root = if system_panel {
+            root_directory.or_else(|| std::env::var_os("HOME").map(PathBuf::from)).unwrap_or_else(|| PathBuf::from("/"))
+        } else { canonical_root(root_directory) };
+        let initial = if system_panel {
+            initial_directory.filter(|p| p.is_absolute()).unwrap_or_else(|| root.clone())
+        } else { initial_directory
             .and_then(|path| fs::canonicalize(path).ok())
             .filter(|path| path.starts_with(&root) && path.is_dir())
-            .unwrap_or_else(|| root.clone());
+            .unwrap_or_else(|| root.clone()) };
         let name = TextFieldInteractionState::new();
         name.set_value(suggested_name);
         let state = Rc::new(PanelState {
@@ -266,7 +286,7 @@ impl FilePanel {
             mode,
             root: root.clone(),
             directory: RefCell::new(initial.clone()),
-            entries: RefCell::new(entries(&initial, &root, &allowed_content_types)),
+            entries: RefCell::new(if system_panel { Vec::new() } else { entries(&initial, &root, &allowed_content_types) }),
             selected: Cell::new(None),
             scroll: Cell::new(0.0),
             last_click: RefCell::new(None),
@@ -276,6 +296,8 @@ impl FilePanel {
             pending_replace: RefCell::new(None),
             allowed_content_types: RefCell::new(allowed_content_types),
             handler: Rc::new(handler),
+            file_handler: RefCell::new(None),
+            allows_editing: Cell::new(false),
             cancel_handler,
         });
 
@@ -356,12 +378,13 @@ impl FilePanel {
             .map(ContentType::identifier)
             .collect::<Vec<_>>();
         let mode = if self.state.mode == Mode::Open {
-            mochi_user_platform::workspace::FilePanelMode::Open
+            if self.state.allows_editing.get() { mochi_user_platform::workspace::FilePanelMode::Edit }
+            else { mochi_user_platform::workspace::FilePanelMode::Open }
         } else {
             mochi_user_platform::workspace::FilePanelMode::Save
         };
         let suggested_name = self.state.name.value();
-        let selection = match mochi_user_platform::workspace::file_panel_begin(
+        let selection = match mochi_user_platform::workspace::file_panel_object(
             mochi_user_platform::workspace::FilePanelOptions {
                 mode,
                 title: &self.title,
@@ -397,9 +420,13 @@ impl FilePanel {
             }
             return;
         };
-        match (self.state.handler)(Path::new(&chosen.path)) {
+        let token = chosen.token;
+        let result = if let Some(handler) = self.state.file_handler.borrow().clone() {
+            crate::DocumentFile::from_panel(chosen).map_err(|e| e.to_string()).and_then(|file| handler(file))
+        } else { (self.state.handler)(Path::new(&chosen.path)) };
+        match result {
             Ok(()) => {
-                if mochi_user_platform::workspace::file_panel_finish(chosen.token, true).is_err() {
+                if mochi_user_platform::workspace::file_panel_finish(token, true).is_err() {
                     self.state.alert.present_error(
                         operation_error_title(self.state.mode),
                         "The system file panel could not finish the operation.",
@@ -408,7 +435,7 @@ impl FilePanel {
             }
             Err(error) => {
                 let reported = mochi_user_platform::workspace::file_panel_finish_with_error(
-                    chosen.token,
+                    token,
                     Some(&error),
                 );
                 if reported.is_err() {
@@ -426,6 +453,10 @@ impl FilePanel {
     }
 
     fn set_directory(&self, directory: Option<&Path>) {
+        if uses_system_panel() {
+            if let Some(directory) = directory.filter(|p| p.is_absolute()) { *self.state.directory.borrow_mut() = directory.to_owned(); }
+            return;
+        }
         let directory = directory
             .and_then(|path| fs::canonicalize(path).ok())
             .filter(|path| path.starts_with(&self.state.root) && path.is_dir())
@@ -701,6 +732,17 @@ fn operation_error_title(mode: Mode) -> &'static str {
 pub struct SavePanel(Rc<FilePanel>);
 
 impl SavePanel {
+    /// Receives the selected file itself, without requiring home-directory
+    /// access. The path on DocumentFile is display metadata only.
+    pub fn with_file(options: SavePanelOptions, handler: impl Fn(crate::DocumentFile) -> Result<(), String> + 'static) -> Self {
+        Self::with_file_and_cancel(options, handler, || {})
+    }
+    /// A resource-based save panel with a cancellation callback.
+    pub fn with_file_and_cancel(options: SavePanelOptions, handler: impl Fn(crate::DocumentFile) -> Result<(), String> + 'static, cancel: impl Fn() + 'static) -> Self {
+        let panel = Self::new_with_cancel(options, |_| Err("No file was delivered.".into()), cancel);
+        *panel.0.state.file_handler.borrow_mut() = Some(Rc::new(handler));
+        panel
+    }
     pub fn new(
         options: SavePanelOptions,
         handler: impl Fn(&Path) -> Result<(), String> + 'static,
@@ -777,6 +819,18 @@ impl WeakOpenPanel {
 }
 
 impl OpenPanel {
+    /// Receives the selected file itself. No path is reopened by this API.
+    pub fn with_file(options: OpenPanelOptions, handler: impl Fn(crate::DocumentFile) -> Result<(), String> + 'static) -> Self {
+        let panel = Self::new(options, |_| Err("No file was delivered.".into()));
+        *panel.0.state.file_handler.borrow_mut() = Some(Rc::new(handler));
+        panel
+    }
+    /// Requests an editable file in the trusted picker. Read-only files remain
+    /// readable; the delivered resource reports the actual writable authority.
+    pub fn allows_editing(self, enabled: bool) -> Self {
+        self.0.state.allows_editing.set(enabled);
+        self
+    }
     pub(crate) fn downgrade(&self) -> WeakOpenPanel { WeakOpenPanel(Rc::downgrade(&self.0)) }
     pub fn new(
         options: OpenPanelOptions,

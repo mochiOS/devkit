@@ -1,8 +1,9 @@
 //! Document opening and default-application associations.
 //!
-//! Association reads/writes require `file-association.read` and
-//! `file-association.write`. Opening is delegated to `workspace.service`, which
-//! validates the selected installed application and its capabilities.
+//! Association reads require `file-association.read`. Changes are proposals
+//! confirmed by the OS; ordinary apps may propose only their own declared types.
+//! Opening is delegated to `workspace.service`, which validates the selected
+//! installed application and its capabilities.
 
 use crate::{Error, Result};
 

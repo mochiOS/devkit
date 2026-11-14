@@ -17,6 +17,9 @@ pub mod content_type;
 pub mod control_center;
 pub mod status_item;
 pub mod document;
+pub mod application_data;
+pub mod diagnostics;
+pub use application_data::ApplicationData;
 #[cfg(any(target_os = "linux", target_os = "mochios"))]
 pub mod worker;
 #[cfg(feature = "ui")]
@@ -79,6 +82,7 @@ where
 
 /// Common imports for a Rust mochiOS application.
 pub mod prelude {
+    pub use crate::ApplicationData;
     pub use crate::clipboard;
     pub use crate::bundle::{Bundle, ResourceDirectory};
     pub use crate::content_type::{self, ContentType};

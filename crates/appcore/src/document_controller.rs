@@ -124,6 +124,7 @@ struct ControllerState {
     tasks: RefCell<Option<Rc<crate::task::TaskScope>>>,
     alert: Alert,
     file: RefCell<Option<DocumentFile>>,
+    selected_save_file: RefCell<Option<DocumentFile>>,
     open_panel: RefCell<Option<crate::panel::WeakOpenPanel>>,
     revision: Rc<RevisionProvider>,
     pending_open: RefCell<Option<Box<dyn FnOnce()>>>,
@@ -186,6 +187,7 @@ impl DocumentController {
             tasks: RefCell::new(None),
             alert: Alert::new(),
             file: RefCell::new(None),
+            selected_save_file: RefCell::new(None),
             open_panel: RefCell::new(None),
             revision: revision.clone(),
             pending_open: RefCell::new(None),
@@ -200,12 +202,16 @@ impl DocumentController {
 
         let open_state = Rc::clone(&state);
         let open_operations = Rc::clone(&operations);
-        let open_panel = OpenPanel::new(
+        let open_panel = OpenPanel::with_file(
             OpenPanelOptions {
                 root_directory: root_directory.clone(),
                 ..OpenPanelOptions::default()
             },
-            move |path| {
+            move |file| {
+                let path = file.path().to_path_buf();
+                let receive = open_operations.received.borrow().clone();
+                if let Some(receive) = receive { return receive(file); }
+                let path = path.as_path();
                 if let OperationOutcome::Complete(metadata) = (open_operations.open)(path)? {
                     *open_state.info.borrow_mut() = DocumentInfo::at(path.to_path_buf(), metadata);
                     open_state.saved_revision.set((open_operations.revision)());
@@ -213,19 +219,23 @@ impl DocumentController {
                 }
                 Ok(())
             },
-        );
+        ).allows_editing(true);
 
         let save_state = Rc::clone(&state);
         let save_operations = Rc::clone(&operations);
         let after_save_open_panel = open_panel.clone();
         let save_cancel_state = Rc::clone(&state);
-        let save_panel = SavePanel::new_with_cancel(
+        let save_panel = SavePanel::with_file_and_cancel(
             SavePanelOptions {
                 root_directory,
                 ..SavePanelOptions::default()
             },
-            move |path| {
-                if save_to_path(&save_state, &save_operations, path)? {
+            move |file| {
+                let path = file.path().to_path_buf();
+                *save_state.selected_save_file.borrow_mut() = Some(file);
+                let outcome = save_to_path(&save_state, &save_operations, &path);
+                save_state.selected_save_file.borrow_mut().take();
+                if outcome? {
                     complete_pending(&save_state, &after_save_open_panel);
                 }
                 Ok(())

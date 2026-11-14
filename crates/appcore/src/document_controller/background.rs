@@ -130,11 +130,12 @@ impl DocumentController {
                 }
                 let saved_revision = save_revision();
                 let content = snapshot()?;
-                let current = state
+                let selected = state.selected_save_file.borrow_mut().take();
+                let current = selected.or_else(|| state
                     .file
                     .borrow()
                     .clone()
-                    .filter(|file| file.path() == path && file.is_writable());
+                    .filter(|file| file.path() == path && file.is_writable()));
                 let path = path.to_path_buf();
                 let weak = Rc::downgrade(&state);
                 let format = format.clone();

@@ -13,6 +13,8 @@ use std::{
 enum Resource {
     File(File),
     Received(OpenedDocument),
+    #[cfg(target_os = "mochios")]
+    Panel { file: File, target: Option<mochi_user_platform::workspace::FileTarget> },
 }
 /// 権限検査を経て開いた、単一ファイルの所有参照です。
 ///
@@ -60,7 +62,7 @@ impl DocumentFile {
             })?;
         Self::from_file(path, file, true)
     }
-    fn from_file(path: PathBuf, file: File, writable: bool) -> io::Result<Self> {
+    pub(crate) fn from_file(path: PathBuf, file: File, writable: bool) -> io::Result<Self> {
         if !file.metadata()?.is_file() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -72,6 +74,23 @@ impl DocumentFile {
             resource: Arc::new(Mutex::new(Resource::File(file))),
             writable,
         })
+    }
+    #[cfg(target_os = "mochios")]
+    pub(crate) fn from_panel(mut selection: mochi_user_platform::workspace::FilePanelObject) -> io::Result<Self> {
+        let file = Self::import_native_file(selection.handle)?;
+        if !file.metadata()?.is_file() { return Err(io::Error::new(io::ErrorKind::InvalidInput, "The selected resource is not a regular file")); }
+        let writable = selection.target.is_some();
+        Ok(Self { path: selection.path.clone().into(), resource: Arc::new(Mutex::new(Resource::Panel { file, target: selection.target.take() })), writable })
+    }
+    #[cfg(target_os = "mochios")]
+    fn import_native_file(handle: u32) -> io::Result<File> {
+        use std::os::fd::FromRawFd;
+        unsafe extern "C" { fn mochi_fd_from_file_handle(handle: u32, flags: i32) -> i32; }
+        // The importer duplicates the owned selection; dropping it below closes
+        // only the source Handle. No pathname is reopened by either operation.
+        let fd = unsafe { mochi_fd_from_file_handle(handle, libc::O_CLOEXEC) };
+        if fd < 0 { return Err(io::Error::last_os_error()); }
+        Ok(unsafe { File::from_raw_fd(fd) })
     }
     /// IPCで受け取った資源を所有します。表示用パスを再オープンしません。
     ///
@@ -102,30 +121,16 @@ impl DocumentFile {
             .map_err(|_| io::Error::other("Document resource lock failed"))?;
         match &mut *resource {
             Resource::Received(document) => document.read_to_end_limited(maximum),
-            Resource::File(file) => {
-                file.seek(SeekFrom::Start(0))?;
-                let mut bytes = Vec::new();
-                let mut buffer = [0; 8192];
-                loop {
-                    let count = file.read(&mut buffer)?;
-                    if count == 0 {
-                        return Ok(bytes);
-                    }
-                    if count > maximum.saturating_sub(bytes.len()) {
-                        return Err(io::Error::new(
-                            io::ErrorKind::FileTooLarge,
-                            "Document exceeds its size limit",
-                        ));
-                    }
-                    bytes.extend_from_slice(&buffer[..count]);
-                }
-            }
+            Resource::File(file) => read_file(file, maximum),
+            #[cfg(target_os = "mochios")]
+            Resource::Panel { file, .. } => read_file(file, maximum),
         }
     }
     /// 同じ開いたファイルの内容を置換し、長さを調整してsync_allを行います。
     ///
-    /// ワーカー専用です。兄弟の一時ファイルは作成しません。原子的置換ではないため、
-    /// 書き込み途中の失敗では内容が一部変わる可能性があります。
+    /// ワーカー専用です。システムパネルから受け取った保存先では、OSが保持した
+    /// 単一の保存先を同期済み一時ファイルで原子的に置換します。通常のパス権限で
+    /// 開いたFileでは直接書き込むため、途中の失敗で内容が一部変わる場合があります。
     /// ## Errors
     /// 読み取り専用はPermissionDenied、書き込み・truncate・flush失敗は元のI/Oエラーです。
     pub fn replace_contents(&self, bytes: &[u8]) -> io::Result<()> {
@@ -139,16 +144,42 @@ impl DocumentFile {
             .resource
             .lock()
             .map_err(|_| io::Error::other("Document resource lock failed"))?;
-        let Resource::File(file) = &mut *resource else {
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                "Delegated document is read-only",
-            ));
-        };
+        #[cfg(target_os = "mochios")]
+        if let Resource::Panel { file, target: Some(target) } = &mut *resource {
+            let error = |e: mochi_user_platform::syscall::SysError| io::Error::from_raw_os_error(mochios_posix_client::newlib_errno::from_status(e.raw()));
+            let stage = target.begin().map_err(error)?;
+            let result = (|| {
+                let mut output = Self::import_native_file(stage.handle)?;
+                output.write_all(bytes)?;
+                output.set_len(bytes.len() as u64)?;
+                output.sync_all()?;
+                target.commit().map_err(error)?;
+                Ok(output)
+            })();
+            return match result {
+                Ok(output) => { *file = output; Ok(()) }
+                Err(error) => { let _ = target.abort(); Err(error) }
+            };
+        }
+        let Resource::File(file) = &mut *resource else { return Err(io::Error::new(io::ErrorKind::PermissionDenied, "Delegated document is read-only")); };
         file.seek(SeekFrom::Start(0))?;
         file.write_all(bytes)?;
         file.set_len(bytes.len() as u64)?;
         file.sync_all()
+    }
+}
+
+fn read_file(file: &mut File, maximum: usize) -> io::Result<Vec<u8>> {
+    file.seek(SeekFrom::Start(0))?;
+    let mut bytes = Vec::new();
+    let mut buffer = [0; 8192];
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 { return Ok(bytes); }
+        if count > maximum.saturating_sub(bytes.len()) {
+            return Err(io::Error::new(io::ErrorKind::FileTooLarge, "Document exceeds its size limit"));
+        }
+        bytes.extend_from_slice(&buffer[..count]);
     }
 }
 
