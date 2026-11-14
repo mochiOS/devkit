@@ -3,4 +3,4 @@ format=1
 resolution = false
 command=["python3","build-support/materialize-sdk.py","native"]
 requires=["runtime","fonts"]
-outputs=["out/mdp/native-bindings.json"]
+outputs=["out/cache/mdp/native-bindings.json"]

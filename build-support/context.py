@@ -9,9 +9,9 @@ import tomllib
 
 root = Path(os.environ['MDP_CONTEXT']).resolve()
 kit = Path(__file__).resolve().parent
-(root / "out/mdp/tmp").mkdir(parents=True, exist_ok=True, mode=0o700)
-values = {'ROOT': str(root), 'OUT': str(root / 'out'), 'MMAKE_OUT': str(root / 'out/mmake'),
-          'SCRIPTS': str(root / 'scripts'), 'HOST_TOOLS_DIR': str(root / 'out/mmake/host-tools')}
+(root / "out/tmp").mkdir(parents=True, exist_ok=True, mode=0o700)
+values = {'ROOT': str(root), 'OUT': str(root / 'out'), 'MMAKE_OUT': str(root / 'out/build/os'),
+          'SCRIPTS': str(root / 'scripts'), 'HOST_TOOLS_DIR': str(root / 'out/build/os/host-tools')}
 for line in (root / '.config').read_text().splitlines():
     if line.strip() and not line.startswith('#') and '=' in line:
         key, value = line.split('=', 1)

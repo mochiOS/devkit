@@ -57,4 +57,4 @@ else:
         short=prefix/(file.name.split('.so.',1)[0]+'.so')
         if not short.exists():short.symlink_to(file.name)
     values={'SHARED_SDK':str(output/'tree/sdk-shared/sdk'),'WEBKIT_PREFIX':str(output/'link-prefix'),'MSIGN':str(output/'tree/host-tools/msign'),'MPACK':str(output/'tree/host-tools/mpack')}
-atomic_json(root/('out/mdp/'+args.kind+'-bindings.json'),values)
+atomic_json(root/('out/cache/mdp/'+args.kind+'-bindings.json'),values)

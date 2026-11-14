@@ -14,10 +14,10 @@ if out.exists():shutil.rmtree(out)
 out.mkdir(parents=True)
 spec=importlib.util.spec_from_file_location('native_staging',kit/'stage-development-tools.py')
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-module.stage_tools(out,root/'out/newlib-port/sdk',root/'out/llvm-port/build-target',root/'out/rust-std/target/x86_64-unknown-mochios/release')
+module.stage_tools(out,root/'out/cache/newlib/sdk',root/'out/cache/llvm/build-target',root/'out/cache/rust/target/x86_64-unknown-mochios/release')
 manifest=out/'manifests';manifest.mkdir()
 shutil.copyfile(out/'system/packages/development-tools/manifest.toml',manifest/'development-tools.toml')
 shutil.rmtree(out/'system/packages')
-vim=root/'out/vim-port/release/stage/system'
+vim=root/'out/cache/vim/release/stage/system'
 shutil.copytree(vim,out/'system',dirs_exist_ok=True,symlinks=True)
 shutil.copyfile(kit/'ports/vim/manifest.toml',manifest/'vim.toml')

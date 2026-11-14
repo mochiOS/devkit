@@ -6,4 +6,4 @@ command = ["mdp", "pipeline", "--recipe", "mdp.shared.recipe.json"]
 requires = ["native-sdk-context"]
 sources = []
 artifact = "out/mdp/shared-sdk.tar.mdp"
-outputs = ["out/mdp/shared-sdk/bin/mochios-c++"]
+outputs = ["out/cache/mdp/shared-sdk/bin/mochios-c++"]

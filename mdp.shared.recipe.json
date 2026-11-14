@@ -12,7 +12,7 @@
   "artifact": "out/mdp/shared-sdk.tar.mdp",
   "exports": [
     {
-      "source": "$(ROOT)/out/mdp/shared-sdk",
+      "source": "$(ROOT)/out/cache/mdp/shared-sdk",
       "area": "sdk-shared",
       "destination": "sdk",
       "preserve_links": true,

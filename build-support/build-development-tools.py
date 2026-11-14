@@ -96,8 +96,8 @@ def validate_sdk_inputs(actual, expected):
 class Builder:
     def __init__(self, root, jobs, cargo, expected_sdk=None):
         self.root, self.jobs, self.cargo = root, jobs, cargo
-        self.output = root / 'out/llvm-port'
-        self.sdk = root / 'out/newlib-port/sdk'
+        self.output = root / 'out/cache/llvm'
+        self.sdk = root / 'out/cache/newlib/sdk'
         if expected_sdk is not None:validate_sdk_inputs(self.sdk, expected_sdk)
         self.environment = os.environ.copy()
         self.environment['TMPDIR'] = str(self.output / 'tmp')
@@ -210,7 +210,7 @@ class Builder:
             patches / 'llvm-18-mochios-path.patch', patches / 'clang-18-mochios-toolchain.patch',
             self.root / 'user/runtime/crt0.S', self.root / 'user/runtime/linker.ld']
         self.stage('llvm', target_inputs, llvm_products, llvm)
-        native = self.root / 'out/rust-std/target/x86_64-unknown-mochios/release'
+        native = self.root / 'out/cache/rust/target/x86_64-unknown-mochios/release'
         native_products = [native / 'ld', native / 'msign']
         rust_inputs = own_inputs + sdk + files(self.root / 'user/crates', self.root / 'core/crates/abi',
             self.root / 'services/mboot-protocol', self.root / 'libraries/libc/src',
@@ -222,10 +222,10 @@ class Builder:
                 self.root / 'core/Cargo.toml', self.root / 'services/Cargo.toml',
                 self.root / 'libraries/libc/Cargo.toml', self.root / 'libraries/libc/build.rs',
                 self.root / 'libraries/rust/mdp/toolchain',
-                self.root / 'out/mmake/fingerprints/rust.sha256',
-                self.root / 'out/rust-std/sysroot-overlay/.ready',
-                self.root / 'out/rust-std/sysroot-overlay/bin/rustc',
-                self.root / 'out/rust-std/sysroot-overlay/bin/cargo']
+                self.root / 'out/build/os/fingerprints/rust.sha256',
+                self.root / 'out/cache/rust/sysroot-overlay/.ready',
+                self.root / 'out/cache/rust/sysroot-overlay/bin/rustc',
+                self.root / 'out/cache/rust/sysroot-overlay/bin/cargo']
         cargo = [f'CARGO_BUILD_JOBS={self.jobs}' if arg.startswith('CARGO_BUILD_JOBS=') else arg for arg in self.cargo]
         command = cargo + ['--manifest-path', str(self.root / 'tools/devkit/Cargo.toml'),
             '--config', f"patch.\"https://github.com/mochiOS/syscalls\".mochios-certificate.path='{self.root / 'user/crates/certificate'}'",
@@ -248,7 +248,7 @@ def main():
     if args.jobs is not None:
         if args.jobs < 1:raise ValueError('--jobs must be positive')
         jobs = args.jobs
-    receipt = root / 'out/mmake/components/development-tools.json'
+    receipt = root / 'out/build/os/components/development-tools.json'
     command = args.cargo[1:] if args.cargo[:1] == ['--'] else args.cargo
     products = Builder(root, jobs, command, args.sdk).build() if enabled else []
     write_json(receipt, {'enabled': enabled, 'outputs': products})

@@ -13,10 +13,10 @@ if not (base/'bin/mochios-c++').is_file() or not (base/'sdk.json').is_file():
 info=json.loads((base/'sdk.json').read_text())
 if info.get('target') != 'x86_64-unknown-mochios' or info.get('abi') != 'mochios-1':
     raise SystemExit('Shared SDK target/ABI mismatch')
-output=root/'out/mdp/shared-sdk'
+output=root/'out/cache/mdp/shared-sdk'
 output.mkdir(parents=True,exist_ok=True)
 subprocess.run(['cp','--reflink=auto','-a',str(base)+ '/.',str(output)],check=True)
-bindings=json.loads((root/'out/mdp/native-bindings.json').read_text())
+bindings=json.loads((root/'out/cache/mdp/native-bindings.json').read_text())
 runtime=Path(bindings['RUST_SDK'])/'lib/libmochi_user_newlib_runtime.a'
 if not runtime.is_file():
     raise SystemExit('Build the current native runtime before preparing its shared SDK overlay')
