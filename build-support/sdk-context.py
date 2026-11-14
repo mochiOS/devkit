@@ -21,7 +21,7 @@ identity=hashlib.sha256(encoded([{k:v for k,v in item.items() if k!='path'} for 
 sources=[]
 for path in ['core','boot','user','services','libraries/newlib','libraries/rust','libraries/fonts','libraries/libc','libraries/bootui','libraries/viewkit','tools/devkit']:
     state=source_state(root/path)
-    sources.append(dict(path=str(root/path),revision=state['revision'],working_tree=state['working_tree']))
+    sources.append(dict(path=str(root/path),revision=state['revision'],tracked_tree=state['tracked_tree'],working_tree=state['working_tree']))
 environment={key:str(root/value) for key,value in {'MDP_CONTEXT':'.','MDP_WORKSPACE':'.','MDP_VARIABLES':'out/mdp/context.json','MDP_PROFILE_FILE':'.config','MDP_VERSION_FILE':'version.toml'}.items()}
 bindings=json.loads((root/'out/mdp/context.json').read_text())
 for kind in ['native','shared']:bindings.update(json.loads((root/('out/mdp/'+kind+'-bindings.json')).read_text()))
