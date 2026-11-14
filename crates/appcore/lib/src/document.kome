@@ -119,24 +119,27 @@ for AssociationRoles {
 	pub const ALL: AssociationRoles = AssociationRoles { bits: 3 }
 }
 
-/// 権限を確認した上で、書類とファイルの関連付けを操作します。
+/// 書類を開き、OSの確認を通して既定アプリの変更を提案します。
 ///
 /// @since 27.0-dp.1
 pub struct Document {}
 
 for Document {
-	/// 書類の種類と役割に対する既定のアプリケーションを設定します。
+	/// 書類の種類と役割に対する既定アプリの変更を提案します。
+	///
+	/// OSが表示する確認画面で利用者が許可した場合だけ変更します。
+	/// 通常のアプリは、自身のBundle IDとmanifestに宣言した書類形式・役割を指定します。
 	///
 	/// ## Parameters
 	///
 	/// - `extension`: 対象のファイル拡張子です。
 	/// - `contentType`: 対象のコンテンツタイプです。
-	/// - `bundleId`: 既定に設定するアプリケーションのBundle IDです。
+	/// - `bundleId`: 既定にする候補のBundle IDです。通常のアプリは自身を指定します。
 	/// - `roles`: 関連付けを設定する役割です。
 	///
 	/// ## Returns
 	///
-	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	/// 確認と変更に成功した場合は`0`を返します。取消・拒否・検査失敗では非0を返します。
 	///
 	/// ## Example
 	///
@@ -149,7 +152,10 @@ for Document {
 		return mochios_association_set_utf8(__kome_string_data(extension), __kome_string_len(extension), __kome_string_data(contentType.identifier), __kome_string_len(contentType.identifier), __kome_string_data(bundleId), __kome_string_len(bundleId), roles.bits)
 	}
 
-	/// 書類の種類と役割に対する既定のアプリケーションを削除します。
+	/// 書類の種類と役割に対する既定アプリの解除を提案します。
+	///
+	/// OSの確認画面で利用者が許可した場合だけ解除します。
+	/// 通常のアプリは、自身が現在の既定になっている関連付けだけを指定できます。
 	///
 	/// ## Parameters
 	///
@@ -159,7 +165,7 @@ for Document {
 	///
 	/// ## Returns
 	///
-	/// 操作結果を表すステータスコードを返します。`0`は成功を表します。
+	/// 確認と解除に成功した場合は`0`を返します。取消・拒否・検査失敗では非0を返します。
 	///
 	/// ## Example
 	///
