@@ -19,7 +19,7 @@ for name in ids:
     artifacts.append(dict(path=str(root/value['artifact']),sha256=value['sha256'],name=name,package=value['package']))
 identity=hashlib.sha256(encoded([{k:v for k,v in item.items() if k!='path'} for item in artifacts])).hexdigest()
 sources=[]
-for path in ['core','user','services','libraries/rust','libraries/fonts','libraries/libc','libraries/bootui','libraries/viewkit','tools/devkit']:
+for path in ['core','boot','user','services','libraries/newlib','libraries/rust','libraries/fonts','libraries/libc','libraries/bootui','libraries/viewkit','tools/devkit']:
     state=source_state(root/path)
     sources.append(dict(path=str(root/path),revision=state['revision'],working_tree=state['working_tree']))
 environment={key:str(root/value) for key,value in {'MDP_CONTEXT':'.','MDP_WORKSPACE':'.','MDP_VARIABLES':'out/mdp/context.json','MDP_PROFILE_FILE':'.config','MDP_VERSION_FILE':'version.toml'}.items()}

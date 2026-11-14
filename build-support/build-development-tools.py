@@ -69,9 +69,8 @@ def outputs(paths):
 
 
 def input_identity(path):
-    # Cargo atomically replaces its lockfile, and our wrapper restores the
-    # previous bytes/time when only unused-patch diagnostics changed. The inode
-    # still changes: compare this small generated input by content instead.
+    # Cargo atomically replaces lockfiles. Keep every resulting change and
+    # compare this small generated input by content, independently of its inode.
     if path.name == 'Cargo.lock':
         with path.open('rb') as stream:
             return [str(path), hashlib.file_digest(stream, 'sha256').hexdigest()]
