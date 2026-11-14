@@ -21,13 +21,14 @@ identity=hashlib.sha256(encoded([{k:v for k,v in item.items() if k!='path'} for 
 sources=[]
 for path in ['core','boot','user','services','libraries/newlib','libraries/rust','libraries/fonts','libraries/libc','libraries/bootui','libraries/viewkit','tools/devkit']:
     state=source_state(root/path)
-    sources.append(dict(path=str(root/path),revision=state['revision'],tracked_tree=state['tracked_tree'],working_tree=state['working_tree']))
+    sources.append(dict(path=str(root/path),revision=state['revision'],tracked_tree=state['tracked_tree'],content_sha256=state['content_sha256'],working_tree=state['working_tree']))
 environment={key:str(root/value) for key,value in {'MDP_CONTEXT':'.','MDP_WORKSPACE':'.','MDP_VARIABLES':'out/mdp/context.json','MDP_PROFILE_FILE':'.config','MDP_VERSION_FILE':'version.toml'}.items()}
 bindings=json.loads((root/'out/mdp/context.json').read_text())
 for kind in ['native','shared']:bindings.update(json.loads((root/('out/mdp/'+kind+'-bindings.json')).read_text()))
 frozen=root/'out/sdk/contexts'/identity
 frozen.mkdir(parents=True,exist_ok=True)
 atomic_json(frozen/'bindings.json',bindings)
+environment['TMPDIR']=str(root/'out/mdp/tmp')
 environment['MDP_VARIABLES']=str(frozen/'bindings.json')
 environment['MDP_VARIABLE_OVERLAYS']='[]'
 value={'format':1,'sdk':dict(id=identity,target='x86_64-mochios',abi='mochios-1',kind='built-source-sdk'),

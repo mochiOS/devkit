@@ -9,6 +9,7 @@ import tomllib
 
 root = Path(os.environ['MDP_CONTEXT']).resolve()
 kit = Path(__file__).resolve().parent
+(root / "out/mdp/tmp").mkdir(parents=True, exist_ok=True, mode=0o700)
 values = {'ROOT': str(root), 'OUT': str(root / 'out'), 'MMAKE_OUT': str(root / 'out/mmake'),
           'SCRIPTS': str(root / 'scripts'), 'HOST_TOOLS_DIR': str(root / 'out/mmake/host-tools')}
 for line in (root / '.config').read_text().splitlines():
