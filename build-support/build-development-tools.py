@@ -77,11 +77,28 @@ def input_identity(path):
     return identity(path)
 
 
+def validate_sdk_inputs(actual, expected):
+    """Require the legacy compiler working paths to match the locked SDK bytes."""
+    def inventory(root):
+        result = {}
+        for name in ('lib', 'sysroot'):
+            folder = root / name
+            if not folder.is_dir():raise ValueError(f'SDK directory is missing: {folder}')
+            for file in sorted(folder.rglob('*')):
+                if file.is_file():
+                    with file.open('rb') as stream:result[file.relative_to(root).as_posix()] = hashlib.file_digest(stream, 'sha256').hexdigest()
+        if not result:raise ValueError('SDK contains no compiler inputs')
+        return result
+    if inventory(actual) != inventory(expected):
+        raise ValueError('Native compiler inputs differ from the locked SDK; rebuild the SDK context first')
+
+
 class Builder:
-    def __init__(self, root, jobs, cargo):
+    def __init__(self, root, jobs, cargo, expected_sdk=None):
         self.root, self.jobs, self.cargo = root, jobs, cargo
         self.output = root / 'out/llvm-port'
         self.sdk = root / 'out/newlib-port/sdk'
+        if expected_sdk is not None:validate_sdk_inputs(self.sdk, expected_sdk)
         self.environment = os.environ.copy()
         self.environment['TMPDIR'] = str(self.output / 'tmp')
         (self.output / 'tmp').mkdir(parents=True, exist_ok=True)
@@ -222,13 +239,18 @@ class Builder:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--jobs', type=int, help='Override configured compiler concurrency; does not change artifacts')
+    parser.add_argument('--sdk', type=Path, help='Locked SDK whose inputs the compiler must match')
     parser.add_argument('cargo', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     root = args.root.resolve()
     enabled, jobs = configuration(root / '.config')
+    if args.jobs is not None:
+        if args.jobs < 1:raise ValueError('--jobs must be positive')
+        jobs = args.jobs
     receipt = root / 'out/mmake/components/development-tools.json'
     command = args.cargo[1:] if args.cargo[:1] == ['--'] else args.cargo
-    products = Builder(root, jobs, command).build() if enabled else []
+    products = Builder(root, jobs, command, args.sdk).build() if enabled else []
     write_json(receipt, {'enabled': enabled, 'outputs': products})
 
 
