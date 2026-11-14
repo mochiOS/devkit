@@ -16,17 +16,17 @@ ui = ["dep:viewkit"]
 
 [dependencies]
 mochios-fonts = { git = "https://github.com/mochiOS/fonts", rev = "233cb947ed6b10e175b0c6570611eb5605f112e1" }
-mochios-filesystem-protocol = { path = "../../../../user/crates/filesystem-protocol" }
-mochios-keychain-protocol = { path = "../../../../user/crates/keychain-protocol" }
+mochios-filesystem-protocol = { git = "https://github.com/mochiOS/syscalls" }
+mochios-keychain-protocol = { git = "https://github.com/mochiOS/syscalls" }
 zeroize = { version = "1.8", features = ["alloc"] }
 toml = "1.1.2"
-viewkit = { version = "2.0.0", git = "https://github.com/mochiOS/viewkit", rev = "78830e4eb6536cf498dad9206bc5da8b39123892", optional = true }
-mochios-workspace-protocol = { path = "../../../../user/crates/workspace-protocol" }
+viewkit = { version = "2.0.0", git = "https://github.com/mochiOS/viewkit", optional = true }
+mochios-workspace-protocol = { git = "https://github.com/mochiOS/syscalls" }
 
 [target.'cfg(target_os = "mochios")'.dependencies]
-mochi-user-platform = { version = "0.1.0", path = "../../../../user/crates/platform", default-features = false, features = ["std"] }
-mochios-posix-client = { path = "../../../../user/crates/posix-client", default-features = false, features = ["syscall-endpoint"] }
-mochios-posix-protocol = { path = "../../../../user/crates/posix-protocol" }
+mochi-user-platform = { version = "0.1.0", git = "https://github.com/mochiOS/syscalls", default-features = false, features = ["std"] }
+mochios-posix-client = { git = "https://github.com/mochiOS/syscalls", default-features = false, features = ["syscall-endpoint"] }
+mochios-posix-protocol = { git = "https://github.com/mochiOS/syscalls" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("mochios"))'] }

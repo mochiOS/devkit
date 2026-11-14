@@ -23,15 +23,15 @@ toml = "1.1.6"
 tar = { version = "0.4", default-features = false }
 flate2 = "1"
 mochios-file-publication = { path = "../file-publication" }
-mochios-elf-signature = { path = "../../../../user/crates/elf-signature" }
-mochios-package-manifest = { path = "../../../../user/crates/package-manifest" }
+mochios-elf-signature = { git = "https://github.com/mochiOS/syscalls" }
+mochios-package-manifest = { git = "https://github.com/mochiOS/syscalls" }
 reqwest = { version = "0.13.4", features = ["blocking", "json", "rustls"], optional = true }
 mochios-certificate = { git = "https://github.com/mochiOS/syscalls", rev = "af217f5ca6a585110aabac813eb46dff8ccb7bfc", package = "mochios-certificate" }
-mochios-signature-protocol = { path = "../../../../user/crates/signature-protocol" }
+mochios-signature-protocol = { git = "https://github.com/mochiOS/syscalls" }
 
 [target.'cfg(target_os = "mochios")'.dependencies]
 getrandom02 = { package = "getrandom", version = "0.2", features = ["custom"] }
-mochios-posix-client = { path = "../../../../user/crates/posix-client", default-features = false, features = ["getrandom02"] }
+mochios-posix-client = { git = "https://github.com/mochiOS/syscalls", default-features = false, features = ["getrandom02"] }
 
 [dev-dependencies]
 tempfile = "3"
