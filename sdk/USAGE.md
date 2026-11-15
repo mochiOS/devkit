@@ -41,6 +41,12 @@ The unreleased shared.5 recipe targets startup-linked shared objects and authent
 
 Shared SDK releases use a distinct prerelease tag, `sdk-<sdk.json version>`, without replacing AppCore releases. The manually dispatched SDK workflow rebuilds from the fixed inputs, runs structural and linker tests, uploads the SDK artifacts and build logs. It never creates or publishes a GitHub release; release creation and asset upload are performed manually by the maintainer. Existing release assets are never overwritten. The SDK archive, manifest and SHA-256 completion marker form one release. `mochiOS/libs` pins the archive URL, SHA-256 and builder image digest before building target libraries.
 
+Select the same `--target` for `sdk/publish.py` as for the build, and supply
+`--notes-file sdk/releases/<version>.md`. Notes follow the existing SDK
+prerelease warning, version line, bullet list and Full Changelog link. The
+publisher validates CPU, source pins, manifest inventory and archive checksum
+before creating a draft and uploading its immutable assets.
+
 ## Build path hygiene
 
 C, C++, preprocessed assembly and Rust runtime builds remap source, checkout,

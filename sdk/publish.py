@@ -8,6 +8,8 @@ import subprocess
 import tarfile
 import tempfile
 
+from native_target import TARGETS, resolve
+
 ROOT=Path(__file__).resolve().parent
 
 
@@ -19,9 +21,20 @@ def sha(path):
 def main():
     """Revalidate build metadata and release bytes before publishing immutable assets."""
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--repository',required=True);p.add_argument('--commit',required=True)
+    p.add_argument('--target',choices=list(TARGETS))
+    p.add_argument('--notes-file',type=Path,required=True)
     p.add_argument('--directory',type=Path,default=ROOT.parent/'out/shared-sdk/releases');args=p.parse_args()
-    lock=json.loads((ROOT/'sources.lock.json').read_text());version=lock['version'];tag='sdk-'+version
-    name='x86_64-mochios-sdk-'+version+'.tar.gz';archive=args.directory/name
+    lock=json.loads((ROOT/'sources.lock.json').read_text())
+    if args.target:lock['target']=args.target
+    version=lock['version'];tag='sdk-'+version
+    name=resolve(lock['target']).arch+'-mochios-sdk-'+version+'.tar.gz';archive=args.directory/name
+    # Notes are reviewed source input, never generic text that silently loses
+    # the established release format or overstates native execution coverage.
+    notes=args.notes_file.read_text()
+    header='**This release is for a prerelease version of mochiOS SDK. APIs may change before release.**'
+    title='mochiOS SDK '+version.replace('-', ' ')
+    if not notes.startswith(header+'\n\n'+title+'\n\n') or '\n* ' not in notes or '\n\n**Full Changelog**: https://github.com/'+args.repository+'/compare/' not in notes:
+        raise ValueError('Release notes must follow the existing SDK changelog format')
     manifest=json.loads((args.directory/(name+'.json')).read_text())
     if manifest['sources']!=lock or manifest['archive']!=name or manifest['sha256']!=sha(archive):raise ValueError('SDK source/archive identity mismatch')
     if (args.directory/'SHA256SUMS').read_text()!=sha(archive)+'  '+name+'\n':raise ValueError('Checksum marker mismatch')
@@ -49,10 +62,9 @@ def main():
                     if not info['isDraft']:raise ValueError('Published SDK release is incomplete; use a new version')
                     subprocess.run(['gh','release','upload',tag,str(path),'--repo',args.repository],check=True)
     else:
-        notes='Shared C/C++ cross SDK for mochiOS x86-64. C++23, thread, exception, shared/executable-link and ELF structure checks passed. Target binaries have not been executed on mochiOS. Startup-linked shared objects with initial-exec TLS; see sdk/USAGE.md for limits. Includes source pins, original license notices, patched newlib source, manifest and SHA-256 checksums.'
         with tempfile.TemporaryDirectory() as tmp:
-            body=Path(tmp)/'notes.txt';body.write_text(notes+'\n')
-            subprocess.run(['gh','release','create',tag,'--repo',args.repository,'--target',args.commit,'--draft','--prerelease','--latest=false','--title','mochiOS shared C/C++ SDK '+version,'--notes-file',str(body)],check=True)
+            body=Path(tmp)/'notes.txt';body.write_text(notes)
+            subprocess.run(['gh','release','create',tag,'--repo',args.repository,'--target',args.commit,'--draft','--prerelease','--latest=false','--title',tag,'--notes-file',str(body)],check=True)
         for path in assets:subprocess.run(['gh','release','upload',tag,str(path),'--repo',args.repository],check=True)
     subprocess.run(['gh','release','edit',tag,'--repo',args.repository,'--draft=false','--prerelease','--latest=false'],check=True)
 

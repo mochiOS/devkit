@@ -1,6 +1,14 @@
 name: Build and verify shared C/C++ SDK
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: Native mochiOS CPU
+        type: choice
+        default: x86_64-unknown-mochios
+        options:
+          - x86_64-unknown-mochios
+          - aarch64-unknown-mochios
 permissions:
   contents: read
 concurrency:
@@ -11,6 +19,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    env:
+      SDK_TARGET: ${{ inputs.target }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -25,20 +35,22 @@ jobs:
           rustup toolchain install nightly-2026-05-14 --profile minimal --component rust-src
       - run: python3 -m unittest discover -s sdk/tests -v
       - name: Build and verify source-pinned target SDK
-        run: python3 sdk/build.py build --jobs 4
+        run: python3 sdk/build.py build --target "$SDK_TARGET" --output out/shared-sdk --jobs 4
       - name: Verify private compiler helpers and strict shared imports
         env:
           MOCHIOS_TEST_SDK: ${{ github.workspace }}/out/shared-sdk/sdk
-        run: python3 -m unittest discover -s sdk/tests -p test_compiler_helpers.py -v
+        run: |
+          python3 -m unittest discover -s sdk/tests -p test_compiler_helpers.py -v
+          python3 -m unittest discover -s sdk/tests -p test_native_target.py -v
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: shared-sdk
+          name: shared-sdk-${{ inputs.target }}
           path: out/shared-sdk/releases
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: shared-sdk-build-logs
+          name: shared-sdk-build-logs-${{ inputs.target }}
           path: out/shared-sdk/logs
           retention-days: 14

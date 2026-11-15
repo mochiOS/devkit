@@ -292,6 +292,7 @@ def build_tls_archive(lock, sources, sdk, out, env, jobs, policy):
         overrides.append(('https://github.com/mochiOS/syscalls',package,source/'crates'/directory))
     args = ['cargo','+'+lock['rust_toolchain'],'build','--locked','--release',
             '-Zjson-target-spec','-Zbuild-std=core,alloc,compiler_builtins',
+            '--manifest-path',source/'Cargo.toml',
             '--target',source/('targets/'+native.triple+'.json'),
             '--target-dir',target,'--jobs',jobs,'-p','mochios-tls-stream-ffi']
     for origin, package, directory in overrides:
@@ -409,6 +410,7 @@ def assemble(lock,sources,sdk,out,env,policy):
     for name in ['mochios-cc','mochios-c++']:
         p=sdk/'bin'/name;p.unlink(missing_ok=True);p.symlink_to('driver.py')
     for name in ['executable.ld','shared-unwind.ld']:shutil.copy2(ROOT/name,sdk/'lib'/name)
+    shutil.copy2(ROOT/'USAGE.md',sdk/'USAGE.md')
     shutil.copytree(ROOT/'cmake',sdk/'share/cmake',dirs_exist_ok=True)
     command([sdk/'bin/mochios-cc',*path_hygiene.compiler_flags(policy),'-c',ROOT/'shared-crt.c','-o',sdk/'lib/shared-crt.o'],env)
     all_symbols=set();c_symbols=set()

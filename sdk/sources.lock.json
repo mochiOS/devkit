@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "version": "27.0-dp.1-shared.10",
+  "version": "27.0-dp.1-shared.11",
   "target": "x86_64-unknown-mochios",
   "abi": "mochios-1",
   "host": "x86_64-linux-gnu-ubuntu24.04",
@@ -110,7 +110,7 @@
   "sources": {
     "user": {
       "url": "https://github.com/mochiOS/syscalls.git",
-      "commit": "a4a72d5d01d27223c402292b9ce38adbdaf4a635"
+      "commit": "270eb0ed4e9eb33e7acb8d25372bb029e77c359c"
     },
     "mnu": {
       "url": "https://github.com/mochiOS/mnu.git",
@@ -122,7 +122,7 @@
     },
     "mboot": {
       "url": "https://github.com/mochiOS/services.git",
-      "commit": "de57b3e9a8cd43b42452b39a4dde3a485d94ea58"
+      "commit": "2d9349193cf48425d3e5fbd7019df0dca7864fd1"
     },
     "newlib": {
       "url": "https://github.com/mirror/newlib-cygwin.git",
