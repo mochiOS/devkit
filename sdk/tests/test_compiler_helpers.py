@@ -27,13 +27,15 @@ class CompilerHelperLinks(unittest.TestCase):
                                  ('link-adapter.py', 'gcc')]:
                 shutil.copy2(ROOT / source, sdk / 'libexec' / name)
             (sdk / 'libexec/gcc').chmod(0o755)
+            (sdk / 'libexec/g++').symlink_to('gcc')
             compiler = sdk / 'bin/mochios-c++'
             shutil.copyfile(ROOT / 'driver.py', compiler)
             compiler.chmod(0o755)
             library = root / 'helpers.so'
-            subprocess.run([str(compiler), '-std=c++23', '-O2', '-shared', str(ROOT / 'probe/shared.cpp'),
-                            '-Wl,-soname,helpers.so', '-o', str(library)], check=True,
-                           capture_output=True, text=True)
+            result = subprocess.run([str(compiler), '-std=c++23', '-O2', '-shared', str(ROOT / 'probe/shared.cpp'),
+                                     '-Wl,-soname,helpers.so', '-o', str(library)],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
             nm = str(sdk / 'host/bin/nm')
             dynamic = subprocess.check_output([nm, '-D', str(library)], text=True)
             complete = subprocess.check_output([nm, '--defined-only', str(library)], text=True)
@@ -50,6 +52,13 @@ class CompilerHelperLinks(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('Unresolved non-runtime imports: unavailable_sdk_function', result.stderr)
             self.assertFalse((root / 'unknown.so').exists())
+            previous = library.read_bytes()
+            (sdk / 'libexec/g++').unlink()
+            result = subprocess.run([str(compiler), '-shared', str(ROOT / 'probe/shared.cpp'),
+                                     '-o', str(library)], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Missing SDK LLVM linker adapter', result.stderr)
+            self.assertEqual(library.read_bytes(), previous)
 
     def test_rust_hidden_math_does_not_hide_public_newlib_exports(self):
         import hashlib

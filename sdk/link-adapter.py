@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 
+sys.dont_write_bytecode = True
 from native_target import from_sdk
 
 

@@ -130,6 +130,7 @@ def isolate_rust_math(sdk, arguments, temporary, env):
 def main():
     """Compile or transactionally link, validating shared imports before publishing output."""
     sdk = Path(__file__).resolve().parents[1]
+    sys.dont_write_bytecode = True
     sys.path.insert(0, str(sdk / 'libexec'))
     from native_target import from_sdk
     native = from_sdk(sdk)
@@ -146,6 +147,9 @@ def main():
     compile_only = query or any(arg in args for arg in ['-c', '-S', '-E', '-M', '-MM', '-fsyntax-only'])
     if compile_only:
         raise SystemExit(subprocess.call([str(compiler), *flags, *args], env=env))
+    backend = sdk / 'libexec' / ('g++' if cxx else 'gcc')
+    if not backend.is_file():
+        raise ValueError('Missing SDK LLVM linker adapter: ' + str(backend))
     if '-pie' in args: raise ValueError('PIE executables are not part of this SDK ABI')
     shared = '-shared' in args
     output = Path('a.out'); filtered = []; index = 0
