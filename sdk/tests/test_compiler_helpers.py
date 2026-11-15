@@ -18,8 +18,15 @@ class CompilerHelperLinks(unittest.TestCase):
             sdk = root / 'sdk'
             (sdk / 'bin').mkdir(parents=True)
             for path in base.iterdir():
-                if path.name != 'bin':
+                if path.name not in {'bin', 'libexec'}:
                     (sdk / path.name).symlink_to(path, target_is_directory=path.is_dir())
+            # Exercise the current driver and adapter together against the
+            # installed runtime, including SDKs from before native-target.
+            (sdk / 'libexec').mkdir()
+            for source, name in [('native_target.py', 'native_target.py'),
+                                 ('link-adapter.py', 'gcc')]:
+                shutil.copy2(ROOT / source, sdk / 'libexec' / name)
+            (sdk / 'libexec/gcc').chmod(0o755)
             compiler = sdk / 'bin/mochios-c++'
             shutil.copyfile(ROOT / 'driver.py', compiler)
             compiler.chmod(0o755)

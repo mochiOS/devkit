@@ -1,6 +1,6 @@
 # Shared C/C++ SDK
 
-This SDK targets `x86_64-unknown-mochios` (`mochios-1`). Its host is Ubuntu 24.04 x86-64, with Python 3.12, glibc, libstdc++ and libgcc_s supplied by the host. The archive contains Clang/LLD, LLVM archive and inspection tools, target headers, compiler-rt builtins, newlib, the syscall-backed mochiOS runtime, libc++, libc++abi, libunwind, CMake files, original notices and pinned source provenance.
+This SDK targets `x86_64-unknown-mochios` or `aarch64-unknown-mochios` (`mochios-1`), with a separate archive and output directory for each CPU. Its host is Ubuntu 24.04 x86-64, with Python 3.12, glibc, libstdc++ and libgcc_s supplied by the host. The archive contains Clang/LLD, LLVM archive and inspection tools, target headers, compiler-rt builtins, newlib, the syscall-backed mochiOS runtime, libc++, libc++abi, libunwind, CMake files, original notices and pinned source provenance.
 
 ## Build the SDK
 
@@ -8,9 +8,18 @@ Install CMake 3.28+, Make, Git, Python 3.12+, Perl, patch, dpkg-deb, a host C/C+
 
 ```sh
 python3 sdk/build.py build --jobs 4
+# ARM64; defaults to out/shared-sdk-aarch64, keeping x86 output intact.
+python3 sdk/build.py build --target aarch64-unknown-mochios --jobs 4
 ```
 
 All downloaded inputs and outputs go to `out/shared-sdk`; an OS checkout is neither read nor written. Git commits, LLVM and host package checksums, and local patch checksums are fixed in `sdk/sources.lock.json`. Newlib's corresponding patched source accompanies the binary archive. No credentials are required for public source downloads. Target binaries are inspected and linked, never run on Linux. A failed build does not produce a new successful release.
+
+`share/native-target` records the CPU before compilation starts, and must agree
+with `sdk.json` once assembled. Reusing an output for a different CPU is rejected.
+Compiler, linker and CMake select that recorded CPU; ELF verification rejects
+foreign-machine outputs. ARM64 uses the base ARMv8-A AAPCS64 ABI, initial-exec
+Variant-I TLS and compiler-rt builtins. SVE/SME and Linux HWCAP-based function
+multiversioning are excluded while the OS context ABI owns base FP/SIMD only.
 
 ## Compile applications and shared libraries
 

@@ -9,11 +9,14 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from native_target import from_sdk
+
 
 def inspect(sdk,path):
-    """Require x86-64, W^X, non-executable stack and capability-loader-compatible dependencies."""
+    """Require the SDK's CPU, W^X, NX stack and native loader dependencies."""
+    from_sdk(sdk).check_elf(path)
     text=subprocess.check_output([sdk/'host/bin/readelf','-W','-h','-l','-d','--version-info',path],text=True)
-    if not re.search(r'Machine:\s+(Advanced Micro Devices X86-64|AMD x86-64)',text):raise ValueError('Unexpected ELF machine')
     if re.search(r'\bINTERP\b|GLIBC_|libc.so.6|\(RPATH\)|\(RUNPATH\)',text):raise ValueError('Host loader or runtime dependency')
     for line in text.splitlines():
         if line.lstrip().startswith(('LOAD','GNU_STACK')) and 'W' in line and 'E' in line:raise ValueError('Writable executable mapping')

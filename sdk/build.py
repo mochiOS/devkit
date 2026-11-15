@@ -14,6 +14,7 @@ import tarfile
 import urllib.request
 
 import path_hygiene
+import native_target
 
 ROOT = Path(__file__).resolve().parent
 
@@ -129,6 +130,8 @@ def host_tools(host_input, sdk):
 def bootstrap(sdk, out, policy):
     """Create private GCC-compatible command names for the canonical userland SDK source builder."""
     (sdk/'libexec').mkdir(exist_ok=True)
+    native=native_target.from_sdk(sdk)
+    shutil.copy2(ROOT/'native_target.py',sdk/'libexec/native_target.py')
     shutil.copy2(ROOT/'link-adapter.py',sdk/'libexec/gcc');(sdk/'libexec/gcc').chmod(0o755)
     (sdk/'libexec/g++').symlink_to('gcc') if not (sdk/'libexec/g++').exists() else None
     directory=out/'bootstrap-bin';directory.mkdir(exist_ok=True)
@@ -140,13 +143,13 @@ if sys.argv[1:]==['-print-libgcc-file-name']:
     if not builtins.is_file():raise SystemExit('compiler-rt builtins have not been built')
     print(builtins);raise SystemExit(0)
 env=dict(os.environ,LD_LIBRARY_PATH=str(sdk/'host/lib'))
-args=['--target=x86_64-unknown-none-elf','-nostdlibinc','-ffreestanding','-mno-red-zone','-D__SCHAR_WIDTH__=__CHAR_BIT__','-D__LONG_LONG_WIDTH__=__LLONG_WIDTH__','-B'+str(sdk/'libexec')]
+args=%s+['-nostdlibinc','-ffreestanding','-D__SCHAR_WIDTH__=__CHAR_BIT__','-D__LONG_LONG_WIDTH__=__LLONG_WIDTH__','-B'+str(sdk/'libexec')]
 if '++' in Path(sys.argv[0]).name:args+=['--driver-mode=g++']
 raise SystemExit(subprocess.call([str(sdk/'host/bin/clang'),*args,*sys.argv[1:],*mappings],env=env))
-'''%(repr(str(sdk)),repr(str(out/'builtins/lib/linux/libclang_rt.builtins-x86_64.a')),repr(path_hygiene.compiler_flags(policy)))
-    for name in ['x86_64-elf-gcc','bootstrap-cc','bootstrap-c++']:
+'''%(repr(str(sdk)),repr(str(out/'builtins/lib/linux'/native.builtins)),repr(path_hygiene.compiler_flags(policy)),repr(['--target='+native.clang,*native.cpu_flags]))
+    for name in [native.arch+'-elf-gcc','bootstrap-cc','bootstrap-c++']:
         (directory/name).write_text(script);(directory/name).chmod(0o755)
-    for name,tool in [('x86_64-elf-ar','ar'),('x86_64-elf-ranlib','ranlib')]:
+    for name,tool in [(native.arch+'-elf-ar','ar'),(native.arch+'-elf-ranlib','ranlib')]:
         path=directory/name
         if not path.exists():path.symlink_to(sdk/'host/bin'/tool)
     return directory
@@ -155,21 +158,25 @@ raise SystemExit(subprocess.call([str(sdk/'host/bin/clang'),*args,*sys.argv[1:],
 def build_builtins(sources, sdk, out, env, jobs, policy):
     """Build target compiler-rt from source instead of copying a Linux/GCC target runtime."""
     build=out/'builtins'
+    native=native_target.from_sdk(sdk)
     mappings=shlex.join(path_hygiene.compiler_flags(policy))
     headers=out/'bootstrap-headers';headers.mkdir(exist_ok=True)
     # Private freestanding assert for compiler-rt CPU detection, never installed as a libc header.
     (headers/'assert.h').write_text('#define static_assert _Static_assert\n#ifdef NDEBUG\n#define assert(x) ((void)0)\n#else\n#define assert(x) ((x)?(void)0:__builtin_trap())\n#endif\n')
     command(['cmake','-S',sources['llvm']/'compiler-rt/lib/builtins','-B',build,'-G','Unix Makefiles',
-        '-DCMAKE_SYSTEM_NAME=Generic','-DCMAKE_SYSTEM_PROCESSOR=x86_64','-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY',
+        '-DCMAKE_SYSTEM_NAME=Generic','-DCMAKE_SYSTEM_PROCESSOR='+native.arch,'-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY',
         '-DCMAKE_C_COMPILER='+str(sdk/'host/bin/clang'),'-DCMAKE_ASM_COMPILER='+str(sdk/'host/bin/clang'),
-        '-DCMAKE_C_COMPILER_TARGET=x86_64-unknown-none-elf','-DCMAKE_ASM_COMPILER_TARGET=x86_64-unknown-none-elf',
+        '-DCMAKE_C_COMPILER_TARGET='+native.clang,'-DCMAKE_ASM_COMPILER_TARGET='+native.clang,
         '-DCMAKE_C_FLAGS=-ffreestanding -fPIC -nostdlibinc -isystem'+shlex.quote(str(headers))+' '+mappings, '-DCMAKE_ASM_FLAGS='+mappings,'-DCMAKE_BUILD_TYPE=Release',
         '-DCOMPILER_RT_BAREMETAL_BUILD=ON','-DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON',
+        # Native context switching currently owns base ARMv8 FP/SIMD only.
+        # Do not expose SME entry points or Linux HWCAP-based FMV dispatch.
+        *(['-DCOMPILER_RT_HAS_AARCH64_SME=OFF','-DCOMPILER_RT_DISABLE_AARCH64_FMV=ON'] if native.arch=='aarch64' else []),
         '-DCOMPILER_RT_EXCLUDE_ATOMIC_BUILTIN=ON','-DLLVM_CMAKE_DIR='+str(sources['llvm']/'llvm/cmake/modules')],env,log=out/'logs/builtins.log')
     command(['cmake','--build',build,'--parallel',jobs],env,log=out/'logs/builtins.log')
-    candidates=[p for p in build.rglob('libclang_rt.builtins-x86_64.a') if p.parent != build/'lib/linux']
+    candidates=[p for p in build.rglob(native.builtins) if p.parent != build/'lib/linux']
     if len(candidates)!=1:raise ValueError('Expected one target builtins archive')
-    stable=build/'lib/linux/libclang_rt.builtins-x86_64.a';stable.parent.mkdir(parents=True,exist_ok=True)
+    stable=build/'lib/linux'/native.builtins;stable.parent.mkdir(parents=True,exist_ok=True)
     if candidates[0]!=stable:shutil.copy2(candidates[0],stable)
     return stable
 
@@ -235,12 +242,13 @@ def prepared_sources(lock, sources, out):
 def build_c_runtime(lock,sources,sdk,out,env,jobs,policy):
     """Build newlib and the real syscall-backed Rust process runtime from pinned sources."""
     directory=bootstrap(sdk,out,policy)
-    env=dict(env,PATH=str(directory)+':'+env['PATH'],CARGO_HOME=str(out/'cargo-home'))
+    native=native_target.from_sdk(sdk)
+    env=dict(env,PATH=str(directory)+':'+env['PATH'],CARGO_HOME=str(out/'cargo-home'),CARGO_BUILD_JOBS=str(jobs))
     env.update(RUSTC_WRAPPER=str(ROOT/'path_hygiene.py'),
         MOCHIOS_SDK_PATH_POLICY=str(out/'path-policy.json'),
         MOCHIOS_SDK_CFLAGS=shlex.join(path_hygiene.compiler_flags(policy)),
         MOCHIOS_SDK_CARGO_TARGET_DIR=str(out/'rust-targets'/path_hygiene.identity(policy)))
-    command(['bash',sources['user']/'scripts/build-newlib.sh','--newlib-source',sources['newlib'],
+    command(['bash',sources['user']/'scripts/build-newlib.sh','--arch',native.arch,'--newlib-source',sources['newlib'],
         '--output',out/'c-runtime','--abi-source',sources['mnu']/'crates/abi',
         '--libc-source',sources['libc'],'--mboot-protocol-source',sources['mboot']/'mboot-protocol',
         '--syscalls-source',sources['user'],'--toolchain',lock['rust_toolchain'],'--jobs',jobs],
@@ -249,14 +257,14 @@ def build_c_runtime(lock,sources,sdk,out,env,jobs,policy):
     for name in ['lib','sysroot']:
         shutil.copytree(base/name,sdk/name,dirs_exist_ok=True,copy_function=copy_stable)
     (sdk/'lib/libgcc.a').unlink(missing_ok=True)
-    shutil.copy2(out/'builtins/lib/linux/libclang_rt.builtins-x86_64.a',sdk/'lib/libbuiltins.a')
+    shutil.copy2(out/'builtins/lib/linux'/native.builtins,sdk/'lib/libbuiltins.a')
     isolate_math_builtins(sdk,out,env)
     # Generic newlib omits its POSIX source directory. Compile the existing
     # filename matcher without enabling syscall wrappers owned by mochiOS.
     fnmatch_object=out/'newlib-fnmatch.o'
-    command([sdk/'host/bin/clang','--target=x86_64-unknown-none-elf',
+    command([sdk/'host/bin/clang','--target='+native.clang,
         '-nostdlibinc','-isystem',sdk/'sysroot/include','-D__mochios__=1',
-        '-D_GNU_SOURCE=1','-ffreestanding','-mno-red-zone','-O2',
+        '-D_GNU_SOURCE=1','-ffreestanding',*native.cpu_flags,'-O2',
         *path_hygiene.compiler_flags(policy),'-include',ROOT/'newlib-fnmatch-collate.h',
         '-c',sources['newlib']/'newlib/libc/posix/fnmatch.c','-o',fnmatch_object],env)
     command([sdk/'host/bin/ar','r',sdk/'sysroot/lib/libc.a',fnmatch_object],env)
@@ -272,6 +280,7 @@ def build_tls_archive(lock, sources, sdk, out, env, jobs, policy):
     if 'tls' not in sources:
         return
     source = sources['tls']
+    native = native_target.from_sdk(sdk)
     target = out/'tls-targets'/path_hygiene.identity(policy)
     overrides = [('crates-io', 'mnu-abi', sources['mnu']/'crates/abi'),
                  ('https://github.com/mochiOS/mnu', 'mnu-abi', sources['mnu']/'crates/abi'),
@@ -283,7 +292,7 @@ def build_tls_archive(lock, sources, sdk, out, env, jobs, policy):
         overrides.append(('https://github.com/mochiOS/syscalls',package,source/'crates'/directory))
     args = ['cargo','+'+lock['rust_toolchain'],'build','--locked','--release',
             '-Zjson-target-spec','-Zbuild-std=core,alloc,compiler_builtins',
-            '--target',source/'targets/x86_64-unknown-mochios.json',
+            '--target',source/('targets/'+native.triple+'.json'),
             '--target-dir',target,'--jobs',jobs,'-p','mochios-tls-stream-ffi']
     for origin, package, directory in overrides:
         args += ['--config', 'patch.'+json.dumps(origin)+'.'+package+'.path='+json.dumps(str(directory))]
@@ -292,7 +301,7 @@ def build_tls_archive(lock, sources, sdk, out, env, jobs, policy):
                    MOCHIOS_SDK_PATH_POLICY=str(out/'path-policy.json'))
     command(args, tls_env, cwd=source, log=out/'logs/tls.log')
     destination = sdk/'lib/libmochios_tls_pic.a'
-    copy_stable(target/'x86_64-unknown-mochios/release/libmochios_tls_stream_ffi.a', destination)
+    copy_stable(target/native.triple/'release/libmochios_tls_stream_ffi.a', destination)
     headers = sdk/'sysroot/include/mochios'
     headers.mkdir(parents=True,exist_ok=True)
     copy_stable(source/'libc-port/include/mochios/tls.h', headers/'tls.h')
@@ -329,11 +338,12 @@ def isolate_math_builtins(sdk,out,env):
 def build_cxx_runtime(sources,sdk,out,env,jobs,policy):
     """Build target libc++, libc++abi and libunwind; bootstrap configure never executes target code."""
     build=out/'cxx-runtime'
-    flags='-nostdlibinc -D__SCHAR_WIDTH__=__CHAR_BIT__ -D__LONG_LONG_WIDTH__=__LLONG_WIDTH__ -D__mochios__=1 -D_GNU_SOURCE=1 -mno-red-zone -fno-pie -isystem'+shlex.quote(str(sdk/'sysroot/include'))+' '+shlex.join(path_hygiene.compiler_flags(policy))
+    native=native_target.from_sdk(sdk)
+    flags='-nostdlibinc -D__SCHAR_WIDTH__=__CHAR_BIT__ -D__LONG_LONG_WIDTH__=__LLONG_WIDTH__ -D__mochios__=1 -D_GNU_SOURCE=1 -fno-pie '+shlex.join(native.cpu_flags)+' -isystem'+shlex.quote(str(sdk/'sysroot/include'))+' '+shlex.join(path_hygiene.compiler_flags(policy))
     options={
-        'CMAKE_SYSTEM_NAME':'Generic','CMAKE_SYSTEM_PROCESSOR':'x86_64','CMAKE_TRY_COMPILE_TARGET_TYPE':'STATIC_LIBRARY',
+        'CMAKE_SYSTEM_NAME':'Generic','CMAKE_SYSTEM_PROCESSOR':native.arch,'CMAKE_TRY_COMPILE_TARGET_TYPE':'STATIC_LIBRARY',
         'CMAKE_C_COMPILER':sdk/'host/bin/clang','CMAKE_CXX_COMPILER':sdk/'host/bin/clang', 'CMAKE_ASM_COMPILER':sdk/'host/bin/clang',
-        'CMAKE_C_COMPILER_TARGET':'x86_64-unknown-none-elf','CMAKE_CXX_COMPILER_TARGET':'x86_64-unknown-none-elf','CMAKE_ASM_COMPILER_TARGET':'x86_64-unknown-none-elf',
+        'CMAKE_C_COMPILER_TARGET':native.clang,'CMAKE_CXX_COMPILER_TARGET':native.clang,'CMAKE_ASM_COMPILER_TARGET':native.clang,
         'CMAKE_SYSROOT':sdk/'sysroot','CMAKE_FIND_ROOT_PATH':sdk/'sysroot',
         'CMAKE_FIND_ROOT_PATH_MODE_LIBRARY':'ONLY','CMAKE_FIND_ROOT_PATH_MODE_INCLUDE':'ONLY','CMAKE_FIND_ROOT_PATH_MODE_PACKAGE':'ONLY','CMAKE_FIND_ROOT_PATH_MODE_PROGRAM':'NEVER',
         'CMAKE_C_FLAGS':flags,'CMAKE_ASM_FLAGS':shlex.join(path_hygiene.compiler_flags(policy)),'CMAKE_CXX_FLAGS':flags+' --driver-mode=g++','CMAKE_BUILD_TYPE':'Release','CMAKE_INSTALL_PREFIX':build/'install',
@@ -393,6 +403,7 @@ def require_private_loader_api(sdk, all_symbols, c_symbols):
 def assemble(lock,sources,sdk,out,env,policy):
     """Install relocatable drivers and measure the exported ABI of a real linked process image."""
     (sdk/'bin').mkdir(exist_ok=True)
+    shutil.copy2(ROOT/'native_target.py',sdk/'libexec/native_target.py')
     shutil.copy2(ROOT/'driver.py',sdk/'bin/driver.py');(sdk/'bin/driver.py').chmod(0o755)
     shutil.copy2(ROOT/'link-adapter.py',sdk/'libexec/gcc');(sdk/'libexec/gcc').chmod(0o755)
     for name in ['mochios-cc','mochios-c++']:
@@ -436,7 +447,7 @@ def assemble(lock,sources,sdk,out,env,policy):
     if private_loader:
         metadata['unsupported_dynamic_loading']=['dlopen(NULL)','RTLD_NOLOAD','RTLD_GLOBAL','RTLD_DEEPBIND','RTLD_NODELETE','RTLD_DEFAULT','RTLD_NEXT']
     (sdk/'sdk.json').write_text(json.dumps(metadata,indent=2)+'\n')
-    shutil.copy2(ROOT/'sources.lock.json',sdk/'share/sources.lock.json')
+    (sdk/'share/sources.lock.json').write_text(json.dumps(lock,indent=2)+'\n')
     shutil.copy2(sources['user']/'Cargo.lock',sdk/'share/runtime.Cargo.lock')
     return metadata
 
@@ -477,7 +488,7 @@ def package(lock,sdk,out,policy):
     (out/'logs').mkdir(parents=True,exist_ok=True)
     (out/'logs/path-audit.json').write_text(json.dumps(audit,indent=2)+'\n')
     release=out/'releases';release.mkdir(exist_ok=True)
-    name='x86_64-mochios-sdk-'+lock['version']+'.tar.gz';archive=release/name
+    name=native_target.resolve(lock['target']).arch+'-mochios-sdk-'+lock['version']+'.tar.gz';archive=release/name
     temporary=archive.with_suffix('.tmp')
     try:
         path_hygiene.write_archive(sdk,temporary,'sdk')
@@ -496,13 +507,20 @@ def main():
     """Fetch/build from this SDK recipe with all outputs confined to a selected work directory."""
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command',choices=['fetch','builtins','build'])
-    parser.add_argument('--output',type=Path,default=ROOT.parent/'out/shared-sdk')
+    parser.add_argument('--target',choices=list(native_target.TARGETS))
+    parser.add_argument('--output',type=Path)
     parser.add_argument('--jobs',type=int,default=4)
-    args=parser.parse_args();out=args.output.resolve();out.mkdir(parents=True,exist_ok=True)
+    args=parser.parse_args()
+    if args.jobs<1:parser.error('--jobs must be positive')
     lock=json.loads((ROOT/'sources.lock.json').read_text())
+    if args.target:lock['target']=args.target
+    native=native_target.resolve(lock['target'])
+    default=ROOT.parent/'out'/('shared-sdk' if native.arch=='x86_64' else 'shared-sdk-'+native.arch)
+    out=(args.output or default).resolve();out.mkdir(parents=True,exist_ok=True)
+    sdk=out/'sdk';sdk.mkdir(exist_ok=True)
+    native_target.initialize(sdk,native)
     sources,host=fetch(lock,out)
     if args.command=='fetch':return
-    sdk=out/'sdk';sdk.mkdir(exist_ok=True)
     host_tools(host,sdk)
     rust_sysroot=Path(subprocess.check_output(['rustc','+'+lock['rust_toolchain'],'--print','sysroot'],text=True).strip())
     policy=path_hygiene.make_policy(ROOT.parent,out,sources,rust_sysroot)

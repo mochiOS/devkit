@@ -130,14 +130,17 @@ def isolate_rust_math(sdk, arguments, temporary, env):
 def main():
     """Compile or transactionally link, validating shared imports before publishing output."""
     sdk = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(sdk / 'libexec'))
+    from native_target import from_sdk
+    native = from_sdk(sdk)
     cxx = '++' in Path(sys.argv[0]).name or Path(sys.argv[0]).name.endswith('c++')
     args = response_arguments(sys.argv[1:])
     env = os.environ.copy()
     env['LD_LIBRARY_PATH'] = str(sdk / 'host/lib')
     os.environ['LD_LIBRARY_PATH'] = env['LD_LIBRARY_PATH']
     compiler = sdk / 'host/bin/clang'
-    flags = ['--target=x86_64-unknown-none-elf', '--sysroot=' + str(sdk / 'sysroot'),
-             '-nostdlibinc', '-isystem', str(sdk / 'sysroot/include'), '-D__SCHAR_WIDTH__=__CHAR_BIT__', '-D__LONG_LONG_WIDTH__=__LLONG_WIDTH__', '-D__mochios__=1', '-D__unix__=1', '-D_GNU_SOURCE=1', '-ffile-prefix-map=' + str(sdk) + '=/sdk', '-mno-red-zone', '-ftls-model=initial-exec', '-fPIC', '-funwind-tables']
+    flags = ['--target=' + native.clang, '--sysroot=' + str(sdk / 'sysroot'),
+             '-nostdlibinc', '-isystem', str(sdk / 'sysroot/include'), '-D__SCHAR_WIDTH__=__CHAR_BIT__', '-D__LONG_LONG_WIDTH__=__LLONG_WIDTH__', '-D__mochios__=1', '-D__unix__=1', '-D_GNU_SOURCE=1', '-ffile-prefix-map=' + str(sdk) + '=/sdk', *native.cpu_flags, '-ftls-model=initial-exec', '-fPIC', '-funwind-tables']
     if cxx: flags[2:2] = ['--driver-mode=g++', '-nostdinc++', '-isystem', str(sdk / 'sysroot/include/c++/v1')]
     query = not args or args in [['-v'], ['--version'], ['--help'], ['-dumpmachine']] or any(arg.startswith('-print-') for arg in args)
     compile_only = query or any(arg in args for arg in ['-c', '-S', '-E', '-M', '-MM', '-fsyntax-only'])
@@ -185,9 +188,7 @@ def main():
             allowed = set(json.loads((sdk / 'share/runtime-symbols.json').read_text())) | dependencies(sdk, filtered)
             missing = symbols(sdk / 'host/bin/nm', target, False) - allowed
             if missing: raise ValueError('Unresolved non-runtime imports: ' + ', '.join(sorted(missing)))
-        with target.open('rb') as stream: header = stream.read(64)
-        if len(header) < 64 or header[:6] != b'\x7fELF\x02\x01' or int.from_bytes(header[18:20], 'little') != 62:
-            raise ValueError('Linker did not produce an x86-64 ELF')
+        native.check_elf(target)
         dynamic = subprocess.check_output([str(sdk / 'host/bin/readelf'), '-d', str(target)], text=True)
         versions = subprocess.check_output([str(sdk / 'host/bin/readelf'), '--version-info', str(target)], text=True)
         if 'GLIBC_' in versions or 'libc.so.6' in dynamic or re.search(r'\((?:RUNPATH|RPATH)\)', dynamic): raise ValueError('Host glibc dependency is forbidden')

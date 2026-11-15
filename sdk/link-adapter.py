@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Private adapter for LLVM's Generic_GCC toolchain on x86_64-unknown-none-elf.
+"""Private adapter for LLVM's Generic_GCC ELF toolchain.
 
 Clang performs every compilation. Its generic ELF driver delegates only the
 final link to a program named gcc; this adapter translates those driver flags
@@ -12,6 +12,8 @@ import shlex
 import subprocess
 import sys
 import tempfile
+
+from native_target import from_sdk
 
 
 def expand(arguments, depth=0):
@@ -27,7 +29,8 @@ def expand(arguments, depth=0):
 def main():
     """Translate only supported compiler/linker flags and propagate the actual linker status."""
     sdk = Path(__file__).resolve().parents[1]
-    args = expand(sys.argv[1:]); link = ['-m', 'elf_x86_64']; index = 0
+    native = from_sdk(sdk)
+    args = expand(sys.argv[1:]); link = ['-m', native.emulation]; index = 0
     while index < len(args):
         arg = args[index]
         if arg.startswith('-Wl,'): link.extend(arg[4:].split(','))
