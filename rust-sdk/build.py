@@ -51,14 +51,17 @@ def resource(source, name):
     raise ValueError('Missing or external resource: ' + name)
 
 
-def stage(source, binary, output, licenses=None, *, bundle_name=None):
+def stage(source, binary, output, licenses=None, *, bundle_name=None, architecture=None):
     """Preserve capabilities/associations and bind actual files without claiming built-in trust."""
     with binary.open('rb') as stream:
         header = stream.read(64)
-    if len(header) != 64 or header[:6] != b'\x7fELF\x02\x01' or struct.unpack_from('<HH', header, 16) != (2, 62):
-        raise ValueError('Expected a native x86-64 ELF executable')
     manifest = copy.deepcopy(tomllib.loads((source / 'manifest.toml').read_text()))
     package, app = manifest['package'], manifest['application']
+    architecture = architecture or package.get('architecture', 'x86_64')
+    machine = {'x86_64': 62, 'aarch64': 183}.get(architecture)
+    if machine is None or len(header) != 64 or header[:6] != b'\x7fELF\x02\x01' or struct.unpack_from('<HH', header, 16) != (2, machine):
+        raise ValueError('Expected a native ' + str(architecture) + ' ELF executable')
+    package['architecture'] = architecture
     package.pop('provenance', None)
     name = bundle_name or (package['name'] + '.app')
     if not re.fullmatch('[A-Za-z][A-Za-z0-9._-]*\\.app', name) or app['entry'] != 'entry.elf' or len(manifest.get('binary', [])) != 1:

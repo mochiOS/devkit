@@ -58,6 +58,20 @@ class PackageStage(unittest.TestCase):
         with self.assertRaises(ValueError):
             build.stage(self.source, self.binary, self.root / 'stage')
 
+    def test_explicit_arm_package_checks_the_actual_machine(self):
+        with self.assertRaises(ValueError):
+            build.stage(self.source, self.binary, self.root / 'wrong', architecture='aarch64')
+        header = bytearray(self.binary.read_bytes())
+        struct.pack_into('<H', header, 18, 183)
+        self.binary.write_bytes(header)
+        with self.assertRaises(ValueError):
+            build.stage(self.source, self.binary, self.root / 'wrong')
+        result = build.stage(self.source, self.binary, self.root / 'arm', architecture='aarch64')
+        self.assertEqual(result['package']['architecture'], 'aarch64')
+        self.assertEqual(result['binary'][0]['requires'], ['window.create'])
+        self.assertEqual((self.root / 'arm/payload/bundle/icon.svg').read_text(), '<svg/>')
+        self.assertNotIn('provenance', result['package'])
+
     def test_source_and_font_pins_are_immutable(self):
         lock = json.loads((HERE / 'sources.lock.json').read_text())
         self.assertEqual(lock['sdk']['version'], '27.0-dp.1-shared.8')
